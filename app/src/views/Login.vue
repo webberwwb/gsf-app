@@ -1,0 +1,342 @@
+<template>
+  <div class="login-page">
+    <div class="login-container">
+      <div class="login-header">
+        <img src="/logos/gsf-icon.png" alt="谷语农庄" class="logo" />
+        <h1>谷语农庄</h1>
+        <p>精品生态农产品团购</p>
+      </div>
+
+      <div class="login-options">
+        <h2>登录选项</h2>
+
+        <!-- Phone/SMS Login (Primary Method) -->
+        <div class="phone-section">
+          <input
+            v-model="phone"
+            type="tel"
+            placeholder="请输入手机号码 (例如: +1234567890)"
+            class="phone-input"
+            :disabled="loading"
+          />
+          <button 
+            @click="sendOTP" 
+            class="login-btn sms-btn"
+            :disabled="loading || !phone"
+          >
+            <span class="icon">📱</span>
+            <span>发送验证码</span>
+          </button>
+
+          <div v-if="otpSent" class="otp-section">
+            <input
+              v-model="otp"
+              type="text"
+              placeholder="请输入6位验证码"
+              class="otp-input"
+              maxlength="6"
+              :disabled="loading"
+            />
+            <button 
+              @click="verifyOTP" 
+              class="login-btn verify-btn"
+              :disabled="loading || !otp"
+            >
+              验证码登录
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import apiClient from '../api/client'
+
+export default {
+  name: 'Login',
+  data() {
+    return {
+      loading: false,
+      error: null,
+      phone: '',
+      otp: '',
+      otpSent: false
+    }
+  },
+  async mounted() {
+    // Load saved phone number
+    const savedPhone = localStorage.getItem('last_phone_number')
+    if (savedPhone) {
+      this.phone = savedPhone
+    }
+    
+    // Check if we have a valid cached token
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      try {
+        const response = await apiClient.get('/auth/me')
+        // Token is valid, redirect to home
+        if (response.data.user) {
+          localStorage.setItem('user', JSON.stringify(response.data.user))
+          this.$router.push('/')
+          return
+        }
+      } catch (error) {
+        // Token invalid, clear it and continue with login
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user')
+      }
+    }
+    
+  },
+  methods: {
+    async sendOTP() {
+      this.loading = true
+      this.error = null
+      
+      try {
+        const response = await apiClient.post('/auth/phone/send-otp', {
+          phone: this.phone,
+          channel: 'sms'  // SMS only
+        })
+        
+        // Save phone number for next time
+        if (this.phone) {
+          localStorage.setItem('last_phone_number', this.phone)
+        }
+        
+        // Check if dev mode bypass is active
+        if (response.data.skip_otp || response.data.dev_mode) {
+          // Dev mode: OTP bypassed, show OTP input but allow any code
+          this.otpSent = true
+          this.error = null
+          return
+        }
+        
+        this.otpSent = true
+        // In development, show OTP (remove in production!)
+        if (response.data.otp) {
+          alert(`OTP: ${response.data.otp} (Development only - check console in production)`)
+        } else {
+          // OTP sent successfully via Twilio
+          this.error = null
+          // Show success message
+          console.log('OTP sent successfully:', response.data.message)
+        }
+      } catch (error) {
+        const errorData = error.response?.data || {}
+        const errorMessage = errorData.message || errorData.error || error.message || 'Failed to send OTP'
+        this.error = errorMessage
+        console.error('OTP send error:', error)
+        console.error('Error details:', errorData)
+      } finally {
+        this.loading = false
+      }
+    },
+    
+    async verifyOTP() {
+      this.loading = true
+      this.error = null
+
+      try {
+        const response = await apiClient.post('/auth/phone/verify', {
+          phone: this.phone,
+          otp: this.otp
+        })
+
+        // Save phone number for next time
+        if (this.phone) {
+          localStorage.setItem('last_phone_number', this.phone)
+        }
+
+        // Store token and user info (7 days expiration)
+        localStorage.setItem('auth_token', response.data.token)
+        localStorage.setItem('user', JSON.stringify(response.data.user))
+        
+        // Store expiration time for reference
+        if (response.data.expires_at) {
+          localStorage.setItem('auth_token_expires_at', response.data.expires_at)
+        }
+
+        // Redirect to home
+        this.$router.push('/')
+      } catch (error) {
+        const errorData = error.response?.data || {}
+        this.error = errorData.message || errorData.error || 'Invalid OTP'
+        console.error('OTP verification error:', errorData)
+      } finally {
+        this.loading = false
+      }
+    }
+  }
+}
+</script>
+
+<style scoped>
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--md-primary-variant) 0%, var(--md-primary) 100%);
+  padding: var(--md-spacing-xl);
+}
+
+.login-container {
+  background: var(--md-surface);
+  border-radius: var(--md-radius-lg);
+  padding: var(--md-spacing-xl);
+  max-width: 400px;
+  width: 100%;
+  box-shadow: var(--md-elevation-4);
+  border: none;
+  backdrop-filter: blur(10px);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.logo {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1rem;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.login-header h1 {
+  font-size: var(--md-headline-size);
+  margin-bottom: var(--md-spacing-sm);
+  color: var(--md-primary);
+  font-weight: 500;
+  letter-spacing: -0.5px;
+}
+
+.login-header p {
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-label-size);
+  opacity: 0.87;
+}
+
+.login-options h2 {
+  font-size: var(--md-title-size);
+  margin-bottom: var(--md-spacing-lg);
+  color: var(--md-primary);
+  text-align: center;
+  font-weight: 500;
+  letter-spacing: 0.15px;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 0.875rem;
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: var(--md-spacing-md);
+  text-transform: uppercase;
+  box-shadow: var(--md-elevation-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sms-btn {
+  background: #25D366;
+  color: white;
+}
+
+.sms-btn:hover:not(:disabled) {
+  background: #20ba5a;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
+}
+
+.sms-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-2);
+}
+
+.verify-btn {
+  background: var(--md-primary);
+  color: white;
+}
+
+.verify-btn:hover:not(:disabled) {
+  background: #FF7F00;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.4);
+}
+
+.verify-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-2);
+}
+
+.phone-input,
+.otp-input {
+  width: 100%;
+  padding: 0.875rem;
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  margin-bottom: var(--md-spacing-md);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-family: var(--md-font-family);
+}
+
+.phone-input:focus,
+.otp-input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  border-width: 2px;
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+}
+
+.otp-section {
+  margin-top: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid var(--md-surface-variant);
+}
+
+.error-message {
+  background: #FFEBEE;
+  color: #C62828;
+  padding: var(--md-spacing-md);
+  border-radius: var(--md-radius-md);
+  margin-top: var(--md-spacing-md);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  box-shadow: var(--md-elevation-1);
+  border-left: 4px solid #C62828;
+}
+
+.icon {
+  font-size: 1.2rem;
+}
+</style>
+
