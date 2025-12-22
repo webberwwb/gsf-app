@@ -1,8 +1,9 @@
 from flask import Blueprint, jsonify, request, current_app, redirect
 from models import db
-from models.user import User, AuthToken
+from models.user import User, AuthToken, UserRole
 from models.otp_attempt import OTPAttempt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from models.base import utc_now
 from config import Config
 import secrets
 import requests
@@ -70,7 +71,7 @@ def phone_send_otp():
                 current_app.otp_cache = {}
             current_app.otp_cache[phone] = {
                 'otp': otp,
-                'expires_at': datetime.utcnow() + timedelta(minutes=5)
+                'expires_at': utc_now() + timedelta(minutes=5)
             }
             return jsonify({
                 'message': 'OTP sent (development mode)',
@@ -208,7 +209,7 @@ def phone_verify():
                 if not cached_otp_data:
                     return jsonify({'error': 'OTP expired or not found'}), 400
                 
-                if datetime.utcnow() > cached_otp_data['expires_at']:
+                if utc_now() > cached_otp_data['expires_at']:
                     del current_app.otp_cache[phone]
                     return jsonify({'error': 'OTP expired'}), 400
                 
@@ -345,12 +346,12 @@ def phone_verify():
             if user.points < 10000:
                 user.points = 10000
         
-        user.last_login_date = datetime.utcnow()
+        user.last_login_date = utc_now()
         current_app.logger.info(f'Found existing user with phone: {phone}, ID: {user.id}, nickname: {user.nickname}, points: {user.points}')
     
     # Ensure last_login_date is set
     if not user.last_login_date:
-        user.last_login_date = datetime.utcnow()
+        user.last_login_date = utc_now()
     
     db.session.commit()
     
@@ -371,13 +372,14 @@ def phone_verify():
             current_app.logger.error(f'Failed to track successful verification: {track_error}')
             db.session.rollback()
     
-    # Generate new auth token (7 days expiration)
-    from models.user import AuthToken
+    # Generate new auth token (30 days expiration - 1 month)
+    # Store as naive datetime (MySQL doesn't support timezone-aware)
+    expires_at = utc_now() + timedelta(days=30)
     auth_token = AuthToken(
         user_id=user.id,
         token=secrets.token_urlsafe(32),
         token_type='bearer',
-        expires_at=datetime.utcnow() + timedelta(days=7)  # 7 days expiration
+        expires_at=expires_at  # Already naive datetime
     )
     db.session.add(auth_token)
     db.session.commit()
@@ -393,48 +395,60 @@ def phone_verify():
 @auth_bp.route('/me', methods=['GET'])
 def get_current_user():
     """Get current authenticated user"""
-    from models.user import AuthToken, User
-    
-    # Extract token from Authorization header
-    auth_header = request.headers.get('Authorization', '')
-    if auth_header.startswith('Bearer '):
-        token = auth_header.replace('Bearer ', '').strip()
-    else:
-        token = auth_header.strip()
-    
-    if not token:
-        return jsonify({'error': 'No token provided'}), 401
-    
-    # Find valid auth token
-    auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
-    
-    if not auth_token:
-        return jsonify({'error': 'Invalid token'}), 401
-    
-    if not auth_token.is_valid():
-        return jsonify({'error': 'Token expired'}), 401
-    
-    # Get user
-    user = User.query.get(auth_token.user_id)
-    
-    if not user:
-        return jsonify({'error': 'User not found'}), 401
-    
-    if not user.is_active:
-        return jsonify({'error': 'User account is inactive'}), 403
-    
-    return jsonify({
-        'user': user.to_dict(),
-        'token': {
-            'expires_at': auth_token.expires_at.isoformat(),
-            'token_type': auth_token.token_type
-        }
-    }), 200
+    try:
+        # Extract token from Authorization header
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '').strip()
+        else:
+            token = auth_header.strip()
+        
+        if not token:
+            return jsonify({'error': 'No token provided'}), 401
+        
+        # Find valid auth token
+        auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
+        
+        if not auth_token:
+            return jsonify({'error': 'Invalid token'}), 401
+        
+        if not auth_token.is_valid():
+            return jsonify({'error': 'Token expired'}), 401
+        
+        # Refresh token expiration on each use (extend to 30 days from now)
+        # This ensures if user uses app at least once a month, they never need to OTP again
+        # Make sure expires_at is stored as naive datetime (MySQL doesn't support timezone-aware)
+        new_expires_at = utc_now() + timedelta(days=30)
+        # Already naive UTC datetime for database storage
+        auth_token.expires_at = new_expires_at
+        db.session.commit()
+        
+        # Get user
+        user = User.query.get(auth_token.user_id)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 401
+        
+        if not user.is_active:
+            return jsonify({'error': 'User account is inactive'}), 403
+        
+        return jsonify({
+            'user': user.to_dict(),
+            'token': {
+                'expires_at': auth_token.expires_at.isoformat(),
+                'token_type': auth_token.token_type
+            }
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error in /me endpoint: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
 
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
     """Logout and revoke token"""
-    from models.user import AuthToken
 
     # Extract token from Authorization header
     auth_header = request.headers.get('Authorization', '')
@@ -578,15 +592,14 @@ def google_callback():
             # Update existing user
             if name and not user.nickname:
                 user.nickname = name
-            user.last_login_date = datetime.utcnow()
+            user.last_login_date = utc_now()
             current_app.logger.info(f'Found existing admin user: {email}, ID: {user.id}')
 
         # Ensure last_login_date is set
         if not user.last_login_date:
-            user.last_login_date = datetime.utcnow()
+            user.last_login_date = utc_now()
 
         # Ensure user has admin role
-        from models.user import UserRole
         admin_role = UserRole.query.filter_by(user_id=user.id, role='admin').first()
         if not admin_role:
             admin_role = UserRole(user_id=user.id, role='admin')
@@ -595,12 +608,14 @@ def google_callback():
 
         db.session.commit()
         
-        # Generate auth token (7 days expiration)
+        # Generate auth token (30 days expiration - 1 month)
+        # Store as naive datetime (MySQL doesn't support timezone-aware)
+        expires_at = utc_now() + timedelta(days=30)
         auth_token = AuthToken(
             user_id=user.id,
             token=secrets.token_urlsafe(32),
             token_type='google',
-            expires_at=datetime.utcnow() + timedelta(days=7)
+            expires_at=expires_at  # Already naive datetime
         )
         db.session.add(auth_token)
         db.session.commit()

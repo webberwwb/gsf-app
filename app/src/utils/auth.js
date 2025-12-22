@@ -18,6 +18,10 @@ export async function checkAuth() {
     const response = await apiClient.get('/auth/me')
     if (response.data.user) {
       localStorage.setItem('user', JSON.stringify(response.data.user))
+      // Update token expiration time if provided (token was refreshed)
+      if (response.data.token && response.data.token.expires_at) {
+        localStorage.setItem('auth_token_expires_at', response.data.token.expires_at)
+      }
       return true
     }
     return false

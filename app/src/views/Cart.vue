@@ -5,7 +5,11 @@
     </header>
     <main class="page-content">
       <div v-if="cartItems.length === 0" class="empty-state">
-        <div class="empty-icon">🛒</div>
+        <div class="empty-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+          </svg>
+        </div>
         <h2>购物车是空的</h2>
         <p>快去挑选您喜欢的商品吧</p>
         <button @click="$router.push('/')" class="browse-btn">去逛逛</button>
@@ -112,8 +116,19 @@ export default {
 }
 
 .empty-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1rem;
+  opacity: 0.3;
+  color: var(--md-on-surface-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .empty-state h2 {

@@ -55,7 +55,11 @@
             <div v-for="product in deal.products" :key="product.id" class="product-mini-card">
               <div class="product-mini-image">
                 <img v-if="product.image" :src="product.image" :alt="product.name" />
-                <div v-else class="image-placeholder">🛒</div>
+                <div v-else class="image-placeholder">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                </div>
               </div>
               <div class="product-mini-info">
                 <div class="product-mini-name">{{ product.name }}</div>
@@ -411,8 +415,18 @@ export default {
 }
 
 .image-placeholder {
-  font-size: 2rem;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.3;
+  color: var(--md-on-surface-variant);
+}
+
+.image-placeholder svg {
+  width: 32px;
+  height: 32px;
 }
 
 .product-mini-info {

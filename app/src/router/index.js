@@ -29,6 +29,42 @@ const router = createRouter({
       meta: { requiresAuth: true, showBottomNav: true }
     },
     {
+      path: '/group-deals',
+      name: 'GroupDeals',
+      component: () => import('../views/GroupDeals.vue'),
+      meta: { requiresAuth: true, showBottomNav: true }
+    },
+    {
+      path: '/group-deals/:id',
+      name: 'GroupDealDetail',
+      component: () => import('../views/GroupDealDetail.vue'),
+      meta: { requiresAuth: true, showBottomNav: true }
+    },
+    {
+      path: '/checkout',
+      name: 'Checkout',
+      component: () => import('../views/Checkout.vue'),
+      meta: { requiresAuth: true, showBottomNav: false }
+    },
+    {
+      path: '/orders',
+      name: 'Orders',
+      component: () => import('../views/Orders.vue'),
+      meta: { requiresAuth: true, showBottomNav: true }
+    },
+    {
+      path: '/points-mall',
+      name: 'PointsMall',
+      component: () => import('../views/PointsMall.vue'),
+      meta: { requiresAuth: true, showBottomNav: false }
+    },
+    {
+      path: '/addresses',
+      name: 'Addresses',
+      component: () => import('../views/Addresses.vue'),
+      meta: { requiresAuth: true, showBottomNav: false }
+    },
+    {
       path: '/login',
       name: 'Login',
       component: () => import('../views/Login.vue'),

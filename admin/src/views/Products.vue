@@ -1,6 +1,11 @@
 <template>
   <div class="products-page">
     <div class="page-header-actions">
+      <select v-model="sortBy" @change="fetchProducts" class="sort-select">
+        <option value="created_at">按创建时间</option>
+        <option value="popularity">按销量排序</option>
+        <option value="name">按名称排序</option>
+      </select>
       <button @click="openAddModal" class="add-btn">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -19,20 +24,46 @@
       <div v-for="product in products" :key="product.id" class="product-card">
         <div class="product-image">
           <img v-if="product.image" :src="product.image" :alt="product.name" />
-          <div v-else class="image-placeholder">🛒</div>
+          <div v-else class="image-placeholder">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+          </div>
         </div>
         <div class="product-info">
           <h3>{{ product.name }}</h3>
           <p class="description">{{ product.description }}</p>
+          <div v-if="product.supplier" class="supplier-info">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="supplier-icon">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <span class="supplier-name">{{ product.supplier.name }}</span>
+          </div>
           <div class="price-info">
-            <span class="sale-price">${{ product.sale_price }}</span>
-            <span v-if="product.original_price > product.sale_price" class="original-price">
-              ${{ product.original_price }}
-            </span>
+            <template v-if="product.pricing_type === 'per_item'">
+              <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
+              <span v-if="product.original_price && product.original_price > (product.display_price || product.sale_price)" class="original-price">
+                ${{ product.original_price }}
+              </span>
+            </template>
+            <template v-else-if="product.pricing_type === 'weight_range'">
+              <span class="sale-price">{{ formatWeightRangePrice(product) }}</span>
+              <span class="price-type-badge">重量区间</span>
+            </template>
+            <template v-else-if="product.pricing_type === 'unit_weight'">
+              <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.display_price }}</span>
+              <span class="price-type-badge">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+            </template>
+            <template v-else>
+              <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
+            </template>
           </div>
           <div class="product-status">
             <span :class="['status-badge', product.is_active ? 'active' : 'inactive']">
               {{ product.is_active ? '上架' : '下架' }}
+            </span>
+            <span v-if="product.sales_stats && product.sales_stats.total_sold > 0" class="sales-badge">
+              已售: {{ product.sales_stats.total_sold }}
             </span>
           </div>
           <div class="product-actions">
@@ -68,7 +99,8 @@ export default {
       error: null,
       products: [],
       showAddModal: false,
-      editingProduct: null
+      editingProduct: null,
+      sortBy: 'created_at' // 'created_at', 'popularity', 'name'
     }
   },
   mounted() {
@@ -76,12 +108,13 @@ export default {
   },
   methods: {
     async fetchProducts() {
+      this.loading = true
+      this.error = null
       try {
-        this.loading = true
-        const response = await apiClient.get('/products')
-        this.products = response.data.products || response.data || []
+        const response = await apiClient.get(`/admin/products?sort=${this.sortBy}&days=30`)
+        this.products = response.data.products || []
       } catch (error) {
-        this.error = error.response?.data?.message || error.message || 'Failed to load products'
+        this.error = error.response?.data?.message || error.response?.data?.error || '加载商品失败'
         console.error('Failed to fetch products:', error)
       } finally {
         this.loading = false
@@ -114,6 +147,16 @@ export default {
         alert(error.response?.data?.message || error.response?.data?.error || '删除失败')
         console.error('Delete product error:', error)
       }
+    },
+    formatWeightRangePrice(product) {
+      if (product.pricing_data && product.pricing_data.ranges && product.pricing_data.ranges.length > 0) {
+        const ranges = product.pricing_data.ranges
+        if (ranges.length === 1) {
+          return `$${ranges[0].price || '0.00'}`
+        }
+        return `$${ranges[0].price || '0.00'} - $${ranges[ranges.length - 1].price || '0.00'}`
+      }
+      return `$${product.display_price || product.sale_price || '0.00'}`
     }
   }
 }
@@ -128,6 +171,29 @@ export default {
   margin-bottom: var(--md-spacing-lg);
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: var(--md-spacing-md);
+}
+
+.sort-select {
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sort-select:hover {
+  border-color: var(--md-primary);
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
 }
 
 .add-btn {
@@ -199,8 +265,18 @@ export default {
 }
 
 .image-placeholder {
-  font-size: 4rem;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.3;
+  color: var(--md-on-surface-variant);
+}
+
+.image-placeholder svg {
+  width: 32px;
+  height: 32px;
 }
 
 .product-info {
@@ -225,12 +301,39 @@ export default {
   overflow: hidden;
 }
 
+.supplier-info {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  margin-bottom: var(--md-spacing-sm);
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  background: var(--md-surface-variant);
+  border-radius: var(--md-radius-sm);
+  width: fit-content;
+}
+
+.supplier-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--md-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.supplier-name {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+}
+
 .price-info {
   margin-bottom: var(--md-spacing-sm);
 }
 
 .product-status {
   margin-bottom: var(--md-spacing-md);
+  display: flex;
+  gap: var(--md-spacing-xs);
+  flex-wrap: wrap;
 }
 
 .status-badge {
@@ -239,6 +342,16 @@ export default {
   border-radius: var(--md-radius-xl);
   font-size: var(--md-label-size);
   font-weight: 500;
+}
+
+.sales-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--md-radius-xl);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  background: #E3F2FD;
+  color: #1976D2;
 }
 
 .status-badge.active {
@@ -288,6 +401,15 @@ export default {
   font-size: var(--md-label-size);
   color: var(--md-outline);
   text-decoration: line-through;
+}
+
+.price-type-badge {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-left: var(--md-spacing-xs);
+  padding: 0.125rem 0.5rem;
+  background: var(--md-surface-variant);
+  border-radius: var(--md-radius-sm);
 }
 
 .product-actions {

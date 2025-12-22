@@ -9,4 +9,6 @@ from models.address import Address
 from models.product import Product
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.order import Order, OrderItem
+from models.supplier import Supplier
+from models.product_sales_stats import ProductSalesStats
 

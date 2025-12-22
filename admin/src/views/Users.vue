@@ -1,20 +1,38 @@
 <template>
   <div class="users-page">
-    <div class="page-header-actions">
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="搜索用户 (手机号/昵称)"
-        class="search-input"
-      />
+    <!-- Tabs -->
+    <div class="tabs">
+      <button 
+        @click="activeTab = 'users'" 
+        :class="['tab', { active: activeTab === 'users' }]"
+      >
+        用户列表
+      </button>
+      <button 
+        @click="activeTab = 'otp-stats'" 
+        :class="['tab', { active: activeTab === 'otp-stats' }]"
+      >
+        OTP使用统计
+      </button>
     </div>
 
-    <div v-if="loading" class="loading">加载中...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
-    <div v-else-if="filteredUsers.length === 0" class="empty-state">
-      <p>暂无用户</p>
-    </div>
-    <div v-else class="users-list">
+    <!-- User List Tab -->
+    <div v-if="activeTab === 'users'" class="tab-content">
+      <div class="page-header-actions">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索用户 (手机号/昵称)"
+          class="search-input"
+        />
+      </div>
+
+      <div v-if="loading" class="loading">加载中...</div>
+      <div v-else-if="error" class="error">{{ error }}</div>
+      <div v-else-if="filteredUsers.length === 0" class="empty-state">
+        <p>暂无用户</p>
+      </div>
+      <div v-else class="users-list">
       <div v-for="user in filteredUsers" :key="user.id" class="user-card">
         <div class="user-avatar">{{ getUserInitial(user) }}</div>
         <div class="user-info">
@@ -46,17 +64,28 @@
           </button>
         </div>
       </div>
+      </div>
+    </div>
+
+    <!-- OTP Stats Tab -->
+    <div v-if="activeTab === 'otp-stats'" class="tab-content">
+      <OTPStats />
     </div>
   </div>
 </template>
 
 <script>
 import apiClient from '../api/client'
+import OTPStats from './OTPStats.vue'
 
 export default {
   name: 'Users',
+  components: {
+    OTPStats
+  },
   data() {
     return {
+      activeTab: 'users',
       loading: true,
       error: null,
       users: [],
@@ -375,6 +404,41 @@ export default {
 .unban-btn:hover {
   background: #2E7D32;
   color: white;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: var(--md-spacing-xs);
+  margin-bottom: var(--md-spacing-lg);
+  border-bottom: 2px solid var(--md-outline-variant);
+}
+
+.tab {
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: -2px;
+}
+
+.tab:hover {
+  color: var(--md-on-surface);
+  background: var(--md-surface-variant);
+}
+
+.tab.active {
+  color: var(--md-primary);
+  border-bottom-color: var(--md-primary);
+}
+
+.tab-content {
+  /* Tab content wrapper */
 }
 </style>
 

@@ -4,7 +4,12 @@ from models.product import Product
 from models.user import User, AuthToken, UserRole
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.otp_attempt import OTPAttempt
-from datetime import datetime, timedelta
+from models.supplier import Supplier
+from models.order import Order, OrderItem
+from models.product_sales_stats import ProductSalesStats
+from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
+from datetime import datetime, timedelta, timezone, date
+from models.base import utc_now
 from config import Config
 import os
 import uuid
@@ -45,6 +50,13 @@ def require_admin_auth():
     auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
     if not auth_token or not auth_token.is_valid():
         return None, jsonify({'error': 'Invalid or expired token'}), 401
+    
+    # Refresh token expiration on each use (extend to 30 days from now)
+    # This ensures if user uses app at least once a month, they never need to OTP again
+    # Make sure expires_at is stored as naive datetime (MySQL doesn't support timezone-aware)
+    new_expires_at = utc_now() + timedelta(days=30)
+    auth_token.expires_at = new_expires_at  # Already naive UTC datetime
+    db.session.commit()
     
     # Get user and check admin role
     user = User.query.get(auth_token.user_id)
@@ -179,20 +191,43 @@ def create_product():
     data = request.get_json()
     
     # Validate required fields
-    required_fields = ['name', 'sale_price']
-    for field in required_fields:
-        if field not in data or not data[field]:
-            return jsonify({'error': f'{field} is required'}), 400
+    if 'name' not in data or not data['name']:
+        return jsonify({'error': 'name is required'}), 400
+    
+    # Validate pricing based on pricing_type
+    pricing_type = data.get('pricing_type', 'per_item')
+    
+    if pricing_type == 'per_item':
+        if 'sale_price' not in data or data['sale_price'] is None:
+            return jsonify({'error': 'sale_price is required for per_item pricing'}), 400
+    elif pricing_type == 'weight_range':
+        if 'pricing_data' not in data or 'ranges' not in data.get('pricing_data', {}):
+            return jsonify({'error': 'pricing_data.ranges is required for weight_range pricing'}), 400
+    elif pricing_type == 'unit_weight':
+        if 'pricing_data' not in data or 'price_per_unit' not in data.get('pricing_data', {}):
+            return jsonify({'error': 'pricing_data.price_per_unit is required for unit_weight pricing'}), 400
     
     try:
+        # Build pricing_data based on pricing_type
+        pricing_data = data.get('pricing_data')
+        if pricing_type == 'per_item' and not pricing_data:
+            # Convert legacy sale_price/original_price to pricing_data
+            pricing_data = {
+                'sale_price': float(data['sale_price']),
+                'original_price': float(data.get('original_price', data['sale_price']))
+            }
+        
         product = Product(
             name=data['name'],
             image=data.get('image'),
-            original_price=data.get('original_price', data['sale_price']),
-            sale_price=data['sale_price'],
+            pricing_type=pricing_type,
+            pricing_data=pricing_data,
+            original_price=data.get('original_price'),  # Keep for backward compatibility
+            sale_price=data.get('sale_price'),  # Keep for backward compatibility
             description=data.get('description', ''),
             stock_limit=data.get('stock_limit'),
-            is_active=data.get('is_active', True)
+            is_active=data.get('is_active', True),
+            supplier_id=data.get('supplier_id') if data.get('supplier_id') else None
         )
         
         db.session.add(product)
@@ -227,6 +262,11 @@ def update_product(product_id):
             product.name = data['name']
         if 'image' in data:
             product.image = data['image']
+        if 'pricing_type' in data:
+            product.pricing_type = data['pricing_type']
+        if 'pricing_data' in data:
+            product.pricing_data = data['pricing_data']
+        # Legacy fields (for backward compatibility)
         if 'original_price' in data:
             product.original_price = data['original_price']
         if 'sale_price' in data:
@@ -237,6 +277,8 @@ def update_product(product_id):
             product.stock_limit = data['stock_limit'] if data['stock_limit'] else None
         if 'is_active' in data:
             product.is_active = data['is_active']
+        if 'supplier_id' in data:
+            product.supplier_id = data['supplier_id'] if data['supplier_id'] else None
         
         db.session.commit()
         
@@ -640,7 +682,8 @@ def create_group_deal():
         pickup_date = datetime.fromisoformat(data['pickup_date'].replace('Z', '+00:00'))
         
         # Determine status based on dates
-        now = datetime.utcnow()
+        # Use naive UTC datetime for comparison
+        now = utc_now()
         if order_start_date > now:
             status = 'upcoming'
         elif order_start_date <= now <= order_end_date:
@@ -816,6 +859,172 @@ def delete_group_deal(deal_id):
             'message': str(e)
         }), 500
 
+@admin_bp.route('/products', methods=['GET'])
+def get_admin_products():
+    """Get all products with optional sales stats and sorting (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get query parameters
+        sort_by = request.args.get('sort', 'created_at')  # 'created_at', 'popularity', 'name'
+        days = request.args.get('days', 30, type=int)  # Days for popularity calculation
+        
+        # Base query
+        query = Product.query
+        
+        # Apply sorting
+        if sort_by == 'popularity':
+            # Sort by sales in last N days
+            start_date = date.today() - timedelta(days=days)
+            stats_subquery = db.session.query(
+                ProductSalesStats.product_id,
+                func.sum(ProductSalesStats.quantity_sold).label('total_sold')
+            ).filter(
+                ProductSalesStats.sale_date >= start_date
+            ).group_by(
+                ProductSalesStats.product_id
+            ).subquery()
+            
+            query = query.outerjoin(
+                stats_subquery, Product.id == stats_subquery.c.product_id
+            ).order_by(
+                db.desc(stats_subquery.c.total_sold),
+                Product.created_at.desc()
+            )
+        elif sort_by == 'name':
+            query = query.order_by(Product.name.asc())
+        else:
+            query = query.order_by(Product.created_at.desc())
+        
+        products = query.all()
+        
+        # Get sales stats for each product
+        start_date = date.today() - timedelta(days=days)
+        products_data = []
+        for product in products:
+            product_dict = product.to_dict()
+            
+            # Get sales stats for date range
+            stats_query = db.session.query(
+                func.sum(ProductSalesStats.quantity_sold).label('total_sold'),
+                func.sum(ProductSalesStats.order_count).label('total_orders')
+            ).filter(
+                ProductSalesStats.product_id == product.id,
+                ProductSalesStats.sale_date >= start_date
+            ).first()
+            
+            product_dict['sales_stats'] = {
+                'total_sold': int(stats_query.total_sold) if stats_query.total_sold else 0,
+                'total_orders': int(stats_query.total_orders) if stats_query.total_orders else 0,
+                'period_days': days
+            }
+            
+            products_data.append(product_dict)
+        
+        return jsonify({
+            'products': products_data
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching products: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch products',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/products/<int:product_id>/sales-stats', methods=['GET'])
+def get_product_sales_stats(product_id):
+    """Get product sales statistics by date range"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        product = Product.query.get_or_404(product_id)
+        
+        # Get date range from query params (default: last 30 days)
+        days = request.args.get('days', 30, type=int)
+        start_date = date.today() - timedelta(days=days)
+        end_date = date.today()
+        
+        # Get sales stats
+        stats = get_product_sales_by_date_range(product_id, start_date, end_date)
+        
+        return jsonify({
+            'product_id': product_id,
+            'product_name': product.name,
+            'date_range': {
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+                'days': days
+            },
+            'stats': stats
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching product sales stats: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch sales statistics',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/stats', methods=['GET'])
+def get_dashboard_stats():
+    """Get dashboard statistics"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Count products
+        products_count = Product.query.filter_by(is_active=True).count()
+        
+        # Count users
+        users_count = User.query.filter_by(status='active').count()
+        
+        # Count orders
+        orders_count = Order.query.count()
+        
+        # Calculate total revenue (sum of all paid orders)
+        revenue_result = db.session.query(func.sum(Order.total)).filter(
+            Order.payment_status == 'paid'
+        ).scalar()
+        total_revenue = float(revenue_result) if revenue_result else 0.0
+        
+        # Get recent orders (last 10)
+        recent_orders = Order.query.order_by(Order.created_at.desc()).limit(10).all()
+        recent_orders_data = []
+        for order in recent_orders:
+            user = User.query.get(order.user_id)
+            recent_orders_data.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'user_name': user.nickname if user else user.phone if user else 'N/A',
+                'total_amount': float(order.total) if order.total else 0.0,
+                'payment_status': order.payment_status,
+                'status': order.status,
+                'created_at': order.created_at.isoformat() if order.created_at else None
+            })
+        
+        return jsonify({
+            'stats': {
+                'products': products_count,
+                'orders': orders_count,
+                'users': users_count,
+                'revenue': round(total_revenue, 2)
+            },
+            'recent_orders': recent_orders_data
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching dashboard stats: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch dashboard statistics',
+            'message': str(e)
+        }), 500
+
 @admin_bp.route('/otp-stats', methods=['GET'])
 def get_otp_stats():
     """Get OTP usage statistics for Twilio cost tracking"""
@@ -826,7 +1035,7 @@ def get_otp_stats():
     try:
         # Get date range from query params (default: last 30 days)
         days = int(request.args.get('days', 30))
-        start_date = datetime.utcnow() - timedelta(days=days)
+        start_date = utc_now() - timedelta(days=days)
         
         # Get all attempts in date range
         attempts = OTPAttempt.query.filter(
@@ -888,6 +1097,197 @@ def get_otp_stats():
         current_app.logger.error(f'Error getting OTP stats: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to get OTP statistics',
+            'message': str(e)
+        }), 500
+
+# Supplier Management
+@admin_bp.route('/suppliers', methods=['GET'])
+def get_suppliers():
+    """Get all suppliers"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get query parameters for pagination and filtering
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+        status_filter = request.args.get('status', '').strip()
+        
+        # Build query
+        query = Supplier.query
+        
+        # Apply search filter
+        if search:
+            search_term = f'%{search}%'
+            query = query.filter(
+                db.or_(
+                    Supplier.name.like(search_term),
+                    Supplier.contact_person.like(search_term),
+                    Supplier.phone.like(search_term),
+                    Supplier.email.like(search_term)
+                )
+            )
+        
+        # Apply status filter
+        if status_filter == 'active':
+            query = query.filter(Supplier.is_active == True)
+        elif status_filter == 'inactive':
+            query = query.filter(Supplier.is_active == False)
+        
+        # Order by creation date (newest first)
+        query = query.order_by(Supplier.created_at.desc())
+        
+        # Paginate
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        suppliers = pagination.items
+        
+        return jsonify({
+            'suppliers': [supplier.to_dict() for supplier in suppliers],
+            'pagination': {
+                'page': pagination.page,
+                'per_page': pagination.per_page,
+                'total': pagination.total,
+                'pages': pagination.pages
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching suppliers: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch suppliers',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/suppliers/<int:supplier_id>', methods=['GET'])
+def get_supplier(supplier_id):
+    """Get a single supplier by ID"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        supplier = Supplier.query.get_or_404(supplier_id)
+        return jsonify({
+            'supplier': supplier.to_dict()
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error fetching supplier: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Supplier not found',
+            'message': str(e)
+        }), 404
+
+@admin_bp.route('/suppliers', methods=['POST'])
+def create_supplier():
+    """Create a new supplier"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    data = request.get_json()
+    
+    # Validate required fields
+    if 'name' not in data or not data['name']:
+        return jsonify({'error': 'name is required'}), 400
+    
+    try:
+        supplier = Supplier(
+            name=data['name'],
+            contact_person=data.get('contact_person'),
+            phone=data.get('phone'),
+            email=data.get('email'),
+            address=data.get('address'),
+            notes=data.get('notes'),
+            is_active=data.get('is_active', True)
+        )
+        
+        db.session.add(supplier)
+        db.session.commit()
+        
+        current_app.logger.info(f'Created supplier: {supplier.id} - {supplier.name}')
+        
+        return jsonify({
+            'supplier': supplier.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating supplier: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to create supplier',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/suppliers/<int:supplier_id>', methods=['PUT'])
+def update_supplier(supplier_id):
+    """Update an existing supplier"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    supplier = Supplier.query.get_or_404(supplier_id)
+    data = request.get_json()
+    
+    try:
+        if 'name' in data:
+            supplier.name = data['name']
+        if 'contact_person' in data:
+            supplier.contact_person = data['contact_person']
+        if 'phone' in data:
+            supplier.phone = data['phone']
+        if 'email' in data:
+            supplier.email = data['email']
+        if 'address' in data:
+            supplier.address = data['address']
+        if 'notes' in data:
+            supplier.notes = data['notes']
+        if 'is_active' in data:
+            supplier.is_active = data['is_active']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated supplier: {supplier.id} - {supplier.name}')
+        
+        return jsonify({
+            'supplier': supplier.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating supplier: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update supplier',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/suppliers/<int:supplier_id>', methods=['DELETE'])
+def delete_supplier(supplier_id):
+    """Delete a supplier (soft delete by setting is_active=False)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    supplier = Supplier.query.get_or_404(supplier_id)
+    
+    try:
+        # Soft delete - set is_active to False
+        supplier.is_active = False
+        db.session.commit()
+        
+        current_app.logger.info(f'Deleted supplier: {supplier.id} - {supplier.name}')
+        
+        return jsonify({
+            'message': 'Supplier deleted successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting supplier: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to delete supplier',
             'message': str(e)
         }), 500
 

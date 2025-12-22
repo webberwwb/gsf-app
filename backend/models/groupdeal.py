@@ -1,4 +1,4 @@
-from models.base import BaseModel
+from models.base import BaseModel, utc_now
 from models import db
 from datetime import datetime
 
@@ -27,7 +27,7 @@ class GroupDeal(BaseModel):
     @property
     def is_active(self):
         """Check if deal is currently active (within order window)"""
-        now = datetime.utcnow()
+        now = utc_now()
         return (
             self.status == 'active' and
             self.order_start_date <= now <= self.order_end_date

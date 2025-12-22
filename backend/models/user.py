@@ -1,6 +1,7 @@
 from models.base import BaseModel
 from models import db
-from datetime import datetime
+from datetime import datetime, timezone
+from models.base import utc_now
 
 class User(BaseModel):
     """User model"""
@@ -96,7 +97,14 @@ class AuthToken(BaseModel):
     
     def is_valid(self):
         """Check if token is valid"""
-        return not self.is_revoked and datetime.utcnow() < self.expires_at
+        if self.is_revoked:
+            return False
+        
+        # All datetimes are stored as naive UTC in database
+        now = utc_now()
+        expires = self.expires_at
+        
+        return now < expires
     
     def to_dict(self):
         data = super().to_dict()

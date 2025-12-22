@@ -5,7 +5,7 @@
       :key="item.path"
       :to="item.path"
       class="nav-item"
-      :class="{ active: $route.path === item.path }"
+      :class="{ active: isActive(item) }"
     >
       <span class="nav-icon" v-html="item.icon"></span>
       <span class="nav-label">{{ item.label }}</span>
@@ -22,25 +22,25 @@ export default {
       navItems: [
         {
           path: '/',
-          label: '团购',
-          icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>',
+          label: '随便逛逛',
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>',
           badge: null
         },
         {
-          path: '/favorites',
-          label: '收藏',
-          icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>',
+          path: '/group-deals',
+          label: '团购下单',
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" /></svg>',
           badge: null
         },
         {
-          path: '/cart',
-          label: '购物车',
-          icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>',
+          path: '/orders',
+          label: '我的订单',
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>',
           badge: null
         },
         {
           path: '/me',
-          label: '我的',
+          label: '账号管理',
           icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>',
           badge: null
         }
@@ -59,6 +59,18 @@ export default {
       if (cartItem) {
         cartItem.badge = cartItems.length > 0 ? cartItems.length : null
       }
+    },
+    isActive(item) {
+      // For "团购" item, highlight when on group-deals routes
+      if (item.path === '/group-deals') {
+        return this.$route.path === '/group-deals' || this.$route.path.startsWith('/group-deals/')
+      }
+      // For "订单" item, highlight when on orders routes
+      if (item.path === '/orders') {
+        return this.$route.path === '/orders' || this.$route.path.startsWith('/orders/')
+      }
+      // For other items, exact match
+      return this.$route.path === item.path
     }
   }
 }
@@ -98,26 +110,10 @@ export default {
   margin: 0 0.25rem;
 }
 
-.nav-item::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: rgba(255, 140, 0, 0.1);
-  transform: translate(-50%, -50%);
-  transition: width 0.3s, height 0.3s;
-}
-
-.nav-item:hover::before {
-  width: 48px;
-  height: 48px;
-}
-
 .nav-item.active {
   color: var(--md-primary);
+  background: rgba(255, 140, 0, 0.1);
+  border-radius: var(--md-radius-md);
 }
 
 .nav-icon {
@@ -137,7 +133,7 @@ export default {
 }
 
 .nav-item.active .nav-icon {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
 .nav-label {

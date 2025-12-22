@@ -39,36 +39,39 @@
         <!-- Dates -->
         <div class="form-row">
           <div class="form-group">
-            <label for="order_start_date">下单开始时间 *</label>
+            <label for="order_start_date">下单日期 *</label>
             <input
               id="order_start_date"
               v-model="formData.order_start_date"
-              type="datetime-local"
+              type="date"
               required
               class="form-input"
             />
+            <small class="form-hint">开始时间: 00:00:00</small>
           </div>
           <div class="form-group">
-            <label for="order_end_date">下单结束时间 *</label>
+            <label for="order_end_date">下单结束日期 *</label>
             <input
               id="order_end_date"
               v-model="formData.order_end_date"
-              type="datetime-local"
+              type="date"
               required
               class="form-input"
             />
+            <small class="form-hint">结束时间: 23:59:59</small>
           </div>
         </div>
 
         <div class="form-group">
-          <label for="pickup_date">取货时间 *</label>
+          <label for="pickup_date">取货日期 *</label>
           <input
             id="pickup_date"
             v-model="formData.pickup_date"
-            type="datetime-local"
+            type="date"
             required
             class="form-input"
           />
+          <small class="form-hint">取货时间: 00:00:00</small>
         </div>
 
         <!-- Status -->
@@ -265,9 +268,19 @@ export default {
       const year = date.getFullYear()
       const month = String(date.getMonth() + 1).padStart(2, '0')
       const day = String(date.getDate()).padStart(2, '0')
-      const hours = String(date.getHours()).padStart(2, '0')
-      const minutes = String(date.getMinutes()).padStart(2, '0')
-      return `${year}-${month}-${day}T${hours}:${minutes}`
+      return `${year}-${month}-${day}`
+    },
+    formatDateToStartOfDay(dateString) {
+      if (!dateString) return null
+      // Create date in local timezone, then convert to UTC ISO string
+      const date = new Date(dateString + 'T00:00:00')
+      return date.toISOString()
+    },
+    formatDateToEndOfDay(dateString) {
+      if (!dateString) return null
+      // Create date in local timezone, then convert to UTC ISO string
+      const date = new Date(dateString + 'T23:59:59')
+      return date.toISOString()
     },
     toggleProduct(product) {
       const index = this.selectedProducts.findIndex(p => p.id === product.id)
@@ -295,12 +308,16 @@ export default {
 
       try {
         // Prepare data
+        // Convert date-only inputs to full datetime:
+        // order_start_date: selected date at 00:00:00
+        // order_end_date: selected date at 23:59:59
+        // pickup_date: selected date at 00:00:00
         const data = {
           title: this.formData.title,
           description: this.formData.description,
-          order_start_date: new Date(this.formData.order_start_date).toISOString(),
-          order_end_date: new Date(this.formData.order_end_date).toISOString(),
-          pickup_date: new Date(this.formData.pickup_date).toISOString(),
+          order_start_date: this.formatDateToStartOfDay(this.formData.order_start_date),
+          order_end_date: this.formatDateToEndOfDay(this.formData.order_end_date),
+          pickup_date: this.formatDateToStartOfDay(this.formData.pickup_date),
           status: this.formData.status,
           products: this.selectedProducts.map(p => ({
             product_id: p.id,

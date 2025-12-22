@@ -1,7 +1,7 @@
 <template>
   <div class="me-page">
     <header class="page-header">
-      <h1>我的</h1>
+      <h1>账号管理</h1>
     </header>
     <main class="page-content">
       <div class="profile-section">
@@ -16,23 +16,26 @@
       </div>
 
       <div class="menu-section">
-        <div class="menu-item" @click="$router.push('/orders')">
-          <span class="menu-icon">📦</span>
-          <span class="menu-label">我的订单</span>
-          <span class="menu-arrow">›</span>
-        </div>
         <div class="menu-item" @click="$router.push('/addresses')">
-          <span class="menu-icon">📍</span>
-          <span class="menu-label">收货地址</span>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span class="menu-label">配送地址</span>
           <span class="menu-arrow">›</span>
         </div>
-        <div class="menu-item" @click="$router.push('/points')">
-          <span class="menu-icon">⭐</span>
-          <span class="menu-label">积分中心</span>
+        <div class="menu-item" @click="$router.push('/points-mall')">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span class="menu-label">积分商城</span>
           <span class="menu-arrow">›</span>
         </div>
         <div class="menu-item" @click="$router.push('/settings')">
-          <span class="menu-icon">⚙️</span>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
           <span class="menu-label">设置</span>
           <span class="menu-arrow">›</span>
         </div>
@@ -113,20 +116,24 @@ export default {
 }
 
 .page-header {
-  background: var(--md-surface);
-  padding: var(--md-spacing-md);
-  border-bottom: none;
-  box-shadow: var(--md-elevation-1);
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  padding: var(--md-spacing-lg);
+  box-shadow: var(--md-elevation-2);
   position: sticky;
   top: 0;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
 }
 
 .page-header h1 {
   font-size: var(--md-headline-size);
-  color: var(--md-on-surface);
+  color: white;
   font-weight: 500;
   letter-spacing: -0.5px;
+  text-align: center;
 }
 
 .page-content {
@@ -138,7 +145,7 @@ export default {
 }
 
 .profile-card {
-  background: linear-gradient(135deg, var(--md-primary-variant) 0%, var(--md-primary) 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: var(--md-spacing-xl);
   border-radius: var(--md-radius-lg);
   display: flex;
@@ -237,8 +244,11 @@ export default {
 }
 
 .menu-icon {
-  font-size: 1.5rem;
+  width: 20px;
+  height: 20px;
   margin-right: 1rem;
+  flex-shrink: 0;
+  color: var(--md-on-surface-variant);
 }
 
 .menu-label {

@@ -15,7 +15,13 @@
     <main class="shop-content">
       <!-- Active Group Deals Section -->
       <section v-if="activeDeals.length > 0" class="deals-section">
-        <h2 class="section-title">🔥 正在进行中的团购</h2>
+        <h2 class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
+          </svg>
+          正在进行中的团购
+        </h2>
         <div class="deals-list">
           <div
             v-for="deal in activeDeals"
@@ -30,10 +36,16 @@
             <p class="deal-description">{{ deal.description || '精选优质农产品' }}</p>
             <div class="deal-dates">
               <span class="date-item">
-                📅 下单截止: {{ formatDate(deal.order_end_date) }}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                下单截止: {{ formatDate(deal.order_end_date) }}
               </span>
               <span class="date-item">
-                📦 取货日期: {{ formatDate(deal.pickup_date) }}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                取货日期: {{ formatDate(deal.pickup_date) }}
               </span>
             </div>
             <div class="deal-products-preview">
@@ -54,7 +66,12 @@
 
       <!-- Upcoming Deals Section -->
       <section v-if="upcomingDeals.length > 0" class="deals-section">
-        <h2 class="section-title">⏰ 即将开始</h2>
+        <h2 class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          即将开始
+        </h2>
         <div class="deals-list">
           <div
             v-for="deal in upcomingDeals"
@@ -69,16 +86,26 @@
             <p class="deal-description">{{ deal.description || '精选优质农产品' }}</p>
             <div class="deal-dates">
               <span class="date-item">
-                🕐 开始时间: {{ formatDate(deal.order_start_date) }}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                开始时间: {{ formatDate(deal.order_start_date) }}
               </span>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- All Products Section -->
-      <section class="products-section">
-        <h2 class="section-title">🛍️ 全部商品</h2>
+      <!-- Hot Products Section (Browse Only) -->
+      <section v-if="products.length > 0" class="products-section">
+        <h2 class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
+          </svg>
+          热门商品
+        </h2>
+        <p class="section-subtitle">浏览商品，下单请参与团购活动</p>
         <div v-if="loading" class="loading">加载中...</div>
         <div v-else-if="products.length === 0" class="empty-state">
           <p>暂无商品</p>
@@ -87,8 +114,7 @@
           <div
             v-for="product in products"
             :key="product.id"
-            class="product-card"
-            @click="addToCart(product)"
+            class="product-card browse-only"
           >
             <div class="product-image">
               <img
@@ -96,7 +122,11 @@
                 :src="product.image"
                 :alt="product.name"
               />
-              <div v-else class="image-placeholder">🛒</div>
+              <div v-else class="image-placeholder">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+              </div>
             </div>
             <div class="product-info">
               <h3 class="product-name">{{ product.name }}</h3>
@@ -104,12 +134,28 @@
                 {{ product.description.substring(0, 50) }}...
               </p>
               <div class="product-price">
-                <span class="sale-price">${{ product.sale_price }}</span>
-                <span v-if="product.original_price > product.sale_price" class="original-price">
-                  ${{ product.original_price }}
-                </span>
+                <template v-if="product.pricing_type === 'per_item'">
+                  <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
+                  <span v-if="product.original_price && product.original_price > (product.display_price || product.sale_price)" class="original-price">
+                    ${{ product.original_price }}
+                  </span>
+                </template>
+                <template v-else-if="product.pricing_type === 'weight_range'">
+                  <span class="sale-price">${{ formatWeightRangePrice(product) }}</span>
+                  <span class="price-note">按重量区间</span>
+                </template>
+                <template v-else-if="product.pricing_type === 'unit_weight'">
+                  <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.display_price }}</span>
+                  <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+                </template>
+                <template v-else>
+                  <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
+                </template>
               </div>
-              <button class="add-to-cart-btn">加入购物车</button>
+              <div v-if="getNextSaleDate(product)" :class="['next-sale-badge', { 'active-deal': isProductInActiveDeal(product) }]">
+                {{ getNextSaleDate(product) }}
+              </div>
+              <div v-else class="browse-only-badge">暂无团购</div>
             </div>
           </div>
         </div>
@@ -139,9 +185,9 @@ export default {
     async loadData() {
       this.loading = true
       try {
-        // Load products and deals in parallel
+        // Load products (sorted by popularity) and deals in parallel
         const [productsRes, dealsRes] = await Promise.all([
-          apiClient.get('/products'),
+          apiClient.get('/products?sort=popularity&days=30&include_stats=true'),
           apiClient.get('/group-deals')
         ])
         
@@ -175,37 +221,87 @@ export default {
         minute: '2-digit'
       })
     },
-    viewDeal(deal) {
-      // TODO: Navigate to deal detail page
-      console.log('View deal:', deal)
+    formatWeightRangePrice(product) {
+      if (product.pricing_data && product.pricing_data.ranges && product.pricing_data.ranges.length > 0) {
+        const firstRange = product.pricing_data.ranges[0]
+        return firstRange.price || '0.00'
+      }
+      return product.display_price || product.sale_price || '0.00'
     },
-    addToCart(product) {
-      // Get current cart
-      const cart = JSON.parse(localStorage.getItem('cart') || '[]')
-      
-      // Check if product already in cart
-      const existingItem = cart.find(item => item.id === product.id)
-      
-      if (existingItem) {
-        existingItem.quantity++
-      } else {
-        cart.push({
-          id: product.id,
-          name: product.name,
-          price: product.sale_price,
-          image: product.image,
-          quantity: 1
-        })
+    getNextSaleDate(product) {
+      if (!product || !this.deals || this.deals.length === 0) {
+        return null
       }
       
-      // Save cart
-      localStorage.setItem('cart', JSON.stringify(cart))
+      const now = new Date()
+      const productId = product.id
       
-      // Show feedback
-      this.$root.$emit('cart-updated')
+      // Find all deals that include this product (active or upcoming)
+      const relevantDeals = this.deals.filter(deal => {
+        if (!deal.products || deal.products.length === 0) {
+          return false
+        }
+        // Check if product is in deal's products
+        return deal.products.some(p => p.id === productId)
+      })
       
-      // Show toast (simple alert for now)
-      alert(`已添加 ${product.name} 到购物车`)
+      if (relevantDeals.length === 0) {
+        return null
+      }
+      
+      // Check for active deals first
+      const activeDeal = relevantDeals.find(deal => {
+        const endDate = new Date(deal.order_end_date)
+        return deal.status === 'active' && endDate > now
+      })
+      
+      if (activeDeal) {
+        return '正在开团'
+      }
+      
+      // Find the next upcoming deal
+      const nextDeal = relevantDeals
+        .filter(deal => {
+          const startDate = new Date(deal.order_start_date)
+          return deal.status === 'upcoming' && startDate > now
+        })
+        .sort((a, b) => {
+          // Sort by order_start_date, earliest first
+          return new Date(a.order_start_date) - new Date(b.order_start_date)
+        })[0]
+      
+      if (!nextDeal) {
+        return null
+      }
+      
+      // Format the date: "1月1日开团"
+      const saleDate = new Date(nextDeal.order_start_date)
+      const month = saleDate.getMonth() + 1
+      const day = saleDate.getDate()
+      
+      return `${month}月${day}日开团`
+    },
+    isProductInActiveDeal(product) {
+      if (!product || !this.deals || this.deals.length === 0) {
+        return false
+      }
+      
+      const now = new Date()
+      const productId = product.id
+      
+      // Check if product is in any active deal
+      return this.deals.some(deal => {
+        if (!deal.products || deal.products.length === 0) {
+          return false
+        }
+        const endDate = new Date(deal.order_end_date)
+        return deal.status === 'active' && 
+               endDate > now &&
+               deal.products.some(p => p.id === productId)
+      })
+    },
+    viewDeal(deal) {
+      this.$router.push(`/group-deals/${deal.id}`)
     }
   }
 }
@@ -249,7 +345,7 @@ export default {
 
 .header-text h1 {
   font-size: var(--md-headline-size);
-  color: var(--md-on-surface);
+  color: white;
   margin-bottom: var(--md-spacing-xs);
   font-weight: 500;
   letter-spacing: -0.5px;
@@ -257,8 +353,8 @@ export default {
 
 .header-text p {
   font-size: var(--md-label-size);
-  color: var(--md-on-surface);
-  opacity: 0.87;
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 1;
   font-weight: 400;
 }
 
@@ -274,6 +370,23 @@ export default {
   margin: var(--md-spacing-xl) 0 var(--md-spacing-md);
   font-weight: 500;
   letter-spacing: 0.15px;
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+}
+
+.title-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--md-primary);
+  flex-shrink: 0;
+}
+
+.section-subtitle {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-md);
+  text-align: center;
 }
 
 .deals-section {
@@ -293,12 +406,49 @@ export default {
   box-shadow: var(--md-elevation-1);
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: none;
+  border: 2px solid transparent;
   overflow: hidden;
   position: relative;
 }
 
-.deal-card::before {
+/* Active deal card - red/orange accent */
+.deal-card:not(.upcoming) {
+  border: 2px solid rgba(255, 68, 68, 0.2);
+  background: linear-gradient(to bottom, rgba(255, 68, 68, 0.03), var(--md-surface));
+  box-shadow: 0 2px 8px rgba(255, 68, 68, 0.15);
+}
+
+.deal-card:not(.upcoming)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #FF4444, #FF6B35);
+  transform: scaleX(1);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.deal-card:not(.upcoming):hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(255, 68, 68, 0.25);
+  border-color: rgba(255, 68, 68, 0.4);
+}
+
+.deal-card:not(.upcoming):active {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 12px rgba(255, 68, 68, 0.2);
+}
+
+/* Upcoming deal card - subtle yellow/gold accent */
+.deal-card.upcoming {
+  border: 2px solid rgba(255, 215, 0, 0.3);
+  background: linear-gradient(to bottom, rgba(255, 215, 0, 0.02), var(--md-surface));
+  opacity: 0.9;
+}
+
+.deal-card.upcoming::before {
   content: '';
   position: absolute;
   top: 0;
@@ -310,22 +460,20 @@ export default {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.deal-card:hover {
+.deal-card.upcoming:hover {
   transform: translateY(-4px);
   box-shadow: var(--md-elevation-3);
+  border-color: rgba(255, 215, 0, 0.5);
+  opacity: 1;
 }
 
-.deal-card:hover::before {
+.deal-card.upcoming:hover::before {
   transform: scaleX(1);
 }
 
-.deal-card:active {
+.deal-card.upcoming:active {
   transform: translateY(-2px);
   box-shadow: var(--md-elevation-2);
-}
-
-.deal-card.upcoming {
-  opacity: 0.8;
 }
 
 .deal-header {
@@ -384,6 +532,12 @@ export default {
   gap: var(--md-spacing-xs);
 }
 
+.date-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .deal-products-preview {
   display: flex;
   flex-wrap: wrap;
@@ -426,19 +580,17 @@ export default {
   border-radius: var(--md-radius-lg);
   overflow: hidden;
   box-shadow: var(--md-elevation-1);
-  cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
-.product-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--md-elevation-3);
+.product-card.browse-only {
+  cursor: default;
 }
 
-.product-card:active {
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-2);
+.product-card.browse-only:hover {
+  transform: none;
+  box-shadow: var(--md-elevation-1);
 }
 
 .product-image {
@@ -474,8 +626,18 @@ export default {
 }
 
 .image-placeholder {
-  font-size: 3rem;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.2;
+  color: var(--md-on-surface-variant);
+}
+
+.image-placeholder svg {
+  width: 32px;
+  height: 32px;
 }
 
 .product-info {
@@ -526,32 +688,56 @@ export default {
   text-decoration: line-through;
 }
 
-.add-to-cart-btn {
+.price-note {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-left: var(--md-spacing-xs);
+}
+
+.browse-only-badge {
   width: 100%;
-  background: var(--md-primary);
-  color: white;
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
   border: none;
   padding: 0.625rem;
   border-radius: var(--md-radius-sm);
   font-size: var(--md-label-size);
   font-weight: 500;
   letter-spacing: 0.5px;
-  cursor: pointer;
+  text-align: center;
+  margin-top: var(--md-spacing-sm);
+}
+
+.next-sale-badge {
+  width: 100%;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.15), rgba(255, 215, 0, 0.15));
+  color: var(--md-on-surface-variant);
+  border: 1.5px solid var(--md-primary-variant);
+  padding: 0.625rem;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-align: center;
+  margin-top: var(--md-spacing-sm);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  text-transform: uppercase;
-  box-shadow: 0 2px 4px rgba(255, 140, 0, 0.2);
-  position: relative;
-  overflow: hidden;
 }
 
-.add-to-cart-btn:hover {
-  background: #FF7F00;
-  box-shadow: 0 4px 8px rgba(255, 140, 0, 0.3);
-  transform: translateY(-1px);
+.next-sale-badge.active-deal {
+  background: linear-gradient(135deg, #FF4444, #FF6B35);
+  color: white;
+  border: none;
+  box-shadow: 0 2px 8px rgba(255, 68, 68, 0.3);
+  font-weight: 600;
+  animation: pulse-glow 2s ease-in-out infinite;
 }
 
-.add-to-cart-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(255, 140, 0, 0.2);
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(255, 68, 68, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 12px rgba(255, 68, 68, 0.5);
+  }
 }
 </style>

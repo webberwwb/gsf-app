@@ -66,25 +66,29 @@
           ></textarea>
         </div>
 
-        <!-- Prices -->
-        <div class="form-row">
+        <!-- Pricing Type -->
+        <div class="form-group">
+          <label for="pricing_type">定价方式 *</label>
+          <select
+            id="pricing_type"
+            v-model="formData.pricing_type"
+            @change="onPricingTypeChange"
+            class="form-input"
+            required
+          >
+            <option value="per_item">按件计价</option>
+            <option value="weight_range">按重量区间计价</option>
+            <option value="unit_weight">按单位重量计价</option>
+          </select>
+        </div>
+
+        <!-- Per Item Pricing -->
+        <div v-if="formData.pricing_type === 'per_item'">
           <div class="form-group">
-            <label for="original_price">原价 ($)</label>
+            <label for="original_price">原价 ($) *</label>
             <input
               id="original_price"
-              v-model.number="formData.original_price"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              class="form-input"
-            />
-          </div>
-          <div class="form-group">
-            <label for="sale_price">售价 ($) *</label>
-            <input
-              id="sale_price"
-              v-model.number="formData.sale_price"
+              v-model.number="formData.pricing_data.original_price"
               type="number"
               step="0.01"
               min="0"
@@ -93,6 +97,131 @@
               class="form-input"
             />
           </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                v-model="formData.is_on_sale"
+                class="checkbox-input"
+              />
+              <span>特价销售</span>
+            </label>
+          </div>
+          <div v-if="formData.is_on_sale" class="form-group">
+            <label for="sale_price">特价 ($) *</label>
+            <input
+              id="sale_price"
+              v-model.number="formData.pricing_data.sale_price"
+              type="number"
+              step="0.01"
+              min="0"
+              :required="formData.is_on_sale"
+              placeholder="0.00"
+              class="form-input"
+            />
+            <small class="form-hint">特价必须低于原价</small>
+          </div>
+        </div>
+
+        <!-- Weight Range Pricing -->
+        <div v-if="formData.pricing_type === 'weight_range'" class="form-group">
+          <label>重量区间价格 (磅)</label>
+          <div v-for="(range, index) in formData.pricing_data.ranges" :key="index" class="weight-range-item">
+            <div class="range-inputs">
+              <input
+                v-model.number="range.min"
+                type="number"
+                step="0.1"
+                min="0"
+                placeholder="最小重量"
+                class="form-input"
+              />
+              <span>至</span>
+              <input
+                v-model.number="range.max"
+                type="number"
+                step="0.1"
+                min="0"
+                placeholder="最大重量 (留空表示以上)"
+                class="form-input"
+              />
+              <span>磅:</span>
+              <input
+                v-model.number="range.price"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="价格"
+                class="form-input"
+                required
+              />
+              <span>$</span>
+              <button
+                v-if="formData.pricing_data.ranges.length > 1"
+                type="button"
+                @click="removeWeightRange(index)"
+                class="remove-range-btn"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="addWeightRange"
+            class="add-range-btn"
+          >
+            + 添加区间
+          </button>
+        </div>
+
+        <!-- Unit Weight Pricing -->
+        <div v-if="formData.pricing_type === 'unit_weight'" class="form-row">
+          <div class="form-group">
+            <label for="price_per_unit">单价 ($) *</label>
+            <input
+              id="price_per_unit"
+              v-model.number="formData.pricing_data.price_per_unit"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              placeholder="0.00"
+              class="form-input"
+            />
+          </div>
+          <div class="form-group">
+            <label for="unit">单位 *</label>
+            <select
+              id="unit"
+              v-model="formData.pricing_data.unit"
+              class="form-input"
+              required
+            >
+              <option value="kg">千克 (kg)</option>
+              <option value="lb">磅 (lb)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Supplier -->
+        <div class="form-group">
+          <label for="supplier_id">供应商</label>
+          <select
+            id="supplier_id"
+            v-model.number="formData.supplier_id"
+            class="form-input"
+          >
+            <option :value="null">-- 无供应商 --</option>
+            <option
+              v-for="supplier in suppliers"
+              :key="supplier.id"
+              :value="supplier.id"
+            >
+              {{ supplier.name }}
+            </option>
+          </select>
+          <small class="form-hint">选择产品的供应商（可选）</small>
         </div>
 
         <!-- Stock Limit -->
@@ -161,11 +290,22 @@ export default {
         name: '',
         image: '',
         description: '',
-        original_price: null,
-        sale_price: null,
+        pricing_type: 'per_item',
+        pricing_data: {
+          sale_price: null,
+          original_price: null,
+          ranges: [{ min: 0, max: null, price: null }],
+          price_per_unit: null,
+          unit: 'kg'
+        },
+        is_on_sale: false,
+        original_price: null, // Legacy field
+        sale_price: null, // Legacy field
+        supplier_id: null,
         stock_limit: null,
         is_active: true
       },
+      suppliers: [],
       imagePreview: '',
       uploading: false,
       uploadProgress: 0,
@@ -182,11 +322,15 @@ export default {
     show(newVal) {
       if (newVal) {
         this.resetForm()
+        this.fetchSuppliers()
         if (this.product) {
           this.loadProductData()
         }
       }
     }
+  },
+  mounted() {
+    this.fetchSuppliers()
   },
   methods: {
     resetForm() {
@@ -194,8 +338,18 @@ export default {
         name: '',
         image: '',
         description: '',
+        pricing_type: 'per_item',
+        pricing_data: {
+          sale_price: null,
+          original_price: null,
+          ranges: [{ min: 0, max: null, price: null }],
+          price_per_unit: null,
+          unit: 'kg'
+        },
+        is_on_sale: false,
         original_price: null,
         sale_price: null,
+        supplier_id: null,
         stock_limit: null,
         is_active: true
       }
@@ -204,19 +358,91 @@ export default {
       this.uploading = false
       this.uploadProgress = 0
     },
+    async fetchSuppliers() {
+      try {
+        const response = await apiClient.get('/admin/suppliers', {
+          params: { per_page: 1000 } // Get all suppliers
+        })
+        this.suppliers = (response.data.suppliers || []).filter(s => s.is_active)
+      } catch (error) {
+        console.error('Failed to fetch suppliers:', error)
+        this.suppliers = []
+      }
+    },
     loadProductData() {
       if (this.product) {
+        const pricingType = this.product.pricing_type || 'per_item'
+        let pricingData = this.product.pricing_data || {}
+        
+        // Migrate legacy pricing to pricing_data if needed
+        if (!pricingData || Object.keys(pricingData).length === 0) {
+          if (pricingType === 'per_item') {
+            pricingData = {
+              sale_price: this.product.sale_price || null,
+              original_price: this.product.original_price || this.product.sale_price || null
+            }
+          }
+        }
+        
+        // Determine if product is on sale (has sale_price different from original_price)
+        const originalPrice = pricingData.original_price || this.product.original_price
+        const salePrice = pricingData.sale_price || this.product.sale_price
+        const isOnSale = salePrice !== null && salePrice !== undefined && salePrice !== originalPrice
+        
         this.formData = {
           name: this.product.name || '',
           image: this.product.image || '',
           description: this.product.description || '',
+          pricing_type: pricingType,
+          pricing_data: {
+            sale_price: pricingData.sale_price || null,
+            original_price: pricingData.original_price || originalPrice || null,
+            ranges: pricingData.ranges || [{ min: 0, max: null, price: null }],
+            price_per_unit: pricingData.price_per_unit || null,
+            unit: pricingData.unit || 'kg'
+          },
+          is_on_sale: isOnSale,
           original_price: this.product.original_price || null,
           sale_price: this.product.sale_price || null,
+          supplier_id: this.product.supplier_id || null,
           stock_limit: this.product.stock_limit || null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true
         }
         this.imagePreview = this.product.image || ''
       }
+    },
+    onPricingTypeChange() {
+      // Reset pricing_data when type changes
+      if (this.formData.pricing_type === 'per_item') {
+        this.formData.pricing_data = {
+          sale_price: null,
+          original_price: null
+        }
+      } else if (this.formData.pricing_type === 'weight_range') {
+        this.formData.pricing_data = {
+          ranges: [{ min: 0, max: null, price: null }]
+        }
+      } else if (this.formData.pricing_type === 'unit_weight') {
+        this.formData.pricing_data = {
+          price_per_unit: null,
+          unit: 'kg'
+        }
+      }
+    },
+    addWeightRange() {
+      if (!this.formData.pricing_data.ranges) {
+        this.formData.pricing_data.ranges = []
+      }
+      const lastRange = this.formData.pricing_data.ranges[this.formData.pricing_data.ranges.length - 1]
+      const newMin = lastRange && lastRange.max ? lastRange.max : 0
+      this.formData.pricing_data.ranges.push({
+        min: newMin,
+        max: null,
+        price: null
+      })
+    },
+    removeWeightRange(index) {
+      this.formData.pricing_data.ranges.splice(index, 1)
     },
     async handleImageSelect(event) {
       const file = event.target.files[0]
@@ -288,11 +514,54 @@ export default {
       this.error = null
 
       try {
+        // Validate per_item pricing
+        if (this.formData.pricing_type === 'per_item') {
+          if (!this.formData.pricing_data.original_price) {
+            this.error = '请输入原价'
+            this.submitting = false
+            return
+          }
+          if (this.formData.is_on_sale && !this.formData.pricing_data.sale_price) {
+            this.error = '请输入特价'
+            this.submitting = false
+            return
+          }
+          if (this.formData.is_on_sale && 
+              parseFloat(this.formData.pricing_data.sale_price) >= parseFloat(this.formData.pricing_data.original_price)) {
+            this.error = '特价必须低于原价'
+            this.submitting = false
+            return
+          }
+        }
+
         // Prepare data
         const data = {
           name: this.formData.name,
-          sale_price: parseFloat(this.formData.sale_price),
+          pricing_type: this.formData.pricing_type,
+          pricing_data: { ...this.formData.pricing_data },
           is_active: this.formData.is_active
+        }
+
+        // Clean up pricing_data based on type
+        if (this.formData.pricing_type === 'per_item') {
+          const originalPrice = parseFloat(this.formData.pricing_data.original_price)
+          const salePrice = this.formData.is_on_sale && this.formData.pricing_data.sale_price 
+            ? parseFloat(this.formData.pricing_data.sale_price) 
+            : originalPrice
+          
+          data.pricing_data = {
+            sale_price: salePrice,
+            original_price: originalPrice
+          }
+          // Keep legacy fields for backward compatibility
+          data.sale_price = salePrice
+          data.original_price = originalPrice
+        } else if (this.formData.pricing_type === 'weight_range') {
+          // Filter out empty ranges and ensure all have prices
+          data.pricing_data.ranges = this.formData.pricing_data.ranges.filter(r => r.price !== null && r.price !== '')
+        } else if (this.formData.pricing_type === 'unit_weight') {
+          data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit)
+          data.pricing_data.unit = this.formData.pricing_data.unit
         }
 
         if (this.formData.image) {
@@ -301,11 +570,13 @@ export default {
         if (this.formData.description) {
           data.description = this.formData.description
         }
-        if (this.formData.original_price !== null && this.formData.original_price !== '') {
-          data.original_price = parseFloat(this.formData.original_price)
-        }
         if (this.formData.stock_limit !== null && this.formData.stock_limit !== '') {
           data.stock_limit = parseInt(this.formData.stock_limit)
+        }
+        if (this.formData.supplier_id !== null && this.formData.supplier_id !== '') {
+          data.supplier_id = parseInt(this.formData.supplier_id)
+        } else {
+          data.supplier_id = null
         }
 
         if (this.editingProduct) {
@@ -599,6 +870,61 @@ label {
 .submit-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.weight-range-item {
+  margin-bottom: var(--md-spacing-md);
+  padding: var(--md-spacing-md);
+  background: var(--md-surface-variant);
+  border-radius: var(--md-radius-md);
+}
+
+.range-inputs {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  flex-wrap: wrap;
+}
+
+.range-inputs .form-input {
+  flex: 1;
+  min-width: 100px;
+}
+
+.range-inputs span {
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-body-size);
+}
+
+.add-range-btn,
+.remove-range-btn {
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  border: none;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.add-range-btn {
+  background: var(--md-primary);
+  color: white;
+  margin-top: var(--md-spacing-sm);
+}
+
+.add-range-btn:hover {
+  background: #FF7F00;
+}
+
+.remove-range-btn {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.remove-range-btn:hover {
+  background: #C62828;
+  color: white;
 }
 </style>
 

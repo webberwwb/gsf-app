@@ -38,17 +38,17 @@
           </svg>
           <span>订单管理</span>
         </router-link>
-        <router-link to="/users" class="nav-item" :class="{ active: $route.path === '/users' }">
+        <router-link to="/users" class="nav-item" :class="{ active: $route.path.startsWith('/users') }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
           <span>用户管理</span>
         </router-link>
-        <router-link to="/otp-stats" class="nav-item" :class="{ active: $route.path === '/otp-stats' }">
+        <router-link to="/suppliers" class="nav-item" :class="{ active: $route.path === '/suppliers' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
           </svg>
-          <span>OTP使用统计</span>
+          <span>供应商管理</span>
         </router-link>
       </nav>
       <div class="sidebar-footer">
@@ -98,7 +98,7 @@ export default {
         '/group-deals': '团购管理',
         '/orders': '订单管理',
         '/users': '用户管理',
-        '/otp-stats': 'OTP使用统计'
+        '/suppliers': '供应商管理'
       }
       return titles[this.$route.path] || '管理后台'
     },

@@ -35,9 +35,9 @@ const router = createRouter({
           component: () => import('../views/Users.vue')
         },
         {
-          path: 'otp-stats',
-          name: 'OTPStats',
-          component: () => import('../views/OTPStats.vue')
+          path: 'suppliers',
+          name: 'Suppliers',
+          component: () => import('../views/Suppliers.vue')
         }
       ]
     },

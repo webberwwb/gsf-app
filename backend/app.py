@@ -14,7 +14,24 @@ def create_app(config_class=Config):
     # Initialize extensions
     db.init_app(app)
     migrate = Migrate(app, db)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    
+    # CORS configuration - allow all origins for development and production
+    # Simple configuration that works for all routes
+    CORS(app, 
+         origins="*",
+         supports_credentials=True,
+         allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+         expose_headers=["Content-Type"])
+    
+    # Explicit CORS headers for all responses (backup)
+    @app.after_request
+    def after_request(response):
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
     
     # Register blueprints
     from routes import api_bp
@@ -29,6 +46,18 @@ def create_app(config_class=Config):
         app.register_blueprint(products_bp, url_prefix='/api')
     except ImportError:
         # Products routes not available yet
+        pass
+    try:
+        from routes.orders import orders_bp
+        app.register_blueprint(orders_bp, url_prefix='/api')
+    except ImportError:
+        # Orders routes not available yet
+        pass
+    try:
+        from routes.addresses import addresses_bp
+        app.register_blueprint(addresses_bp, url_prefix='/api')
+    except ImportError:
+        # Addresses routes not available yet
         pass
     try:
         from routes.admin import admin_bp
