@@ -128,18 +128,22 @@ export default {
 }
 
 .stat-card {
-  background: var(--md-surface);
+  background: #FFFFFF;
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: var(--md-elevation-1);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
   display: flex;
   align-items: center;
   gap: var(--md-spacing-md);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: var(--transition-normal);
+  border: none;
+  position: relative;
+  overflow: hidden;
 }
 
 .stat-card:hover {
-  box-shadow: var(--md-elevation-2);
+  background: #FFFFFF;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
 }
 
@@ -149,9 +153,17 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(0, 0, 0, 0.04);
   border-radius: var(--md-radius-lg);
   color: var(--md-primary);
+  transition: var(--transition-normal);
+  position: relative;
+  z-index: 1;
+}
+
+.stat-card:hover .stat-icon {
+  transform: scale(1.05);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .stat-icon svg {
@@ -176,10 +188,12 @@ export default {
 }
 
 .recent-section {
-  background: var(--md-surface);
+  background: #FFFFFF;
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: var(--md-elevation-1);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  border: none;
+  animation: fadeIn 0.6s ease-out;
 }
 
 .recent-section h2 {
@@ -206,8 +220,16 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md);
-  background: var(--md-surface-variant);
+  background: #FFFFFF;
   border-radius: var(--md-radius-md);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: var(--transition-fast);
+}
+
+.order-item:hover {
+  background: #FFFFFF;
+  transform: translateX(4px);
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.16);
 }
 
 .order-info {
@@ -236,6 +258,63 @@ export default {
   font-weight: 600;
   color: var(--md-primary);
   font-size: 1.1rem;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 767px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: var(--md-spacing-md);
+  }
+
+  .stat-card {
+    padding: var(--md-spacing-md);
+  }
+
+  .stat-icon {
+    width: 60px;
+    height: 60px;
+  }
+
+  .stat-icon svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .recent-section {
+    padding: var(--md-spacing-md);
+  }
+
+  .order-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--md-spacing-sm);
+  }
+
+  .order-amount {
+    align-self: flex-end;
+    font-size: var(--md-body-size);
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .stat-icon {
+    width: 50px;
+    height: 50px;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
 }
 </style>
 

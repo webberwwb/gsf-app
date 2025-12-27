@@ -11,6 +11,12 @@ from utils.sales_stats import update_product_sales_stats, get_product_sales_by_d
 from datetime import datetime, timedelta, timezone, date
 from models.base import utc_now
 from config import Config
+from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod
+from schemas.product import CreateProductSchema, UpdateProductSchema
+from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
+from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema
+from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
+from schemas.utils import validate_request
 import os
 import uuid
 from werkzeug.utils import secure_filename
@@ -188,46 +194,22 @@ def create_product():
     if error_response:
         return error_response, status_code
     
-    data = request.get_json()
-    
-    # Validate required fields
-    if 'name' not in data or not data['name']:
-        return jsonify({'error': 'name is required'}), 400
-    
-    # Validate pricing based on pricing_type
-    pricing_type = data.get('pricing_type', 'per_item')
-    
-    if pricing_type == 'per_item':
-        if 'sale_price' not in data or data['sale_price'] is None:
-            return jsonify({'error': 'sale_price is required for per_item pricing'}), 400
-    elif pricing_type == 'weight_range':
-        if 'pricing_data' not in data or 'ranges' not in data.get('pricing_data', {}):
-            return jsonify({'error': 'pricing_data.ranges is required for weight_range pricing'}), 400
-    elif pricing_type == 'unit_weight':
-        if 'pricing_data' not in data or 'price_per_unit' not in data.get('pricing_data', {}):
-            return jsonify({'error': 'pricing_data.price_per_unit is required for unit_weight pricing'}), 400
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(CreateProductSchema)
+    if error_response:
+        return error_response, status_code
     
     try:
-        # Build pricing_data based on pricing_type
-        pricing_data = data.get('pricing_data')
-        if pricing_type == 'per_item' and not pricing_data:
-            # Convert legacy sale_price/original_price to pricing_data
-            pricing_data = {
-                'sale_price': float(data['sale_price']),
-                'original_price': float(data.get('original_price', data['sale_price']))
-            }
         
         product = Product(
-            name=data['name'],
-            image=data.get('image'),
-            pricing_type=pricing_type,
-            pricing_data=pricing_data,
-            original_price=data.get('original_price'),  # Keep for backward compatibility
-            sale_price=data.get('sale_price'),  # Keep for backward compatibility
-            description=data.get('description', ''),
-            stock_limit=data.get('stock_limit'),
-            is_active=data.get('is_active', True),
-            supplier_id=data.get('supplier_id') if data.get('supplier_id') else None
+            name=validated_data['name'],
+            image=validated_data.get('image'),
+            pricing_type=validated_data['pricing_type'],
+            pricing_data=validated_data['pricing_data'],
+            description=validated_data.get('description', ''),
+            stock_limit=validated_data.get('stock_limit'),
+            is_active=validated_data.get('is_active', True),
+            supplier_id=validated_data.get('supplier_id')
         )
         
         db.session.add(product)
@@ -255,30 +237,48 @@ def update_product(product_id):
         return error_response, status_code
     
     product = Product.query.get_or_404(product_id)
-    data = request.get_json()
+    
+    # Get raw data first to check pricing_type
+    raw_data = request.get_json()
+    pricing_type = raw_data.get('pricing_type') if raw_data else product.pricing_type
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(
+        UpdateProductSchema,
+        context={'pricing_type': pricing_type}
+    )
+    if error_response:
+        return error_response, status_code
     
     try:
-        if 'name' in data:
-            product.name = data['name']
-        if 'image' in data:
-            product.image = data['image']
-        if 'pricing_type' in data:
-            product.pricing_type = data['pricing_type']
-        if 'pricing_data' in data:
-            product.pricing_data = data['pricing_data']
-        # Legacy fields (for backward compatibility)
-        if 'original_price' in data:
-            product.original_price = data['original_price']
-        if 'sale_price' in data:
-            product.sale_price = data['sale_price']
-        if 'description' in data:
-            product.description = data['description']
-        if 'stock_limit' in data:
-            product.stock_limit = data['stock_limit'] if data['stock_limit'] else None
-        if 'is_active' in data:
-            product.is_active = data['is_active']
-        if 'supplier_id' in data:
-            product.supplier_id = data['supplier_id'] if data['supplier_id'] else None
+        # Re-validate pricing_data if both pricing_type and pricing_data are being updated
+        if 'pricing_type' in validated_data and 'pricing_data' in validated_data:
+            validated_data, error_response, status_code = validate_request(
+                UpdateProductSchema,
+                data=validated_data,
+                context={'pricing_type': validated_data['pricing_type']}
+            )
+            if error_response:
+                return error_response, status_code
+        
+        # Update pricing_type if provided
+        if 'pricing_type' in validated_data:
+            product.pricing_type = validated_data['pricing_type']
+        
+        if 'name' in validated_data:
+            product.name = validated_data['name']
+        if 'image' in validated_data:
+            product.image = validated_data['image']
+        if 'pricing_data' in validated_data:
+            product.pricing_data = validated_data['pricing_data']
+        if 'description' in validated_data:
+            product.description = validated_data['description']
+        if 'stock_limit' in validated_data:
+            product.stock_limit = validated_data['stock_limit'] if validated_data['stock_limit'] else None
+        if 'is_active' in validated_data:
+            product.is_active = validated_data['is_active']
+        if 'supplier_id' in validated_data:
+            product.supplier_id = validated_data['supplier_id'] if validated_data['supplier_id'] else None
         
         db.session.commit()
         
@@ -436,7 +436,7 @@ def unban_user(user_id):
     
     try:
         user = User.query.get_or_404(user_id)
-        user.status = 'active'
+        user.status = UserStatus.ACTIVE.value
         db.session.commit()
         
         current_app.logger.info(f'Unbanned user: {user.id} - {user.phone or user.email}')
@@ -482,16 +482,12 @@ def assign_user_role(user_id):
     if error_response:
         return error_response, status_code
     
-    data = request.get_json()
-    role_name = data.get('role', '').strip().lower()
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(AssignRoleSchema)
+    if error_response:
+        return error_response, status_code
     
-    if not role_name:
-        return jsonify({'error': 'Role is required'}), 400
-    
-    # Validate role name
-    valid_roles = ['admin', 'moderator', 'user']
-    if role_name not in valid_roles:
-        return jsonify({'error': f'Invalid role. Valid roles: {", ".join(valid_roles)}'}), 400
+    role_name = validated_data['role'].lower()
     
     try:
         user = User.query.get_or_404(user_id)
@@ -667,44 +663,47 @@ def create_group_deal():
     if error_response:
         return error_response, status_code
     
-    data = request.get_json()
-    
-    # Validate required fields
-    required_fields = ['title', 'order_start_date', 'order_end_date', 'pickup_date']
-    for field in required_fields:
-        if field not in data or not data[field]:
-            return jsonify({'error': f'{field} is required'}), 400
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(CreateGroupDealSchema)
+    if error_response:
+        return error_response, status_code
     
     try:
-        # Parse dates
-        order_start_date = datetime.fromisoformat(data['order_start_date'].replace('Z', '+00:00'))
-        order_end_date = datetime.fromisoformat(data['order_end_date'].replace('Z', '+00:00'))
-        pickup_date = datetime.fromisoformat(data['pickup_date'].replace('Z', '+00:00'))
+        # Import date helpers
+        from utils.date_helpers import normalize_date_start, normalize_date_end
+        
+        # Parse and normalize dates
+        # order_start_date: 00:00:00 EST
+        # order_end_date: 23:59:59 EST
+        # pickup_date: 00:00:00 EST
+        order_start_date = normalize_date_start(validated_data['order_start_date'])
+        order_end_date = normalize_date_end(validated_data['order_end_date'])
+        pickup_date = normalize_date_start(validated_data['pickup_date'])
         
         # Determine status based on dates
-        # Use naive UTC datetime for comparison
+        # Use naive EST datetime for comparison
         now = utc_now()
         if order_start_date > now:
-            status = 'upcoming'
+            status = GroupDealStatus.UPCOMING.value
         elif order_start_date <= now <= order_end_date:
-            status = 'active'
+            status = GroupDealStatus.ACTIVE.value
         else:
-            status = 'closed'
+            status = GroupDealStatus.CLOSED.value
         
         group_deal = GroupDeal(
-            title=data['title'],
-            description=data.get('description', ''),
+            title=validated_data['title'],
+            description=validated_data.get('description', ''),
             order_start_date=order_start_date,
             order_end_date=order_end_date,
             pickup_date=pickup_date,
-            status=data.get('status', status)
+            status=validated_data.get('status', status)
         )
         
         db.session.add(group_deal)
         db.session.flush()
         
         # Add products to deal
-        products = data.get('products', [])
+        products = validated_data.get('products', [])
         for product_data in products:
             product_id = product_data.get('product_id')
             if not product_id:
@@ -761,29 +760,57 @@ def update_group_deal(deal_id):
         return error_response, status_code
     
     deal = GroupDeal.query.get_or_404(deal_id)
-    data = request.get_json()
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateGroupDealSchema)
+    if error_response:
+        return error_response, status_code
     
     try:
-        if 'title' in data:
-            deal.title = data['title']
-        if 'description' in data:
-            deal.description = data['description']
-        if 'order_start_date' in data:
-            deal.order_start_date = datetime.fromisoformat(data['order_start_date'].replace('Z', '+00:00'))
-        if 'order_end_date' in data:
-            deal.order_end_date = datetime.fromisoformat(data['order_end_date'].replace('Z', '+00:00'))
-        if 'pickup_date' in data:
-            deal.pickup_date = datetime.fromisoformat(data['pickup_date'].replace('Z', '+00:00'))
-        if 'status' in data:
-            deal.status = data['status']
+        # Import date helpers
+        from utils.date_helpers import normalize_date_start, normalize_date_end
+        from models.base import est_now
+        
+        dates_updated = False
+        
+        if 'title' in validated_data:
+            deal.title = validated_data['title']
+        if 'description' in validated_data:
+            deal.description = validated_data['description']
+        if 'order_start_date' in validated_data:
+            # Normalize to 00:00:00 EST
+            deal.order_start_date = normalize_date_start(validated_data['order_start_date'])
+            dates_updated = True
+        if 'order_end_date' in validated_data:
+            # Normalize to 23:59:59 EST
+            deal.order_end_date = normalize_date_end(validated_data['order_end_date'])
+            dates_updated = True
+        if 'pickup_date' in validated_data:
+            # Normalize to 00:00:00 EST
+            deal.pickup_date = normalize_date_start(validated_data['pickup_date'])
+        
+        # Handle status update
+        if 'status' in validated_data:
+            deal.status = validated_data['status']
+        
+        # Re-evaluate status if dates were updated and current status is in auto-managed states
+        # This ensures status stays in sync with dates
+        if dates_updated and deal.status in GroupDealStatus.get_auto_managed_statuses():
+            now = est_now()
+            if deal.order_start_date > now:
+                deal.status = GroupDealStatus.UPCOMING.value
+            elif deal.order_start_date <= now <= deal.order_end_date:
+                deal.status = GroupDealStatus.ACTIVE.value
+            elif deal.order_end_date < now:
+                deal.status = GroupDealStatus.CLOSED.value
         
         # Update products if provided
-        if 'products' in data:
+        if 'products' in validated_data:
             # Remove existing products
             GroupDealProduct.query.filter_by(group_deal_id=deal.id).delete()
             
             # Add new products
-            for product_data in data['products']:
+            for product_data in validated_data['products']:
                 product_id = product_data.get('product_id')
                 if not product_id:
                     continue
@@ -982,14 +1009,14 @@ def get_dashboard_stats():
         products_count = Product.query.filter_by(is_active=True).count()
         
         # Count users
-        users_count = User.query.filter_by(status='active').count()
+        users_count = User.query.filter_by(status=UserStatus.ACTIVE.value).count()
         
         # Count orders
         orders_count = Order.query.count()
         
         # Calculate total revenue (sum of all paid orders)
         revenue_result = db.session.query(func.sum(Order.total)).filter(
-            Order.payment_status == 'paid'
+            Order.payment_status == PaymentStatus.PAID.value
         ).scalar()
         total_revenue = float(revenue_result) if revenue_result else 0.0
         
@@ -1100,6 +1127,690 @@ def get_otp_stats():
             'message': str(e)
         }), 500
 
+# Orders Management
+@admin_bp.route('/orders', methods=['GET'])
+def get_admin_orders():
+    """Get all orders (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get query parameters for pagination and filtering
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        status_filter = request.args.get('status', '').strip()
+        payment_filter = request.args.get('payment_status', '').strip()
+        payment_method_filter = request.args.get('payment_method', '').strip()
+        group_deal_id = request.args.get('group_deal_id')
+        search = request.args.get('search', '').strip()
+        
+        # Build query - join with User for phone search
+        # Filter out soft-deleted orders (deleted_at IS NULL)
+        query = Order.query.join(User, Order.user_id == User.id).filter(Order.deleted_at.is_(None))
+        
+        # Apply search filter (order number or phone)
+        if search:
+            search_term = f'%{search}%'
+            query = query.filter(
+                db.or_(
+                    Order.order_number.like(search_term),
+                    User.phone.like(search_term)
+                )
+            )
+        
+        # Apply filters
+        if status_filter:
+            query = query.filter(Order.status == status_filter)
+        
+        if payment_filter:
+            query = query.filter(Order.payment_status == payment_filter)
+        
+        if payment_method_filter:
+            query = query.filter(Order.payment_method == payment_method_filter)
+        
+        if group_deal_id:
+            query = query.filter(Order.group_deal_id == int(group_deal_id))
+        
+        # Order by creation date (newest first)
+        query = query.order_by(Order.created_at.desc())
+        
+        # Paginate
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        orders = pagination.items
+        
+        # Build response with order details
+        orders_data = []
+        for order in orders:
+            order_dict = order.to_dict()
+            
+            # Get user info
+            user = User.query.get(order.user_id)
+            if user:
+                order_dict['user'] = {
+                    'id': user.id,
+                    'nickname': user.nickname,
+                    'phone': user.phone,
+                    'email': user.email
+                }
+            
+            # Get group deal info
+            group_deal = GroupDeal.query.get(order.group_deal_id)
+            if group_deal:
+                order_dict['group_deal'] = {
+                    'id': group_deal.id,
+                    'title': group_deal.title,
+                    'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None
+                }
+            
+            # Get address info if delivery order
+            if order.address_id:
+                from models.address import Address
+                address = Address.query.get(order.address_id)
+                if address:
+                    order_dict['address'] = address.to_dict()
+            
+            # Get order items count
+            order_dict['items_count'] = len(order.items)
+            
+            orders_data.append(order_dict)
+        
+        return jsonify({
+            'orders': orders_data,
+            'pagination': {
+                'page': pagination.page,
+                'per_page': pagination.per_page,
+                'total': pagination.total,
+                'pages': pagination.pages
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching orders: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch orders',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/<int:order_id>', methods=['GET'])
+def get_admin_order(order_id):
+    """Get a single order by ID (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        order_dict = order.to_dict()
+        
+        # Get user info
+        user = User.query.get(order.user_id)
+        if user:
+            order_dict['user'] = user.to_dict()
+        
+        # Get group deal info
+        group_deal = GroupDeal.query.get(order.group_deal_id)
+        if group_deal:
+            order_dict['group_deal'] = group_deal.to_dict()
+        
+        # Get address info if delivery order
+        if order.address_id:
+            from models.address import Address
+            address = Address.query.get(order.address_id)
+            if address:
+                order_dict['address'] = address.to_dict()
+        
+        # Get order items with product details
+        items_data = []
+        for item in order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = product.to_dict()
+            items_data.append(item_dict)
+        
+        order_dict['items'] = items_data
+        
+        return jsonify({
+            'order': order_dict
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Order not found',
+            'message': str(e)
+        }), 404
+
+@admin_bp.route('/orders/<int:order_id>/status', methods=['PUT'])
+def update_order_status(order_id):
+    """Update order status (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateOrderStatusSchema)
+    if error_response:
+        return error_response, status_code
+    
+    status = validated_data['status']
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        old_status = order.status
+        order.status = status
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated order {order_id} status from {old_status} to {status}')
+        
+        return jsonify({
+            'message': 'Order status updated successfully',
+            'order': order.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating order status: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update order status',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/<int:order_id>/cancel', methods=['POST'])
+def admin_cancel_order(order_id):
+    """Cancel an order (admin only - can cancel at any stage)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        
+        # Check if already cancelled or completed
+        if order.status == OrderStatus.CANCELLED.value:
+            return jsonify({'error': 'Order is already cancelled'}), 400
+        
+        if order.status == OrderStatus.COMPLETED.value:
+            return jsonify({'error': 'Cannot cancel a completed order. Please refund instead.'}), 400
+        
+        old_status = order.status
+        order.status = OrderStatus.CANCELLED.value
+        db.session.commit()
+        
+        current_app.logger.info(f'Admin cancelled order {order_id} (was {old_status})')
+        
+        return jsonify({
+            'message': 'Order cancelled successfully',
+            'order': order.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error cancelling order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to cancel order',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/<int:order_id>/payment', methods=['PUT'])
+def update_order_payment(order_id):
+    """Update order payment status (admin only) - triggers points and completion"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateOrderPaymentSchema)
+    if error_response:
+        return error_response, status_code
+    
+    payment_status = validated_data['payment_status']
+    payment_method = validated_data.get('payment_method', '').strip() if validated_data.get('payment_method') else None
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        
+        # Check if order is cancelled
+        if order.status == OrderStatus.CANCELLED.value:
+            return jsonify({'error': 'Cannot update payment for cancelled order'}), 400
+        
+        old_payment_status = order.payment_status
+        order.payment_status = payment_status
+        
+        if payment_method:
+            order.payment_method = payment_method
+        
+        # If changing from unpaid to paid, calculate points and complete order
+        if old_payment_status == PaymentStatus.UNPAID.value and payment_status == PaymentStatus.PAID.value:
+            # Calculate points: 1 point per cent ($0.01)
+            total_cents = int(float(order.total) * 100)
+            order.points_earned = total_cents
+            order.payment_date = utc_now()
+            
+            # Update user's points balance
+            user = User.query.get(order.user_id)
+            if user:
+                user.points = (user.points or 0) + total_cents
+                current_app.logger.info(f'Awarded {total_cents} points to user {user.id} for order {order_id}')
+            
+            # Auto-complete the order
+            order.status = OrderStatus.COMPLETED.value
+            
+            current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {total_cents}')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Payment status updated successfully',
+            'order': order.to_dict(),
+            'points_awarded': order.points_earned if payment_status == PaymentStatus.PAID.value else 0
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating payment status: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update payment status',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/by-pickup-code/<pickup_code>', methods=['GET'])
+def get_order_by_pickup_code(pickup_code):
+    """Get order by pickup code (for QR scanning) - pickup_code is the last part of order_number"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # pickup_code is the last part of order_number (e.g., "CGN7O7" from "GSF-20231225123456-CGN7O7")
+        # Search for orders where order_number ends with the pickup code
+        # Format: GSF-{timestamp}-{pickup_code}
+        order = Order.query.filter(
+            Order.order_number.like(f'%-{pickup_code}'),
+            Order.deleted_at.is_(None)
+        ).first()
+        
+        if not order:
+            return jsonify({
+                'error': 'Order not found',
+                'message': 'Invalid pickup code'
+            }), 404
+        
+        order_dict = order.to_dict()
+        
+        # Get user info
+        user = User.query.get(order.user_id)
+        if user:
+            order_dict['user'] = user.to_dict()
+        
+        # Get group deal info
+        group_deal = GroupDeal.query.get(order.group_deal_id)
+        if group_deal:
+            order_dict['group_deal'] = group_deal.to_dict()
+        
+        # Get order items with product details
+        items_data = []
+        for item in order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = product.to_dict()
+            items_data.append(item_dict)
+        
+        order_dict['items'] = items_data
+        
+        return jsonify({
+            'order': order_dict
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching order by pickup code: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch order',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/<int:order_id>/update-weights', methods=['PUT'])
+def update_order_weights(order_id):
+    """Update order items with final weights and recalculate prices (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateOrderWeightsSchema)
+    if error_response:
+        return error_response, status_code
+    
+    items_data = validated_data['items']
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        
+        # Check if order is ready for pickup
+        if order.status != OrderStatus.READY_FOR_PICKUP.value:
+            return jsonify({'error': 'Order must be in ready_for_pickup status to update weights'}), 400
+        
+        # Create a map of item_id to final_weight for quick lookup
+        weight_updates = {item.get('item_id'): item.get('final_weight') for item in items_data if item.get('item_id')}
+        
+        # Update items with final weights and recalculate prices
+        for item_update in items_data:
+            item_id = item_update.get('item_id')
+            final_weight = item_update.get('final_weight')
+            
+            if not item_id:
+                continue
+            
+            order_item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first()
+            if not order_item:
+                continue
+            
+            product = Product.query.get(order_item.product_id)
+            if not product:
+                continue
+            
+            # Update final weight
+            if final_weight is not None:
+                order_item.final_weight = float(final_weight)
+            
+            # Recalculate price if product is weight-based
+            if product.pricing_type in ['weight_range', 'unit_weight'] and final_weight is not None:
+                # Calculate new price based on final weight
+                new_price = product.calculate_price(quantity=order_item.quantity, weight=float(final_weight))
+                if new_price is not None:
+                    order_item.unit_price = new_price / order_item.quantity
+                    order_item.total_price = new_price
+        
+        # Recalculate subtotal from ALL items in the order (not just updated ones)
+        subtotal = 0
+        for order_item in order.items:
+            subtotal += float(order_item.total_price)
+        
+        # Recalculate order totals
+        tax = 0
+        total = subtotal + tax
+        points_earned = int(total * 100)  # 1 point per cent
+        
+        order.subtotal = subtotal
+        order.tax = tax
+        order.total = total
+        order.points_earned = points_earned
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated weights and prices for order {order_id}')
+        
+        # Return updated order
+        order_dict = order.to_dict()
+        
+        # Get user info
+        user = User.query.get(order.user_id)
+        if user:
+            order_dict['user'] = user.to_dict()
+        
+        # Get group deal info
+        group_deal = GroupDeal.query.get(order.group_deal_id)
+        if group_deal:
+            order_dict['group_deal'] = group_deal.to_dict()
+        
+        # Get order items with product details
+        items_data_response = []
+        for item in order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = product.to_dict()
+            items_data_response.append(item_dict)
+        
+        order_dict['items'] = items_data_response
+        
+        return jsonify({
+            'message': 'Order weights and prices updated successfully',
+            'order': order_dict
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating order weights: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update order weights',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/<int:order_id>/update', methods=['PUT'])
+def update_admin_order(order_id):
+    """Update order items (add/remove items, update weights) - admin only"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(AdminUpdateOrderSchema)
+    if error_response:
+        return error_response, status_code
+    
+    items_data = validated_data['items']
+    payment_method = validated_data.get('payment_method', '').strip() if validated_data.get('payment_method') else None
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        
+        # Get group deal for pricing
+        group_deal = GroupDeal.query.get(order.group_deal_id)
+        if not group_deal:
+            return jsonify({'error': 'Group deal not found'}), 404
+        
+        # Delete all existing order items
+        OrderItem.query.filter_by(order_id=order_id).delete()
+        
+        # Calculate new order totals
+        subtotal = 0
+        new_order_items = []
+        
+        for item_data in items_data:
+            product_id = item_data.get('product_id')
+            quantity = item_data.get('quantity', 1)
+            final_weight = item_data.get('final_weight')
+            
+            if not product_id:
+                continue
+            
+            if quantity <= 0:
+                continue
+            
+            # Get product
+            product = Product.query.get(product_id)
+            if not product:
+                continue
+            
+            # Get group deal specific price (if set for this deal)
+            deal_product = GroupDealProduct.query.filter_by(
+                group_deal_id=order.group_deal_id,
+                product_id=product_id
+            ).first()
+            
+            # Calculate item price
+            if final_weight is not None and product.pricing_type in ['weight_range', 'unit_weight']:
+                # Use final weight for price calculation
+                item_price = product.calculate_price(quantity=quantity, weight=float(final_weight))
+            else:
+                # Use deal price if available, otherwise use product price
+                if deal_product and deal_product.deal_price:
+                    unit_price = float(deal_product.deal_price)
+                else:
+                    unit_price = float(product.price) if product.price else 0
+                item_price = unit_price * quantity
+            
+            if item_price is None:
+                item_price = 0
+            
+            # Create order item
+            order_item = OrderItem(
+                order_id=order_id,
+                product_id=product_id,
+                quantity=quantity,
+                unit_price=item_price / quantity if quantity > 0 else 0,
+                total_price=item_price,
+                final_weight=float(final_weight) if final_weight is not None else None
+            )
+            db.session.add(order_item)
+            new_order_items.append(order_item)
+            subtotal += item_price
+        
+        # Recalculate order totals
+        tax = 0
+        total = subtotal + tax
+        points_earned = int(total * 100)  # 1 point per cent
+        
+        order.subtotal = subtotal
+        order.tax = tax
+        order.total = total
+        order.points_earned = points_earned
+        
+        # Update payment method if provided
+        if payment_method:
+            if payment_method in PaymentMethod.get_all_values():
+                order.payment_method = payment_method
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Admin updated order {order_id} items')
+        
+        # Return updated order
+        order_dict = order.to_dict()
+        
+        # Get user info
+        user = User.query.get(order.user_id)
+        if user:
+            order_dict['user'] = user.to_dict()
+        
+        # Get group deal info
+        order_dict['group_deal'] = group_deal.to_dict()
+        
+        # Get address info if delivery order
+        if order.address_id:
+            from models.address import Address
+            address = Address.query.get(order.address_id)
+            if address:
+                order_dict['address'] = address.to_dict()
+        
+        # Get order items with product details
+        items_data_response = []
+        for item in order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = product.to_dict()
+            items_data_response.append(item_dict)
+        
+        order_dict['items'] = items_data_response
+        
+        return jsonify({
+            'message': 'Order updated successfully',
+            'order': order_dict
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update order',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/<int:order_id>', methods=['DELETE'])
+def delete_order(order_id):
+    """Soft delete an order (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        
+        # Soft delete: set deleted_at timestamp
+        order.deleted_at = utc_now()
+        db.session.commit()
+        
+        current_app.logger.info(f'Admin soft-deleted order {order_id} (order_number: {order.order_number})')
+        
+        return jsonify({
+            'message': 'Order deleted successfully',
+            'order_id': order_id
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to delete order',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/group-deals/<int:deal_id>/status', methods=['PUT'])
+def update_group_deal_status(deal_id):
+    """Update group deal status - cascades to all orders (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateGroupDealStatusSchema)
+    if error_response:
+        return error_response, status_code
+    
+    new_status = validated_data['status']
+    
+    try:
+        deal = GroupDeal.query.get_or_404(deal_id)
+        old_status = deal.status
+        deal.status = new_status
+        
+        # Cascade status to orders
+        orders_updated = 0
+        if new_status == GroupDealStatus.PREPARING.value:
+            # All submitted/confirmed orders become preparing
+            orders = Order.query.filter(
+                Order.group_deal_id == deal_id,
+                Order.status.in_([OrderStatus.SUBMITTED.value, OrderStatus.CONFIRMED.value]),
+                Order.status != OrderStatus.CANCELLED.value
+            ).all()
+            for order in orders:
+                order.status = OrderStatus.PREPARING.value
+                orders_updated += 1
+        
+        elif new_status == GroupDealStatus.READY_FOR_PICKUP.value:
+            # All preparing orders become ready_for_pickup
+            orders = Order.query.filter(
+                Order.group_deal_id == deal_id,
+                Order.status == OrderStatus.PREPARING.value,
+                Order.status != OrderStatus.CANCELLED.value
+            ).all()
+            for order in orders:
+                order.status = OrderStatus.READY_FOR_PICKUP.value
+                orders_updated += 1
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated group deal {deal_id} status from {old_status} to {new_status}. Cascaded to {orders_updated} orders.')
+        
+        return jsonify({
+            'message': 'Group deal status updated successfully',
+            'group_deal': deal.to_dict(),
+            'orders_updated': orders_updated
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating group deal status: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update group deal status',
+            'message': str(e)
+        }), 500
+
 # Supplier Management
 @admin_bp.route('/suppliers', methods=['GET'])
 def get_suppliers():
@@ -1187,21 +1898,20 @@ def create_supplier():
     if error_response:
         return error_response, status_code
     
-    data = request.get_json()
-    
-    # Validate required fields
-    if 'name' not in data or not data['name']:
-        return jsonify({'error': 'name is required'}), 400
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(CreateSupplierSchema)
+    if error_response:
+        return error_response, status_code
     
     try:
         supplier = Supplier(
-            name=data['name'],
-            contact_person=data.get('contact_person'),
-            phone=data.get('phone'),
-            email=data.get('email'),
-            address=data.get('address'),
-            notes=data.get('notes'),
-            is_active=data.get('is_active', True)
+            name=validated_data['name'],
+            contact_person=validated_data.get('contact_person'),
+            phone=validated_data.get('phone'),
+            email=validated_data.get('email'),
+            address=validated_data.get('address'),
+            notes=validated_data.get('notes'),
+            is_active=validated_data.get('is_active', True)
         )
         
         db.session.add(supplier)
@@ -1229,23 +1939,27 @@ def update_supplier(supplier_id):
         return error_response, status_code
     
     supplier = Supplier.query.get_or_404(supplier_id)
-    data = request.get_json()
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateSupplierSchema)
+    if error_response:
+        return error_response, status_code
     
     try:
-        if 'name' in data:
-            supplier.name = data['name']
-        if 'contact_person' in data:
-            supplier.contact_person = data['contact_person']
-        if 'phone' in data:
-            supplier.phone = data['phone']
-        if 'email' in data:
-            supplier.email = data['email']
-        if 'address' in data:
-            supplier.address = data['address']
-        if 'notes' in data:
-            supplier.notes = data['notes']
-        if 'is_active' in data:
-            supplier.is_active = data['is_active']
+        if 'name' in validated_data:
+            supplier.name = validated_data['name']
+        if 'contact_person' in validated_data:
+            supplier.contact_person = validated_data['contact_person']
+        if 'phone' in validated_data:
+            supplier.phone = validated_data['phone']
+        if 'email' in validated_data:
+            supplier.email = validated_data['email']
+        if 'address' in validated_data:
+            supplier.address = validated_data['address']
+        if 'notes' in validated_data:
+            supplier.notes = validated_data['notes']
+        if 'is_active' in validated_data:
+            supplier.is_active = validated_data['is_active']
         
         db.session.commit()
         

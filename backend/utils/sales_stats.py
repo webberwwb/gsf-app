@@ -113,3 +113,4 @@ def get_popular_products(days=30, limit=10):
     
     return [(product_id, int(total_sold)) for product_id, total_sold in popular]
 
+

@@ -1,0 +1,111 @@
+"""Product request/response schemas"""
+from marshmallow import Schema, fields, validate, validates, ValidationError, post_load, EXCLUDE
+
+
+class PricingDataPerItemSchema(Schema):
+    """Schema for per_item pricing_data"""
+    price = fields.Float(required=True, validate=validate.Range(min=0))
+
+
+class WeightRangeSchema(Schema):
+    """Schema for weight range in pricing_data"""
+    min = fields.Float(required=True, validate=validate.Range(min=0))
+    max = fields.Float(allow_none=True, validate=validate.Range(min=0))
+    price = fields.Float(required=True, validate=validate.Range(min=0))
+
+
+class PricingDataWeightRangeSchema(Schema):
+    """Schema for weight_range pricing_data"""
+    ranges = fields.List(fields.Nested(WeightRangeSchema), required=True, validate=validate.Length(min=1))
+
+
+class PricingDataUnitWeightSchema(Schema):
+    """Schema for unit_weight pricing_data"""
+    price_per_unit = fields.Float(required=True, validate=validate.Range(min=0))
+    unit = fields.String(missing='kg')
+
+
+class CreateProductSchema(Schema):
+    """Schema for creating a product"""
+    name = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    image = fields.String(allow_none=True, validate=validate.Length(max=512))
+    pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight']))
+    pricing_data = fields.Dict(required=True)
+    description = fields.String(allow_none=True)
+    stock_limit = fields.Integer(allow_none=True, validate=validate.Range(min=0))
+    is_active = fields.Boolean(missing=True)
+    supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    
+    @post_load
+    def validate_pricing_data(self, data, **kwargs):
+        """Validate pricing_data based on pricing_type"""
+        pricing_type = data.get('pricing_type', 'per_item')
+        pricing_data = data.get('pricing_data')
+        
+        if not pricing_data:
+            raise ValidationError('pricing_data is required')
+        
+        if pricing_type == 'per_item':
+            if 'price' not in pricing_data:
+                raise ValidationError('pricing_data.price is required for per_item pricing')
+            if not isinstance(pricing_data['price'], (int, float)) or pricing_data['price'] < 0:
+                raise ValidationError('pricing_data.price must be a non-negative number')
+        elif pricing_type == 'weight_range':
+            if 'ranges' not in pricing_data or not isinstance(pricing_data['ranges'], list):
+                raise ValidationError('pricing_data.ranges is required for weight_range pricing')
+            if len(pricing_data['ranges']) == 0:
+                raise ValidationError('pricing_data.ranges must contain at least one range')
+            for range_item in pricing_data['ranges']:
+                if 'min' not in range_item or 'price' not in range_item:
+                    raise ValidationError('Each range must have min and price')
+        elif pricing_type == 'unit_weight':
+            if 'price_per_unit' not in pricing_data:
+                raise ValidationError('pricing_data.price_per_unit is required for unit_weight pricing')
+            if not isinstance(pricing_data['price_per_unit'], (int, float)) or pricing_data['price_per_unit'] < 0:
+                raise ValidationError('pricing_data.price_per_unit must be a non-negative number')
+        
+        return data
+    
+    class Meta:
+        unknown = EXCLUDE
+
+
+class UpdateProductSchema(Schema):
+    """Schema for updating a product"""
+    name = fields.String(allow_none=True, validate=validate.Length(min=1, max=255))
+    image = fields.String(allow_none=True, validate=validate.Length(max=512))
+    pricing_type = fields.String(allow_none=True, validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight']))
+    pricing_data = fields.Dict(allow_none=True)
+    description = fields.String(allow_none=True)
+    stock_limit = fields.Integer(allow_none=True, validate=validate.Range(min=0))
+    is_active = fields.Boolean(allow_none=True)
+    supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    
+    @post_load
+    def validate_pricing_data(self, data, **kwargs):
+        """Validate pricing_data based on pricing_type if provided"""
+        pricing_data = data.get('pricing_data')
+        if pricing_data is None:
+            return data
+        
+        # Get pricing_type from data or context (for existing product)
+        pricing_type = data.get('pricing_type') or self.context.get('pricing_type')
+        if not pricing_type:
+            # If pricing_type not provided, skip validation (will use existing product's pricing_type)
+            return data
+        
+        if pricing_type == 'per_item':
+            if 'price' not in pricing_data:
+                raise ValidationError('pricing_data.price is required for per_item pricing')
+        elif pricing_type == 'weight_range':
+            if 'ranges' not in pricing_data or not isinstance(pricing_data['ranges'], list) or len(pricing_data['ranges']) == 0:
+                raise ValidationError('pricing_data.ranges is required for weight_range pricing')
+        elif pricing_type == 'unit_weight':
+            if 'price_per_unit' not in pricing_data:
+                raise ValidationError('pricing_data.price_per_unit is required for unit_weight pricing')
+        
+        return data
+    
+    class Meta:
+        unknown = EXCLUDE
+

@@ -5,6 +5,9 @@ from models.otp_attempt import OTPAttempt
 from datetime import datetime, timedelta, timezone
 from models.base import utc_now
 from config import Config
+from constants.status_enums import UserStatus
+from schemas.auth import SendOTPSchema, VerifyOTPSchema
+from schemas.utils import validate_request
 import secrets
 import requests
 from twilio.rest import Client
@@ -25,27 +28,41 @@ def get_twilio_client():
     return Client(account_sid, auth_token)
 
 def normalize_phone(phone):
-    """Normalize phone number to E.164 format"""
+    """Normalize phone number to E.164 format
+    
+    For Canadian/US users, automatically prepend +1 if:
+    - Phone number is exactly 10 digits (no country code)
+    - Phone number doesn't already start with + or 1
+    """
     if not phone:
         return None
     phone = str(phone).strip()
     # Remove any non-digit characters except +
     phone = ''.join(c for c in phone if c.isdigit() or c == '+')
+    
+    # If exactly 10 digits, assume Canadian/US number and prepend +1
+    if len(phone) == 10 and phone.isdigit():
+        phone = '+1' + phone
+    # If 11 digits starting with 1, add the +
+    elif len(phone) == 11 and phone.startswith('1'):
+        phone = '+' + phone
     # Ensure it starts with +
-    if not phone.startswith('+'):
+    elif not phone.startswith('+'):
         phone = '+' + phone.lstrip('+')
+    
     return phone
 
 @auth_bp.route('/phone/send-otp', methods=['POST'])
 def phone_send_otp():
     """Send OTP via Twilio Verify (SMS only)"""
-    data = request.get_json()
-    phone = data.get('phone')
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(SendOTPSchema)
+    if error_response:
+        return error_response, status_code
+    
+    phone = validated_data['phone']
     # Always use SMS, ignore channel parameter
     channel = 'sms'
-    
-    if not phone:
-        return jsonify({'error': 'Phone number required'}), 400
     
     # Normalize phone number
     phone = normalize_phone(phone)
@@ -91,6 +108,10 @@ def phone_send_otp():
         current_app.logger.info(f'Sending OTP to phone: {phone} via SMS, Service SID: {verify_service_sid}')
         
         # Send OTP via SMS only
+        # To customize the message, go to Twilio Console:
+        # Verify → Services → [Your Service] → Messaging → Edit Template
+        # You can set a custom template like:
+        # "谷语农庄验证码: {{code}} (有效期5分钟，请勿分享)"
         verification = twilio_client.verify.v2.services(verify_service_sid) \
             .verifications \
             .create(to=phone, channel='sms')
@@ -173,9 +194,13 @@ def phone_send_otp():
 @auth_bp.route('/phone/verify', methods=['POST'])
 def phone_verify():
     """Verify phone OTP using Twilio Verify and login"""
-    data = request.get_json()
-    phone = data.get('phone')
-    otp = data.get('otp')
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(VerifyOTPSchema)
+    if error_response:
+        return error_response, status_code
+    
+    phone = validated_data['phone']
+    otp = validated_data['otp']
     
     # Normalize phone number first
     phone = normalize_phone(phone) if phone else None
@@ -184,11 +209,6 @@ def phone_verify():
     
     # Local dev bypass: auto-login for dev phone number (skip OTP verification)
     skip_otp = current_app.config.get('DEBUG', False) and phone == '+19025809630'
-    
-    # OTP is only required if not skipping
-    if not skip_otp:
-        if not otp:
-            return jsonify({'error': 'Phone and OTP required'}), 400
     
     if skip_otp:
         current_app.logger.info(f'Local dev mode: Bypassing OTP for {phone}')
@@ -321,7 +341,7 @@ def phone_verify():
                 phone=phone,
                 nickname=nickname,
                 points=points,
-                status='active'
+                status=UserStatus.ACTIVE.value
             )
             db.session.add(user)
             db.session.flush()  # Flush to get user.id
@@ -582,7 +602,7 @@ def google_callback():
                 email=email,
                 nickname=name,
                 phone=None,  # Google OAuth users don't need phone
-                status='active',
+                status=UserStatus.ACTIVE.value,
                 points=0
             )
             db.session.add(user)

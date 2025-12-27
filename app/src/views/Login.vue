@@ -15,14 +15,21 @@
           <input
             v-model="phone"
             type="tel"
-            placeholder="请输入手机号码 (例如: +1234567890)"
+            placeholder="手机号码 (例如: 4161234567 或 +14161234567)"
             class="phone-input"
             :disabled="loading"
+            @input="formatPhoneInput"
           />
+          <div class="phone-hint">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>输入10位号码即可，自动添加 +1 区号</span>
+          </div>
           <button 
             @click="sendOTP" 
             class="login-btn sms-btn"
-            :disabled="loading || !phone"
+            :disabled="loading || !phone || !isPhoneValid"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="icon">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -60,9 +67,14 @@
 
 <script>
 import apiClient from '../api/client'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Login',
+  setup() {
+    const { alert } = useModal()
+    return { $alert: alert }
+  },
   data() {
     return {
       loading: false,
@@ -70,6 +82,15 @@ export default {
       phone: '',
       otp: '',
       otpSent: false
+    }
+  },
+  computed: {
+    isPhoneValid() {
+      if (!this.phone) return false
+      // Remove all non-digit characters
+      const digits = this.phone.replace(/\D/g, '')
+      // Valid if 10 digits (Canadian) or 11+ digits with country code
+      return digits.length === 10 || (digits.length >= 11 && digits.startsWith('1'))
     }
   },
   async mounted() {
@@ -99,6 +120,11 @@ export default {
     
   },
   methods: {
+    formatPhoneInput() {
+      // Optional: Add formatting as user types
+      // For now, just trim whitespace
+      this.phone = this.phone.trim()
+    },
     async sendOTP() {
       this.loading = true
       this.error = null
@@ -125,7 +151,10 @@ export default {
         this.otpSent = true
         // In development, show OTP (remove in production!)
         if (response.data.otp) {
-          alert(`OTP: ${response.data.otp} (Development only - check console in production)`)
+          await this.$alert(`验证码: ${response.data.otp}\n\n(开发模式 - 生产环境请检查短信)`, {
+            type: 'info',
+            title: '验证码已发送'
+          })
         } else {
           // OTP sent successfully via Twilio
           this.error = null
@@ -304,11 +333,31 @@ export default {
   border: 1px solid var(--md-outline);
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
-  margin-bottom: var(--md-spacing-md);
+  margin-bottom: var(--md-spacing-sm);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: var(--md-surface);
   color: var(--md-on-surface);
   font-family: var(--md-font-family);
+}
+
+.phone-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  padding: var(--md-spacing-sm);
+  background: #E3F2FD;
+  border-radius: var(--md-radius-sm);
+  margin-bottom: var(--md-spacing-md);
+  font-size: 12px;
+  color: #1565C0;
+  line-height: 1.4;
+}
+
+.phone-hint svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #1565C0;
 }
 
 .phone-input:focus,
@@ -323,6 +372,10 @@ export default {
   margin-top: var(--md-spacing-md);
   padding-top: var(--md-spacing-md);
   border-top: 1px solid var(--md-surface-variant);
+}
+
+.otp-section .otp-input {
+  margin-bottom: var(--md-spacing-md);
 }
 
 .error-message {

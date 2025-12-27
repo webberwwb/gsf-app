@@ -77,11 +77,16 @@
 <script>
 import apiClient from '../api/client'
 import OTPStats from './OTPStats.vue'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Users',
   components: {
     OTPStats
+  },
+  setup() {
+    const { confirm, success, error, alert } = useModal()
+    return { confirm, success, error, $alert: alert }
   },
   data() {
     return {
@@ -126,33 +131,42 @@ export default {
       const name = user.nickname || user.phone || 'U'
       return name.charAt(0).toUpperCase()
     },
-    viewUser(user) {
+    async viewUser(user) {
       // TODO: Implement user detail view
-      alert(`View user: ${user.id}`)
+      await this.$alert(`User ID: ${user.id}\nPhone: ${user.phone}\nNickname: ${user.nickname || 'N/A'}`, {
+        title: '用户详情',
+        type: 'info'
+      })
     },
     async banUser(userId) {
-      if (!confirm('确定要禁用这个用户吗？')) {
+      const confirmed = await this.confirm('确定要禁用这个用户吗？', {
+        type: 'warning'
+      })
+      if (!confirmed) {
         return
       }
 
       try {
         await apiClient.post(`/admin/users/${userId}/ban`)
+        await this.success('用户已禁用')
         await this.fetchUsers()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '禁用失败')
+        await this.error(error.response?.data?.message || error.response?.data?.error || '禁用失败')
         console.error('Ban user error:', error)
       }
     },
     async unbanUser(userId) {
-      if (!confirm('确定要启用这个用户吗？')) {
+      const confirmed = await this.confirm('确定要启用这个用户吗？')
+      if (!confirmed) {
         return
       }
 
       try {
         await apiClient.post(`/admin/users/${userId}/unban`)
+        await this.success('用户已启用')
         await this.fetchUsers()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '启用失败')
+        await this.error(error.response?.data?.message || error.response?.data?.error || '启用失败')
         console.error('Unban user error:', error)
       }
     },
@@ -182,7 +196,10 @@ export default {
       
       const parts = action.trim().split(' ')
       if (parts.length !== 2) {
-        alert('格式错误，请使用: add/remove role_name')
+        await this.$alert('格式错误，请使用: add/remove role_name', {
+          type: 'warning',
+          title: '格式错误'
+        })
         return
       }
       
@@ -191,17 +208,20 @@ export default {
       try {
         if (action_type.toLowerCase() === 'add') {
           await apiClient.post(`/admin/users/${user.id}/roles`, { role: role_name })
-          alert('角色添加成功')
+          await this.success('角色添加成功')
         } else if (action_type.toLowerCase() === 'remove') {
           await apiClient.delete(`/admin/users/${user.id}/roles/${role_name}`)
-          alert('角色移除成功')
+          await this.success('角色移除成功')
         } else {
-          alert('无效操作，请使用 add 或 remove')
+          await this.$alert('无效操作，请使用 add 或 remove', {
+            type: 'warning',
+            title: '无效操作'
+          })
           return
         }
         await this.fetchUsers()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '操作失败')
+        await this.error(error.response?.data?.message || error.response?.data?.error || '操作失败')
         console.error('Role management error:', error)
       }
     }
@@ -249,32 +269,43 @@ export default {
 }
 
 .user-card {
-  background: var(--md-surface);
+  background: #FFFFFF;
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: var(--md-elevation-1);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
   display: flex;
   align-items: center;
   gap: var(--md-spacing-lg);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: var(--transition-normal);
+  border: none;
+  position: relative;
+  overflow: hidden;
 }
 
 .user-card:hover {
-  box-shadow: var(--md-elevation-2);
+  background: #FFFFFF;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
+  transform: translateY(-2px);
 }
 
 .user-avatar {
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background: var(--md-primary);
-  color: white;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--md-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--md-title-size);
   font-weight: 500;
   flex-shrink: 0;
+  transition: var(--transition-normal);
+}
+
+.user-card:hover .user-avatar {
+  transform: scale(1.05);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .user-info {
@@ -364,46 +395,62 @@ export default {
   font-size: var(--md-label-size);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: var(--transition-fast);
+  position: relative;
+  overflow: hidden;
 }
 
 .roles-btn {
   background: rgba(255, 140, 0, 0.1);
   color: var(--md-primary);
+  border: 1px solid rgba(255, 140, 0, 0.3);
 }
 
 .roles-btn:hover {
-  background: rgba(255, 140, 0, 0.2);
+  background: var(--gradient-primary);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
 }
 
 .view-btn {
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface);
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .view-btn:hover {
-  background: var(--md-outline);
-  color: white;
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .ban-btn {
-  background: #FFEBEE;
+  background: rgba(255, 68, 68, 0.1);
   color: #C62828;
+  border: 1px solid rgba(255, 68, 68, 0.3);
 }
 
 .ban-btn:hover {
-  background: #C62828;
+  background: var(--gradient-accent);
   color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3);
 }
 
 .unban-btn {
-  background: #E8F5E9;
+  background: rgba(17, 153, 142, 0.1);
   color: #2E7D32;
+  border: 1px solid rgba(17, 153, 142, 0.3);
 }
 
 .unban-btn:hover {
-  background: #2E7D32;
+  background: var(--gradient-success);
   color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(17, 153, 142, 0.3);
 }
 
 /* Tabs */
@@ -439,6 +486,88 @@ export default {
 
 .tab-content {
   /* Tab content wrapper */
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 767px) {
+  .search-input {
+    max-width: 100%;
+  }
+
+  .user-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--md-spacing-md);
+  }
+
+  .user-avatar {
+    width: 50px;
+    height: 50px;
+    font-size: var(--md-body-size);
+  }
+
+  .user-info {
+    width: 100%;
+  }
+
+  .user-name {
+    font-size: var(--md-body-size);
+  }
+
+  .user-meta {
+    flex-direction: column;
+    gap: var(--md-spacing-xs);
+  }
+
+  .user-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .view-btn,
+  .ban-btn,
+  .unban-btn,
+  .roles-btn {
+    flex: 1 1 auto;
+    min-width: 80px;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    white-space: nowrap;
+    font-size: var(--md-label-size);
+  }
+}
+
+@media (max-width: 480px) {
+  .user-card {
+    padding: var(--md-spacing-sm);
+  }
+
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .user-name-row {
+    flex-wrap: wrap;
+  }
+
+  .user-actions {
+    flex-direction: column;
+  }
+
+  .view-btn,
+  .ban-btn,
+  .unban-btn,
+  .roles-btn {
+    width: 100%;
+  }
 }
 </style>
 

@@ -51,9 +51,14 @@
 <script>
 import { getCurrentUser, clearAuth } from '../utils/auth'
 import apiClient from '../api/client'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Me',
+  setup() {
+    const { confirm } = useModal()
+    return { confirm }
+  },
   data() {
     return {
       user: null
@@ -98,8 +103,9 @@ export default {
         console.error('Failed to fetch user:', error)
       }
     },
-    handleLogout() {
-      if (confirm('确定要退出登录吗？')) {
+    async handleLogout() {
+      const confirmed = await this.confirm('确定要退出登录吗？')
+      if (confirmed) {
         clearAuth()
         this.$router.push('/login')
       }

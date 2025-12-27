@@ -13,8 +13,12 @@
 
     <!-- Main Content -->
     <main class="shop-content">
+      <!-- Global Loading State -->
+      <div v-if="loading" class="global-loading">
+        <div class="loading">加载中...</div>
+      </div>
       <!-- Active Group Deals Section -->
-      <section v-if="activeDeals.length > 0" class="deals-section">
+      <section v-if="!loading && activeDeals.length > 0" class="deals-section">
         <h2 class="section-title">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
@@ -65,7 +69,7 @@
       </section>
 
       <!-- Upcoming Deals Section -->
-      <section v-if="upcomingDeals.length > 0" class="deals-section">
+      <section v-if="!loading && upcomingDeals.length > 0" class="deals-section">
         <h2 class="section-title">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -97,7 +101,7 @@
       </section>
 
       <!-- Hot Products Section (Browse Only) -->
-      <section v-if="products.length > 0" class="products-section">
+      <section v-if="!loading && products.length > 0" class="products-section">
         <h2 class="section-title">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
@@ -135,21 +139,18 @@
               </p>
               <div class="product-price">
                 <template v-if="product.pricing_type === 'per_item'">
-                  <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
-                  <span v-if="product.original_price && product.original_price > (product.display_price || product.sale_price)" class="original-price">
-                    ${{ product.original_price }}
-                  </span>
+                  <span class="sale-price">${{ product.price }}</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'weight_range'">
                   <span class="sale-price">${{ formatWeightRangePrice(product) }}</span>
                   <span class="price-note">按重量区间</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'unit_weight'">
-                  <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.display_price }}</span>
+                  <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price }}</span>
                   <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
                 </template>
                 <template v-else>
-                  <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
+                  <span class="sale-price">${{ product.price }}</span>
                 </template>
               </div>
               <div v-if="getNextSaleDate(product)" :class="['next-sale-badge', { 'active-deal': isProductInActiveDeal(product) }]">
@@ -207,6 +208,11 @@ export default {
         })
       } catch (error) {
         console.error('Failed to load data:', error)
+        // Ensure we still show something even if loading fails
+        this.products = []
+        this.deals = []
+        this.activeDeals = []
+        this.upcomingDeals = []
       } finally {
         this.loading = false
       }
@@ -214,11 +220,11 @@ export default {
     formatDate(dateString) {
       if (!dateString) return ''
       const date = new Date(dateString)
+      // Only show date, no time
       return date.toLocaleDateString('zh-CN', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
       })
     },
     formatWeightRangePrice(product) {
@@ -226,7 +232,7 @@ export default {
         const firstRange = product.pricing_data.ranges[0]
         return firstRange.price || '0.00'
       }
-      return product.display_price || product.sale_price || '0.00'
+      return product.price || '0.00'
     },
     getNextSaleDate(product) {
       if (!product || !this.deals || this.deals.length === 0) {
@@ -561,6 +567,14 @@ export default {
 
 .products-section {
   margin-bottom: 2rem;
+}
+
+.global-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+  padding: 2rem;
 }
 
 .loading, .empty-state {

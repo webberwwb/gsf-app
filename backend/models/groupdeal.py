@@ -1,6 +1,7 @@
 from models.base import BaseModel, utc_now
 from models import db
 from datetime import datetime
+from constants.status_enums import GroupDealStatus
 
 class GroupDeal(BaseModel):
     """Group Deal model - creates group buy events with order window and pickup date"""
@@ -17,8 +18,10 @@ class GroupDeal(BaseModel):
     # Pickup date: when users can pick up their orders
     pickup_date = db.Column(db.DateTime, nullable=False)
     
-    # Deal status
-    status = db.Column(db.String(50), default='upcoming', nullable=False)  # 'upcoming', 'active', 'closed', 'completed'
+    # Deal status (see constants.status_enums.GroupDealStatus for valid values and workflow)
+    # Auto-managed: upcoming → active → closed (by cron job based on dates)
+    # Manual: preparing → ready_for_pickup → completed (by admin)
+    status = db.Column(db.String(50), default=GroupDealStatus.UPCOMING.value, nullable=False)
     
     # Relationships
     products = db.relationship('GroupDealProduct', backref='group_deal', lazy=True, cascade='all, delete-orphan')
@@ -29,7 +32,7 @@ class GroupDeal(BaseModel):
         """Check if deal is currently active (within order window)"""
         now = utc_now()
         return (
-            self.status == 'active' and
+            self.status == GroupDealStatus.ACTIVE.value and
             self.order_start_date <= now <= self.order_end_date
         )
     
@@ -47,13 +50,13 @@ class GroupDeal(BaseModel):
         return data
 
 class GroupDealProduct(BaseModel):
-    """Junction table: Products available in a Group Deal"""
+    """Products in a group deal - can have promotional pricing"""
     __tablename__ = 'group_deal_products'
     
     group_deal_id = db.Column(db.Integer, db.ForeignKey('group_deals.id'), nullable=False, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
     
-    # Override prices for this deal (optional)
+    # Promotional price for this deal (optional - if null, use product's default price)
     deal_price = db.Column(db.Numeric(10, 2), nullable=True)
     
     # Stock limit for this deal (optional)

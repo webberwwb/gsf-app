@@ -151,7 +151,7 @@ export default {
 .sidebar {
   width: 260px;
   background: var(--md-surface);
-  box-shadow: var(--md-elevation-2);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   position: fixed;

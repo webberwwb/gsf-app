@@ -64,9 +64,9 @@
               <div class="product-mini-info">
                 <div class="product-mini-name">{{ product.name }}</div>
                 <div class="product-mini-price">
-                  <span class="deal-price">${{ product.deal_price || product.sale_price }}</span>
-                  <span v-if="product.deal_price && product.sale_price && product.deal_price < product.sale_price" class="original-price">
-                    ${{ product.sale_price }}
+                  <span class="deal-price">${{ product.deal_price || product.price || '0.00' }}</span>
+                  <span v-if="product.deal_price && product.price && product.deal_price < product.price" class="original-price">
+                    ${{ product.price }}
                   </span>
                 </div>
               </div>
@@ -153,7 +153,7 @@ export default {
       const labels = {
         'upcoming': '即将开始',
         'active': '进行中',
-        'closed': '已结束',
+        'closed': '已截单',
         'completed': '已完成'
       }
       return labels[status] || status
@@ -244,15 +244,17 @@ export default {
 }
 
 .deal-card {
-  background: var(--md-surface);
+  background: #FFFFFF;
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: var(--md-elevation-1);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
 }
 
 .deal-card:hover {
-  box-shadow: var(--md-elevation-2);
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
+  transform: translateY(-2px);
 }
 
 .deal-header {
@@ -320,13 +322,14 @@ export default {
 }
 
 .edit-btn {
-  background: var(--md-primary-variant);
-  color: var(--md-on-surface);
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .edit-btn:hover {
-  background: var(--md-primary);
-  color: white;
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .delete-btn {

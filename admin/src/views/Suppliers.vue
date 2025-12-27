@@ -301,8 +301,9 @@ export default {
 }
 
 .add-btn:hover {
-  background: #e67e00;
-  box-shadow: var(--md-elevation-4);
+  background: #FF7F00;
+  box-shadow: var(--md-elevation-3);
+  transform: translateY(-2px);
 }
 
 .add-btn svg {
@@ -410,13 +411,14 @@ export default {
 }
 
 .edit-btn {
-  background: rgba(33, 150, 243, 0.1);
-  color: #2196F3;
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .edit-btn:hover {
-  background: #2196F3;
-  color: white;
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .activate-btn {
@@ -574,12 +576,14 @@ export default {
 }
 
 .cancel-btn {
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface);
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .cancel-btn:hover {
-  background: var(--md-outline);
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .save-btn {

@@ -3,9 +3,33 @@ from models import db
 from models.product import Product
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.product_sales_stats import ProductSalesStats
+from models.order import Order
 from datetime import datetime, timezone, date, timedelta
 from models.base import utc_now
 from sqlalchemy import func, desc
+
+def get_user_id_optional():
+    """Get user_id if authenticated, otherwise return None (optional auth for group deal endpoint)"""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.replace('Bearer ', '').strip()
+    else:
+        token = auth_header.strip()
+    
+    if not token:
+        return None  # Not authenticated, but that's OK for this endpoint
+    
+    from models.user import AuthToken, User
+    auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
+    if not auth_token or not auth_token.is_valid():
+        return None  # Invalid/expired token, but that's OK for this endpoint
+    
+    # Get user
+    user = User.query.get(auth_token.user_id)
+    if not user or not user.is_active:
+        return None  # User not found or inactive
+    
+    return user.id
 
 products_bp = Blueprint('products', __name__)
 
@@ -130,11 +154,9 @@ def get_group_deals():
                 product = Product.query.get(dp.product_id)
                 if product and product.is_active:
                     product_dict = product.to_dict()
-                    # Use deal price if available, otherwise use product sale price
+                    # Add deal-specific price if set
                     if dp.deal_price:
                         product_dict['deal_price'] = float(dp.deal_price)
-                    else:
-                        product_dict['deal_price'] = product_dict['sale_price']
                     product_dict['deal_stock_limit'] = dp.deal_stock_limit
                     products_data.append(product_dict)
             deal_dict['products'] = products_data
@@ -151,7 +173,7 @@ def get_group_deals():
 
 @products_bp.route('/group-deals/<int:deal_id>', methods=['GET'])
 def get_group_deal(deal_id):
-    """Get a single group deal by ID with products"""
+    """Get a single group deal by ID with products and user's order (if authenticated)"""
     try:
         deal = GroupDeal.query.get_or_404(deal_id)
         deal_dict = deal.to_dict()
@@ -163,17 +185,54 @@ def get_group_deal(deal_id):
             product = Product.query.get(dp.product_id)
             if product:
                 product_dict = product.to_dict()
+                # Add deal-specific price if set
                 if dp.deal_price:
                     product_dict['deal_price'] = float(dp.deal_price)
-                else:
-                    product_dict['deal_price'] = product_dict['sale_price']
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 products_data.append(product_dict)
         
         deal_dict['products'] = products_data
-        return jsonify({
+        
+        # Try to get user's order for this group deal (if authenticated)
+        user_order = None
+        user_id = get_user_id_optional()
+        if user_id:
+            # User is authenticated, check for existing order
+            order = Order.query.filter_by(
+                user_id=user_id,
+                group_deal_id=deal_id
+            ).filter(Order.deleted_at.is_(None)).order_by(Order.created_at.desc()).first()
+            
+            if order:
+                # Include order with full details
+                order_dict = order.to_dict()
+                
+                # Get order items with product details
+                items_data = []
+                for item in order.items:
+                    item_dict = item.to_dict()
+                    product = Product.query.get(item.product_id)
+                    if product:
+                        item_dict['product'] = {
+                            'id': product.id,
+                            'name': product.name,
+                            'image': product.image,
+                            'pricing_type': product.pricing_type
+                        }
+                    items_data.append(item_dict)
+                
+                order_dict['items'] = items_data
+                user_order = order_dict
+        
+        response_data = {
             'deal': deal_dict
-        }), 200
+        }
+        
+        # Include user's order if found
+        if user_order:
+            response_data['order'] = user_order
+        
+        return jsonify(response_data), 200
     except Exception as e:
         return jsonify({
             'error': 'Group deal not found',

@@ -80,7 +80,9 @@
           <select id="status" v-model="formData.status" class="form-input">
             <option value="upcoming">即将开始</option>
             <option value="active">进行中</option>
-            <option value="closed">已结束</option>
+            <option value="closed">已截单</option>
+            <option value="preparing">正在配货</option>
+            <option value="ready_for_pickup">可以取货</option>
             <option value="completed">已完成</option>
           </select>
         </div>
@@ -102,7 +104,7 @@
               >
                 <div class="product-select-info">
                   <div class="product-select-name">{{ product.name }}</div>
-                  <div class="product-select-price">${{ product.sale_price }}</div>
+                  <div class="product-select-price">${{ product.price }}</div>
                 </div>
                 <div v-if="isProductSelected(product.id)" class="product-select-check">
                   ✓
@@ -133,7 +135,7 @@
                     type="number"
                     step="0.01"
                     min="0"
-                    :placeholder="`默认: ${selectedProduct.sale_price}`"
+                    :placeholder="`默认: ${selectedProduct.price}`"
                     class="form-input-small"
                   />
                 </div>
@@ -255,8 +257,8 @@ export default {
           this.selectedProducts = this.deal.products.map(product => ({
             id: product.id,
             name: product.name,
-            sale_price: product.sale_price,
-            deal_price: product.deal_price || product.sale_price,
+            price: product.price,
+            deal_price: product.deal_price || product.price,
             deal_stock_limit: product.deal_stock_limit || null
           }))
         }
@@ -264,23 +266,9 @@ export default {
     },
     formatDateTimeLocal(dateString) {
       if (!dateString) return ''
-      const date = new Date(dateString)
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      return `${year}-${month}-${day}`
-    },
-    formatDateToStartOfDay(dateString) {
-      if (!dateString) return null
-      // Create date in local timezone, then convert to UTC ISO string
-      const date = new Date(dateString + 'T00:00:00')
-      return date.toISOString()
-    },
-    formatDateToEndOfDay(dateString) {
-      if (!dateString) return null
-      // Create date in local timezone, then convert to UTC ISO string
-      const date = new Date(dateString + 'T23:59:59')
-      return date.toISOString()
+      // Extract date part from ISO string (YYYY-MM-DD)
+      // This avoids timezone conversion issues
+      return dateString.split('T')[0]
     },
     toggleProduct(product) {
       const index = this.selectedProducts.findIndex(p => p.id === product.id)
@@ -290,8 +278,8 @@ export default {
         this.selectedProducts.push({
           id: product.id,
           name: product.name,
-          sale_price: product.sale_price,
-          deal_price: product.sale_price,
+          price: product.price,
+          deal_price: product.price,
           deal_stock_limit: null
         })
       }
@@ -308,16 +296,13 @@ export default {
 
       try {
         // Prepare data
-        // Convert date-only inputs to full datetime:
-        // order_start_date: selected date at 00:00:00
-        // order_end_date: selected date at 23:59:59
-        // pickup_date: selected date at 00:00:00
+        // Send date strings only (YYYY-MM-DD) and let backend handle EST normalization
         const data = {
           title: this.formData.title,
           description: this.formData.description,
-          order_start_date: this.formatDateToStartOfDay(this.formData.order_start_date),
-          order_end_date: this.formatDateToEndOfDay(this.formData.order_end_date),
-          pickup_date: this.formatDateToStartOfDay(this.formData.pickup_date),
+          order_start_date: this.formData.order_start_date, // Backend will normalize to 00:00:00 EST
+          order_end_date: this.formData.order_end_date,     // Backend will normalize to 23:59:59 EST
+          pickup_date: this.formData.pickup_date,           // Backend will normalize to 00:00:00 EST
           status: this.formData.status,
           products: this.selectedProducts.map(p => ({
             product_id: p.id,

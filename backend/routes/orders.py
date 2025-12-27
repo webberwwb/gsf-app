@@ -1,11 +1,14 @@
 from flask import Blueprint, jsonify, request, current_app
 from models import db
 from models.order import Order, OrderItem
-from models.groupdeal import GroupDeal
+from models.groupdeal import GroupDeal, GroupDealProduct
 from models.product import Product
 from models.user import User, AuthToken
 from datetime import datetime, timezone
 from models.base import utc_now
+from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, PaymentMethod
+from schemas.order import CreateOrderSchema, UpdateOrderSchema
+from schemas.utils import validate_request
 import random
 import string
 
@@ -33,6 +36,22 @@ def require_auth():
     
     return user.id, None, None
 
+def can_access_order(user_id, order):
+    """Check if user can access an order (user owns it or is admin)"""
+    if not order:
+        return False
+    
+    # User owns the order
+    if order.user_id == user_id:
+        return True
+    
+    # Check if user is admin
+    user = User.query.get(user_id)
+    if user and user.is_admin:
+        return True
+    
+    return False
+
 @orders_bp.route('/orders', methods=['GET'])
 def get_user_orders():
     """Get all orders for the current authenticated user"""
@@ -44,9 +63,10 @@ def get_user_orders():
         # Get query parameters
         status_filter = request.args.get('status', '').strip()  # 'pending', 'confirmed', 'completed', 'cancelled'
         payment_status_filter = request.args.get('payment_status', '').strip()  # 'pending', 'paid', 'failed', 'refunded'
+        group_deal_id = request.args.get('group_deal_id')  # Filter by group deal
         
-        # Build query
-        query = Order.query.filter_by(user_id=user_id)
+        # Build query - filter out soft-deleted orders
+        query = Order.query.filter_by(user_id=user_id).filter(Order.deleted_at.is_(None))
         
         # Apply filters
         if status_filter:
@@ -54,6 +74,9 @@ def get_user_orders():
         
         if payment_status_filter:
             query = query.filter(Order.payment_status == payment_status_filter)
+        
+        if group_deal_id:
+            query = query.filter(Order.group_deal_id == int(group_deal_id))
         
         # Order by creation date (newest first)
         query = query.order_by(Order.created_at.desc())
@@ -68,14 +91,24 @@ def get_user_orders():
             # Get group deal info
             group_deal = GroupDeal.query.get(order.group_deal_id)
             if group_deal:
+                # Auto-confirm order if past order_end_date but still submitted
+                now = utc_now()
+                if order.status == OrderStatus.SUBMITTED.value and group_deal.order_end_date < now:
+                    order.status = OrderStatus.CONFIRMED.value
+                    db.session.commit()
+                    current_app.logger.info(f'Auto-confirmed order {order.id} after order_end_date')
+                
                 order_dict['group_deal'] = {
                     'id': group_deal.id,
                     'title': group_deal.title,
                     'description': group_deal.description,
                     'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
                     'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
-                    'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None
+                    'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
+                    'status': group_deal.status
                 }
+                # User can only edit/cancel when order status is 'submitted'
+                order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
             
             # Get order items with product details
             items_data = []
@@ -108,32 +141,46 @@ def get_user_orders():
 
 @orders_bp.route('/orders/<int:order_id>', methods=['GET'])
 def get_order(order_id):
-    """Get a single order by ID (must belong to current user)"""
+    """Get a single order by ID (must belong to current user or user must be admin)"""
     user_id, error_response, status_code = require_auth()
     if error_response:
         return error_response, status_code
     
     try:
-        order = Order.query.filter_by(id=order_id, user_id=user_id).first()
+        order = Order.query.filter(Order.id == order_id).filter(Order.deleted_at.is_(None)).first()
         
         if not order:
             return jsonify({
                 'error': 'Order not found'
             }), 404
         
+        # Check if user can access this order
+        if not can_access_order(user_id, order):
+            return jsonify({'error': 'Access denied'}), 403
+        
         order_dict = order.to_dict()
         
         # Get group deal info
         group_deal = GroupDeal.query.get(order.group_deal_id)
         if group_deal:
+            # Auto-confirm order if past order_end_date but still submitted
+            now = utc_now()
+            if order.status == OrderStatus.SUBMITTED.value and group_deal.order_end_date < now:
+                order.status = OrderStatus.CONFIRMED.value
+                db.session.commit()
+                current_app.logger.info(f'Auto-confirmed order {order.id} after order_end_date')
+            
             order_dict['group_deal'] = {
                 'id': group_deal.id,
                 'title': group_deal.title,
                 'description': group_deal.description,
                 'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
                 'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
-                'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None
+                'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
+                'status': group_deal.status
             }
+            # User can only edit/cancel when order status is 'submitted'
+            order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
         
         # Get order items with product details
         items_data = []
@@ -171,28 +218,24 @@ def generate_order_number():
 
 @orders_bp.route('/orders', methods=['POST'])
 def create_order():
-    """Create a new order"""
+    """Create a new order or update existing order for the same group deal"""
     user_id, error_response, status_code = require_auth()
     if error_response:
         return error_response, status_code
     
     try:
-        data = request.get_json()
+        # Validate request data using schema
+        validated_data, error_response, status_code = validate_request(CreateOrderSchema)
+        if error_response:
+            return error_response, status_code
         
-        # Validate required fields
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        group_deal_id = data.get('group_deal_id')
-        items = data.get('items', [])
-        delivery_method = data.get('delivery_method', 'pickup')  # 'pickup' or 'delivery'
-        address_id = data.get('address_id') if delivery_method == 'delivery' else None
-        
-        if not group_deal_id:
-            return jsonify({'error': 'group_deal_id is required'}), 400
-        
-        if not items or len(items) == 0:
-            return jsonify({'error': 'At least one item is required'}), 400
+        group_deal_id = validated_data['group_deal_id']
+        items = validated_data['items']
+        delivery_method = validated_data['delivery_method']
+        address_id = validated_data.get('address_id')
+        pickup_location = validated_data.get('pickup_location')
+        payment_method = validated_data['payment_method']
+        notes = validated_data.get('notes')  # User custom notes
         
         # Validate group deal exists and is active
         group_deal = GroupDeal.query.get(group_deal_id)
@@ -204,11 +247,22 @@ def create_order():
         if group_deal.order_end_date and group_deal.order_end_date < now:
             return jsonify({'error': 'This group deal is no longer accepting orders'}), 400
         
-        # Validate delivery address if delivery method is selected
-        if delivery_method == 'delivery':
-            if not address_id:
-                return jsonify({'error': 'address_id is required for delivery'}), 400
-            # Verify address belongs to user (would need Address model import)
+        # Check if user already has an order for this group deal
+        existing_order = Order.query.filter_by(
+            user_id=user_id,
+            group_deal_id=group_deal_id
+        ).filter(Order.deleted_at.is_(None)).first()
+        
+        # If order exists, return error - user should use PATCH to update
+        if existing_order:
+            return jsonify({
+                'error': 'Order already exists for this group deal',
+                'order_id': existing_order.id,
+                'message': 'Use PATCH /orders/<order_id> to update existing order'
+            }), 409
+        
+        # Verify address belongs to user if delivery method is selected
+        if delivery_method == DeliveryMethod.DELIVERY.value:
             from models.address import Address
             address = Address.query.filter_by(id=address_id, user_id=user_id).first()
             if not address:
@@ -219,24 +273,28 @@ def create_order():
         order_items = []
         
         for item_data in items:
-            product_id = item_data.get('product_id')
-            quantity = item_data.get('quantity', 1)
+            product_id = item_data['product_id']
+            quantity = item_data['quantity']
             pricing_type = item_data.get('pricing_type', 'per_item')
-            
-            if not product_id:
-                return jsonify({'error': 'product_id is required for each item'}), 400
-            
-            if quantity <= 0:
-                return jsonify({'error': 'quantity must be greater than 0'}), 400
             
             # Get product
             product = Product.query.get(product_id)
             if not product:
                 return jsonify({'error': f'Product {product_id} not found'}), 404
             
+            # Get group deal specific price (if set for this deal)
+            deal_product = GroupDealProduct.query.filter_by(
+                group_deal_id=group_deal_id,
+                product_id=product_id
+            ).first()
+            
             # Calculate item price based on pricing type
             if pricing_type == 'per_item':
-                unit_price = float(product.deal_price or product.display_price or product.sale_price or 0)
+                # Use deal_price if set, otherwise use product's default price
+                if deal_product and deal_product.deal_price:
+                    unit_price = float(deal_product.deal_price)
+                else:
+                    unit_price = product.get_display_price() or 0
             elif pricing_type == 'weight_range':
                 # Use medium weight price for estimation
                 ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
@@ -249,10 +307,10 @@ def create_order():
             elif pricing_type == 'unit_weight':
                 # Use price per unit with estimated weight
                 price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                estimated_weight = 1  # Default 1 unit for estimation
+                estimated_weight = 1
                 unit_price = price_per_unit * estimated_weight
             else:
-                unit_price = float(product.deal_price or product.display_price or product.sale_price or 0)
+                unit_price = product.get_display_price() or 0
             
             total_price = unit_price * quantity
             subtotal += total_price
@@ -274,19 +332,26 @@ def create_order():
         # Generate unique order number
         order_number = generate_order_number()
         
+        # Validate payment method
+        if payment_method not in PaymentMethod.get_all_values():
+            payment_method = PaymentMethod.CASH.value
+        
         # Create order
         order = Order(
             user_id=user_id,
             group_deal_id=group_deal_id,
             address_id=address_id,
+            pickup_location=pickup_location if delivery_method == DeliveryMethod.PICKUP.value else None,
             order_number=order_number,
             subtotal=subtotal,
             tax=tax,
             total=total,
             points_earned=points_earned,
-            payment_status='pending',
+            payment_method=payment_method,
+            payment_status='unpaid',
             pickup_status='pending',
-            status='pending'
+            status='submitted',
+            notes=notes  # User custom notes
         )
         
         db.session.add(order)
@@ -342,7 +407,8 @@ def create_order():
         
         return jsonify({
             'order': order_dict,
-            'message': 'Order created successfully'
+            'message': 'Order created successfully',
+            'is_new': True
         }), 201
         
     except Exception as e:
@@ -350,6 +416,310 @@ def create_order():
         current_app.logger.error(f'Error creating order: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to create order',
+            'message': str(e)
+        }), 500
+
+@orders_bp.route('/orders/<int:order_id>/cancel', methods=['POST'])
+def cancel_order(order_id):
+    """Cancel an order (only if still within order window)"""
+    user_id, error_response, status_code = require_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get the order
+        order = Order.query.filter(Order.id == order_id).filter(Order.deleted_at.is_(None)).first()
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+        
+        # Check if user can access this order
+        if not can_access_order(user_id, order):
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Check if order is already cancelled
+        if order.status == OrderStatus.CANCELLED.value:
+            return jsonify({'error': '订单已取消'}), 400
+        
+        # User can only cancel if order status is 'submitted'
+        if order.status != 'submitted':
+            return jsonify({'error': '订单已确认，无法取消'}), 400
+        
+        # Get group deal for response
+        group_deal = GroupDeal.query.get(order.group_deal_id)
+        if not group_deal:
+            return jsonify({'error': 'Group deal not found'}), 404
+        
+        # Cancel the order
+        order.status = OrderStatus.CANCELLED.value
+        order.updated_at = utc_now()
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Order {order_id} cancelled by user {user_id}')
+        
+        # Return updated order
+        order_dict = order.to_dict()
+        
+        # Get group deal info
+        order_dict['group_deal'] = {
+            'id': group_deal.id,
+            'title': group_deal.title,
+            'description': group_deal.description,
+            'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
+            'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
+            'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None
+        }
+        order_dict['is_editable'] = False  # Cancelled orders are not editable
+        
+        # Get order items with product details
+        items_data = []
+        for item in order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = {
+                    'id': product.id,
+                    'name': product.name,
+                    'image': product.image,
+                    'pricing_type': product.pricing_type
+                }
+            items_data.append(item_dict)
+        
+        order_dict['items'] = items_data
+        
+        return jsonify({
+            'order': order_dict,
+            'message': 'Order cancelled successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error cancelling order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to cancel order',
+            'message': str(e)
+        }), 500
+
+@orders_bp.route('/orders/<int:order_id>', methods=['PATCH'])
+def update_order(order_id):
+    """Update an existing order (only if still within order window)"""
+    user_id, error_response, status_code = require_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get the order
+        order = Order.query.filter(Order.id == order_id).filter(Order.deleted_at.is_(None)).first()
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+        
+        # Check if user can access this order
+        if not can_access_order(user_id, order):
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Get group deal for validation
+        group_deal = GroupDeal.query.get(order.group_deal_id)
+        if not group_deal:
+            return jsonify({'error': 'Group deal not found'}), 404
+        
+        # Validate request data using schema
+        validated_data, error_response, status_code = validate_request(UpdateOrderSchema)
+        if error_response:
+            return error_response, status_code
+        
+        items = validated_data['items']
+        delivery_method = validated_data['delivery_method']
+        address_id = validated_data.get('address_id')
+        pickup_location = validated_data.get('pickup_location')
+        payment_method = validated_data.get('payment_method')
+        notes = validated_data.get('notes')  # User custom notes
+        
+        # Check if items are being changed by comparing with existing order items
+        existing_items = {(item.product_id, item.quantity) for item in order.items}
+        new_items = {(item_data['product_id'], item_data['quantity']) for item_data in items}
+        items_changed = existing_items != new_items
+        
+        # Check if delivery method is being changed
+        current_delivery_method = order.delivery_method or DeliveryMethod.PICKUP.value
+        delivery_method_changed = delivery_method != current_delivery_method
+        
+        # If items are being changed, enforce normal restrictions
+        if items_changed:
+            # User can only edit items if order status is 'submitted'
+            if order.status != 'submitted':
+                return jsonify({'error': '订单已确认，不可修改商品'}), 400
+            
+            # Check if still within order window
+            now = utc_now()
+            if group_deal.order_end_date and group_deal.order_end_date < now:
+                return jsonify({'error': '团购已截单，无法修改商品'}), 400
+        
+        # If only delivery method is being changed, allow it even after deadline
+        # But still check order status - can't change delivery method if order is cancelled
+        if delivery_method_changed and not items_changed:
+            if order.status == 'cancelled':
+                return jsonify({'error': '订单已取消，无法修改取货方式'}), 400
+            # Allow delivery method update even after order_end_date
+        
+        # Verify address belongs to user if delivery method is selected
+        if delivery_method == DeliveryMethod.DELIVERY.value:
+            from models.address import Address
+            address = Address.query.filter_by(id=address_id, user_id=user_id).first()
+            if not address:
+                return jsonify({'error': 'Address not found or does not belong to user'}), 404
+        
+        # Calculate new order totals
+        subtotal = 0
+        new_order_items = []
+        
+        for item_data in items:
+            product_id = item_data['product_id']
+            quantity = item_data['quantity']
+            pricing_type = item_data.get('pricing_type', 'per_item')
+            
+            # Get product
+            product = Product.query.get(product_id)
+            if not product:
+                return jsonify({'error': f'Product {product_id} not found'}), 404
+            
+            # Get group deal specific price (if set for this deal)
+            deal_product = GroupDealProduct.query.filter_by(
+                group_deal_id=order.group_deal_id,
+                product_id=product_id
+            ).first()
+            
+            # Calculate item price based on pricing type
+            if pricing_type == 'per_item':
+                # Use deal_price if set, otherwise use product's default price
+                if deal_product and deal_product.deal_price:
+                    unit_price = float(deal_product.deal_price)
+                else:
+                    unit_price = product.get_display_price() or 0
+            elif pricing_type == 'weight_range':
+                # Use medium weight price for estimation
+                ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
+                if ranges:
+                    sorted_ranges = sorted(ranges, key=lambda x: x.get('min', 0))
+                    middle_index = len(sorted_ranges) // 2
+                    unit_price = float(sorted_ranges[middle_index].get('price', 0))
+                else:
+                    unit_price = 0
+            elif pricing_type == 'unit_weight':
+                # Use price per unit with estimated weight
+                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
+                estimated_weight = 1
+                unit_price = price_per_unit * estimated_weight
+            else:
+                unit_price = product.get_display_price() or 0
+            
+            total_price = unit_price * quantity
+            subtotal += total_price
+            
+            new_order_items.append({
+                'product_id': product_id,
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'total_price': total_price
+            })
+        
+        # Calculate tax (0% for now, can be configured later)
+        tax = 0
+        total = subtotal + tax
+        
+        # Calculate points (1 point per dollar)
+        points_earned = int(total)
+        
+        # Delete old order items
+        OrderItem.query.filter_by(order_id=order.id).delete()
+        
+        # Update order totals, delivery method, address, pickup location, and payment method
+        order.subtotal = subtotal
+        order.tax = tax
+        order.total = total
+        order.points_earned = points_earned
+        order.delivery_method = delivery_method
+        order.address_id = address_id
+        
+        # Update pickup_location (only for pickup orders)
+        if 'pickup_location' in validated_data:
+            order.pickup_location = pickup_location if delivery_method == DeliveryMethod.PICKUP.value else None
+        
+        # Update notes (user custom notes)
+        if 'notes' in validated_data:
+            order.notes = notes
+        
+        if payment_method and payment_method in PaymentMethod.get_all_values():
+            order.payment_method = payment_method
+        order.updated_at = utc_now()
+        
+        # Create new order items
+        for item_data in new_order_items:
+            order_item = OrderItem(
+                order_id=order.id,
+                product_id=item_data['product_id'],
+                quantity=item_data['quantity'],
+                unit_price=item_data['unit_price'],
+                total_price=item_data['total_price']
+            )
+            db.session.add(order_item)
+        
+        # Commit transaction
+        db.session.commit()
+        
+        # Refresh the order from database to ensure we have latest data
+        db.session.refresh(order)
+        
+        # Update product sales stats
+        try:
+            from utils.sales_stats import update_product_sales_stats
+            update_product_sales_stats(order)
+        except Exception as e:
+            current_app.logger.warning(f'Failed to update sales stats: {e}')
+        
+        # Return updated order
+        order_dict = order.to_dict()
+        
+        # Get group deal info
+        order_dict['group_deal'] = {
+            'id': group_deal.id,
+            'title': group_deal.title,
+            'description': group_deal.description,
+            'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
+            'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
+            'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
+            'status': group_deal.status
+        }
+        # User can only edit/cancel when order status is 'submitted'
+        order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
+        
+        # Get order items with product details
+        items_data = []
+        for item in order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = {
+                    'id': product.id,
+                    'name': product.name,
+                    'image': product.image,
+                    'pricing_type': product.pricing_type
+                }
+            items_data.append(item_dict)
+        
+        order_dict['items'] = items_data
+        
+        return jsonify({
+            'order': order_dict,
+            'message': 'Order updated successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update order',
             'message': str(e)
         }), 500
 

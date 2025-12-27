@@ -3,18 +3,43 @@
     <router-view />
     <BottomNavigation v-if="showBottomNav" />
     <InstallPrompt />
+    <UpdatePrompt />
+    <Modal
+      :show="modalState.show"
+      :type="modalState.type"
+      :title="modalState.title"
+      :message="modalState.message"
+      :confirmText="modalState.confirmText"
+      :cancelText="modalState.cancelText"
+      :showCancel="modalState.showCancel"
+      :showClose="modalState.showClose"
+      :icon="modalState.icon"
+      :closeOnOverlay="modalState.closeOnOverlay"
+      @confirm="modalState.onConfirm"
+      @cancel="modalState.onCancel"
+      @close="modalState.onCancel"
+    />
   </div>
 </template>
 
 <script>
 import BottomNavigation from './components/BottomNavigation.vue'
 import InstallPrompt from './components/InstallPrompt.vue'
+import UpdatePrompt from './components/UpdatePrompt.vue'
+import Modal from './components/Modal.vue'
+import { useModal } from './composables/useModal'
 
 export default {
   name: 'App',
   components: {
     BottomNavigation,
-    InstallPrompt
+    InstallPrompt,
+    UpdatePrompt,
+    Modal
+  },
+  setup() {
+    const { modalState } = useModal()
+    return { modalState }
   },
   computed: {
     showBottomNav() {

@@ -38,10 +38,7 @@
               {{ item.description.substring(0, 60) }}...
             </p>
             <div class="item-price">
-              <span class="sale-price">${{ item.sale_price }}</span>
-              <span v-if="item.original_price > item.sale_price" class="original-price">
-                ${{ item.original_price }}
-              </span>
+              <span class="sale-price">${{ item.price }}</span>
             </div>
             <div class="item-actions">
               <button @click="removeFavorite(item.id)" class="remove-btn">取消收藏</button>
@@ -55,8 +52,14 @@
 </template>
 
 <script>
+import { useModal } from '../composables/useModal'
+
 export default {
   name: 'Favorites',
+  setup() {
+    const { success } = useModal()
+    return { success }
+  },
   data() {
     return {
       favorites: []
@@ -74,7 +77,7 @@ export default {
       this.favorites = this.favorites.filter(item => item.id !== productId)
       localStorage.setItem('favorites', JSON.stringify(this.favorites))
     },
-    addToCart(product) {
+    async addToCart(product) {
       // Get current cart
       const cart = JSON.parse(localStorage.getItem('cart') || '[]')
       
@@ -87,7 +90,7 @@ export default {
         cart.push({
           id: product.id,
           name: product.name,
-          price: product.sale_price,
+          price: product.price,
           image: product.image,
           quantity: 1
         })
@@ -99,7 +102,7 @@ export default {
       // Update badge in bottom nav
       this.$root.$emit('cart-updated')
       
-      alert(`已添加 ${product.name} 到购物车`)
+      await this.success(`已添加 ${product.name} 到购物车`)
     }
   }
 }

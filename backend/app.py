@@ -1,4 +1,4 @@
-from flask import Flask, redirect
+from flask import Flask, redirect, request
 from flask_cors import CORS
 from flask_migrate import Migrate
 from config import Config
@@ -15,22 +15,38 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate = Migrate(app, db)
     
-    # CORS configuration - allow all origins for development and production
-    # Simple configuration that works for all routes
+    # CORS configuration - allow all origins
+    # Note: When supports_credentials=True, we can't use origins="*", so we'll handle it manually
     CORS(app, 
-         origins="*",
-         supports_credentials=True,
-         allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-         expose_headers=["Content-Type"])
+         resources={r"/api/*": {
+             "origins": "*",
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+             "expose_headers": ["Content-Type"],
+             "supports_credentials": False  # Set to False when using wildcard origin
+         }},
+         automatic_options=True)
     
-    # Explicit CORS headers for all responses (backup)
+    # Handle CORS headers for all responses
     @app.after_request
     def after_request(response):
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
-        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        # Get the origin from the request
+        origin = request.headers.get('Origin')
+        
+        # Allow all origins (since we're not using credentials)
+        if origin:
+            response.headers['Access-Control-Allow-Origin'] = origin
+        else:
+            response.headers['Access-Control-Allow-Origin'] = '*'
+        
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Type'
+        
+        # Handle preflight requests
+        if request.method == 'OPTIONS':
+            response.headers['Access-Control-Max-Age'] = '86400'  # Cache for 24 hours
+        
         return response
     
     # Register blueprints
@@ -64,6 +80,18 @@ def create_app(config_class=Config):
         app.register_blueprint(admin_bp, url_prefix='/api/admin')
     except ImportError:
         # Admin routes not available yet
+        pass
+    try:
+        from routes.cron import cron_bp
+        app.register_blueprint(cron_bp, url_prefix='/api')
+    except ImportError:
+        # Cron routes not available yet
+        pass
+    try:
+        from routes.constants import constants_bp
+        app.register_blueprint(constants_bp)
+    except ImportError:
+        # Constants routes not available yet
         pass
     app.register_blueprint(api_bp, url_prefix='/api')
     

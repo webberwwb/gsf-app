@@ -85,10 +85,10 @@
         <!-- Per Item Pricing -->
         <div v-if="formData.pricing_type === 'per_item'">
           <div class="form-group">
-            <label for="original_price">原价 ($) *</label>
+            <label for="price">价格 ($) *</label>
             <input
-              id="original_price"
-              v-model.number="formData.pricing_data.original_price"
+              id="price"
+              v-model.number="formData.pricing_data.price"
               type="number"
               step="0.01"
               min="0"
@@ -96,30 +96,7 @@
               placeholder="0.00"
               class="form-input"
             />
-          </div>
-          <div class="form-group">
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                v-model="formData.is_on_sale"
-                class="checkbox-input"
-              />
-              <span>特价销售</span>
-            </label>
-          </div>
-          <div v-if="formData.is_on_sale" class="form-group">
-            <label for="sale_price">特价 ($) *</label>
-            <input
-              id="sale_price"
-              v-model.number="formData.pricing_data.sale_price"
-              type="number"
-              step="0.01"
-              min="0"
-              :required="formData.is_on_sale"
-              placeholder="0.00"
-              class="form-input"
-            />
-            <small class="form-hint">特价必须低于原价</small>
+            <small class="form-hint">商品的标准价格</small>
           </div>
         </div>
 
@@ -292,15 +269,11 @@ export default {
         description: '',
         pricing_type: 'per_item',
         pricing_data: {
-          sale_price: null,
-          original_price: null,
+          price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
           unit: 'kg'
         },
-        is_on_sale: false,
-        original_price: null, // Legacy field
-        sale_price: null, // Legacy field
         supplier_id: null,
         stock_limit: null,
         is_active: true
@@ -340,15 +313,11 @@ export default {
         description: '',
         pricing_type: 'per_item',
         pricing_data: {
-          sale_price: null,
-          original_price: null,
+          price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
           unit: 'kg'
         },
-        is_on_sale: false,
-        original_price: null,
-        sale_price: null,
         supplier_id: null,
         stock_limit: null,
         is_active: true
@@ -374,36 +343,17 @@ export default {
         const pricingType = this.product.pricing_type || 'per_item'
         let pricingData = this.product.pricing_data || {}
         
-        // Migrate legacy pricing to pricing_data if needed
-        if (!pricingData || Object.keys(pricingData).length === 0) {
-          if (pricingType === 'per_item') {
-            pricingData = {
-              sale_price: this.product.sale_price || null,
-              original_price: this.product.original_price || this.product.sale_price || null
-            }
-          }
-        }
-        
-        // Determine if product is on sale (has sale_price different from original_price)
-        const originalPrice = pricingData.original_price || this.product.original_price
-        const salePrice = pricingData.sale_price || this.product.sale_price
-        const isOnSale = salePrice !== null && salePrice !== undefined && salePrice !== originalPrice
-        
         this.formData = {
           name: this.product.name || '',
           image: this.product.image || '',
           description: this.product.description || '',
           pricing_type: pricingType,
           pricing_data: {
-            sale_price: pricingData.sale_price || null,
-            original_price: pricingData.original_price || originalPrice || null,
+            price: pricingData.price || null,
             ranges: pricingData.ranges || [{ min: 0, max: null, price: null }],
             price_per_unit: pricingData.price_per_unit || null,
             unit: pricingData.unit || 'kg'
           },
-          is_on_sale: isOnSale,
-          original_price: this.product.original_price || null,
-          sale_price: this.product.sale_price || null,
           supplier_id: this.product.supplier_id || null,
           stock_limit: this.product.stock_limit || null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true
@@ -415,8 +365,7 @@ export default {
       // Reset pricing_data when type changes
       if (this.formData.pricing_type === 'per_item') {
         this.formData.pricing_data = {
-          sale_price: null,
-          original_price: null
+          price: null
         }
       } else if (this.formData.pricing_type === 'weight_range') {
         this.formData.pricing_data = {
@@ -516,19 +465,8 @@ export default {
       try {
         // Validate per_item pricing
         if (this.formData.pricing_type === 'per_item') {
-          if (!this.formData.pricing_data.original_price) {
-            this.error = '请输入原价'
-            this.submitting = false
-            return
-          }
-          if (this.formData.is_on_sale && !this.formData.pricing_data.sale_price) {
-            this.error = '请输入特价'
-            this.submitting = false
-            return
-          }
-          if (this.formData.is_on_sale && 
-              parseFloat(this.formData.pricing_data.sale_price) >= parseFloat(this.formData.pricing_data.original_price)) {
-            this.error = '特价必须低于原价'
+          if (!this.formData.pricing_data.price) {
+            this.error = '请输入价格'
             this.submitting = false
             return
           }
@@ -544,18 +482,9 @@ export default {
 
         // Clean up pricing_data based on type
         if (this.formData.pricing_type === 'per_item') {
-          const originalPrice = parseFloat(this.formData.pricing_data.original_price)
-          const salePrice = this.formData.is_on_sale && this.formData.pricing_data.sale_price 
-            ? parseFloat(this.formData.pricing_data.sale_price) 
-            : originalPrice
-          
           data.pricing_data = {
-            sale_price: salePrice,
-            original_price: originalPrice
+            price: parseFloat(this.formData.pricing_data.price)
           }
-          // Keep legacy fields for backward compatibility
-          data.sale_price = salePrice
-          data.original_price = originalPrice
         } else if (this.formData.pricing_type === 'weight_range') {
           // Filter out empty ranges and ensure all have prices
           data.pricing_data.ranges = this.formData.pricing_data.ranges.filter(r => r.price !== null && r.price !== '')

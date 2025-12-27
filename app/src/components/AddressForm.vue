@@ -358,15 +358,25 @@ export default {
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: var(--md-spacing-xs);
+  gap: var(--md-spacing-sm);
   cursor: pointer;
   font-weight: normal;
+  padding: var(--md-spacing-sm) 0;
+  user-select: none;
+}
+
+.checkbox-label span {
+  line-height: 1.5;
+  padding-top: 1px; /* Fine-tune vertical alignment */
 }
 
 .checkbox-input {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--md-primary);
 }
 
 .error-message {

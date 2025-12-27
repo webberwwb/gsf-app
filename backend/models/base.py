@@ -1,17 +1,22 @@
 from models import db
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-def utc_now():
-    """Return current UTC time as naive datetime (for MySQL compatibility)"""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+def est_now():
+    """Return current EST time as naive datetime (for MySQL compatibility)"""
+    # EST/EDT timezone (Eastern Time)
+    return datetime.now(ZoneInfo('America/New_York')).replace(tzinfo=None)
+
+# Alias for backwards compatibility
+utc_now = est_now
 
 class BaseModel(db.Model):
     """Base model with common fields"""
     __abstract__ = True
     
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
-    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    created_at = db.Column(db.DateTime, default=est_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=est_now, onupdate=est_now, nullable=False)
     
     def to_dict(self):
         """Convert model instance to dictionary"""

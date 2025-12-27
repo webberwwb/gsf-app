@@ -78,11 +78,16 @@
 <script>
 import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Addresses',
   components: {
     AddressForm
+  },
+  setup() {
+    const { confirm, success, error } = useModal()
+    return { confirm, success, error }
   },
   data() {
     return {
@@ -127,24 +132,29 @@ export default {
       this.closeModal()
     },
     async deleteAddress(addressId) {
-      if (!confirm('确定要删除这个地址吗？')) {
+      const confirmed = await this.confirm('确定要删除这个地址吗？', {
+        type: 'warning'
+      })
+      if (!confirmed) {
         return
       }
 
       try {
         await apiClient.delete(`/addresses/${addressId}`)
+        await this.success('地址已删除')
         await this.loadAddresses()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '删除失败')
+        await this.error(error.response?.data?.message || error.response?.data?.error || '删除失败')
         console.error('Delete address error:', error)
       }
     },
     async setDefaultAddress(addressId) {
       try {
         await apiClient.post(`/addresses/${addressId}/set-default`)
+        await this.success('默认地址已设置')
         await this.loadAddresses()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '设置默认地址失败')
+        await this.error(error.response?.data?.message || error.response?.data?.error || '设置默认地址失败')
         console.error('Set default address error:', error)
       }
     }

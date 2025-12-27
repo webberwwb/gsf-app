@@ -4,6 +4,8 @@ from models.address import Address
 from models.user import User, AuthToken
 from datetime import datetime, timezone
 from models.base import utc_now
+from schemas.address import CreateAddressSchema, UpdateAddressSchema
+from schemas.utils import validate_request
 
 addresses_bp = Blueprint('addresses', __name__)
 
@@ -87,30 +89,27 @@ def create_address():
         return error_response, status_code
     
     try:
-        data = request.get_json()
-        
-        # Validate required fields
-        required_fields = ['recipient_name', 'phone', 'address_line1', 'city', 'postal_code']
-        for field in required_fields:
-            if field not in data or not data[field]:
-                return jsonify({'error': f'{field} is required'}), 400
+        # Validate request data using schema
+        validated_data, error_response, status_code = validate_request(CreateAddressSchema)
+        if error_response:
+            return error_response, status_code
         
         # If this is set as default, unset other default addresses
-        is_default = data.get('is_default', False)
+        is_default = validated_data.get('is_default', False)
         if is_default:
             Address.query.filter_by(user_id=user_id, is_default=True).update({'is_default': False})
         
         address = Address(
             user_id=user_id,
-            recipient_name=data['recipient_name'],
-            phone=data['phone'],
-            address_line1=data['address_line1'],
-            address_line2=data.get('address_line2'),
-            city=data['city'],
+            recipient_name=validated_data['recipient_name'],
+            phone=validated_data['phone'],
+            address_line1=validated_data['address_line1'],
+            address_line2=validated_data.get('address_line2'),
+            city=validated_data['city'],
             province='Ontario',  # Always Ontario for GTA area
-            postal_code=data['postal_code'],
+            postal_code=validated_data['postal_code'],
             country='Canada',  # Always Canada
-            delivery_instructions=data.get('delivery_instructions'),
+            delivery_instructions=validated_data.get('delivery_instructions'),
             is_default=is_default
         )
         
@@ -146,31 +145,34 @@ def update_address(address_id):
                 'error': 'Address not found'
             }), 404
         
-        data = request.get_json()
+        # Validate request data using schema
+        validated_data, error_response, status_code = validate_request(UpdateAddressSchema)
+        if error_response:
+            return error_response, status_code
         
         # Update fields
-        if 'recipient_name' in data:
-            address.recipient_name = data['recipient_name']
-        if 'phone' in data:
-            address.phone = data['phone']
-        if 'address_line1' in data:
-            address.address_line1 = data['address_line1']
-        if 'address_line2' in data:
-            address.address_line2 = data.get('address_line2')
-        if 'city' in data:
-            address.city = data['city']
-        if 'postal_code' in data:
-            address.postal_code = data['postal_code']
-        if 'delivery_instructions' in data:
-            address.delivery_instructions = data.get('delivery_instructions')
+        if 'recipient_name' in validated_data:
+            address.recipient_name = validated_data['recipient_name']
+        if 'phone' in validated_data:
+            address.phone = validated_data['phone']
+        if 'address_line1' in validated_data:
+            address.address_line1 = validated_data['address_line1']
+        if 'address_line2' in validated_data:
+            address.address_line2 = validated_data.get('address_line2')
+        if 'city' in validated_data:
+            address.city = validated_data['city']
+        if 'postal_code' in validated_data:
+            address.postal_code = validated_data['postal_code']
+        if 'delivery_instructions' in validated_data:
+            address.delivery_instructions = validated_data.get('delivery_instructions')
         
         # Always set province and country (not editable)
         address.province = 'Ontario'
         address.country = 'Canada'
         
         # Handle default address
-        if 'is_default' in data:
-            is_default = data['is_default']
+        if 'is_default' in validated_data:
+            is_default = validated_data['is_default']
             if is_default and not address.is_default:
                 # Unset other default addresses
                 Address.query.filter_by(user_id=user_id, is_default=True).update({'is_default': False})

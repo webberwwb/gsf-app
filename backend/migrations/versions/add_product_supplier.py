@@ -28,3 +28,4 @@ def downgrade():
     op.drop_index(op.f('ix_products_supplier_id'), table_name='products')
     op.drop_column('products', 'supplier_id')
 
+

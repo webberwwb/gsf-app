@@ -2,6 +2,7 @@ from models.base import BaseModel
 from models import db
 from datetime import datetime, timezone
 from models.base import utc_now
+from constants.status_enums import UserStatus
 
 class User(BaseModel):
     """User model"""
@@ -20,8 +21,8 @@ class User(BaseModel):
     creation_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     last_login_date = db.Column(db.DateTime, nullable=True)
     
-    # Status: active by default, can be banned
-    status = db.Column(db.String(20), default='active', nullable=False)  # 'active', 'banned'
+    # Status (see constants.status_enums.UserStatus for valid values)
+    status = db.Column(db.String(20), default=UserStatus.ACTIVE.value, nullable=False)
     
     # Optional: email
     email = db.Column(db.String(255), unique=True, nullable=True, index=True)
@@ -45,7 +46,7 @@ class User(BaseModel):
     @property
     def is_active(self):
         """Check if user is active"""
-        return self.status == 'active'
+        return self.status == UserStatus.ACTIVE.value
     
     @property
     def is_admin(self):

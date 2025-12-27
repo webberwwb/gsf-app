@@ -41,9 +41,9 @@
           </div>
           <div class="price-info">
             <template v-if="product.pricing_type === 'per_item'">
-              <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
-              <span v-if="product.original_price && product.original_price > (product.display_price || product.sale_price)" class="original-price">
-                ${{ product.original_price }}
+              <span class="sale-price">${{ product.price || product.pricing_data?.price || '0.00' }}</span>
+              <span v-if="product.pricing_data?.original_price && product.pricing_data.original_price > (product.price || product.pricing_data?.price || 0)" class="original-price">
+                ${{ product.pricing_data.original_price }}
               </span>
             </template>
             <template v-else-if="product.pricing_type === 'weight_range'">
@@ -51,11 +51,11 @@
               <span class="price-type-badge">重量区间</span>
             </template>
             <template v-else-if="product.pricing_type === 'unit_weight'">
-              <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.display_price }}</span>
+              <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price || '0.00' }}</span>
               <span class="price-type-badge">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
             </template>
             <template v-else>
-              <span class="sale-price">${{ product.display_price || product.sale_price }}</span>
+              <span class="sale-price">${{ product.price || product.pricing_data?.price || '0.00' }}</span>
             </template>
           </div>
           <div class="product-status">
@@ -156,7 +156,7 @@ export default {
         }
         return `$${ranges[0].price || '0.00'} - $${ranges[ranges.length - 1].price || '0.00'}`
       }
-      return `$${product.display_price || product.sale_price || '0.00'}`
+      return `$${product.price || product.pricing_data?.price || '0.00'}`
     }
   }
 }
@@ -236,15 +236,16 @@ export default {
 }
 
 .product-card {
-  background: var(--md-surface);
+  background: #FFFFFF;
   border-radius: var(--md-radius-lg);
   overflow: hidden;
-  box-shadow: var(--md-elevation-1);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
 }
 
 .product-card:hover {
-  box-shadow: var(--md-elevation-2);
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
 }
 
@@ -429,13 +430,14 @@ export default {
 }
 
 .edit-btn {
-  background: var(--md-primary-variant);
-  color: var(--md-on-surface);
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .edit-btn:hover {
-  background: var(--md-primary);
-  color: white;
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .delete-btn {

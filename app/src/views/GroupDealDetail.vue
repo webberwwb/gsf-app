@@ -97,16 +97,17 @@
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
                   <div class="quantity-control">
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || isDealClosed" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
                       :max="product.deal_stock_limit || 999"
+                      :disabled="isDealClosed"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="(product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit) || isDealClosed" class="qty-btn">+</button>
                   </div>
                   <div class="item-total">
                     小计: ${{ calculateItemTotal(product) }}
@@ -117,15 +118,16 @@
                 <div v-else-if="product.pricing_type === 'weight_range'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || isDealClosed" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
+                      :disabled="isDealClosed"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="isDealClosed" class="qty-btn">+</button>
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
@@ -144,15 +146,16 @@
                 <div v-else-if="product.pricing_type === 'unit_weight'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || isDealClosed" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
+                      :disabled="isDealClosed"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="isDealClosed" class="qty-btn">+</button>
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
@@ -181,7 +184,7 @@
         <span v-if="hasEstimatedTotal()" class="estimated-note">(估算)</span>
       </div>
       <button @click="confirmOrder" class="confirm-order-btn">
-        确认订单
+        {{ isDealClosed ? '更新取货方式' : '确认订单' }}
       </button>
     </div>
   </div>
@@ -197,11 +200,18 @@ export default {
       loading: true,
       error: null,
       deal: null,
-      selectedItems: {} // { productId: { quantity } }
+      selectedItems: {}, // { productId: { quantity } }
+      existingOrder: null, // Store existing order if found
+      existingOrderData: null // Store order metadata (payment method, delivery method, etc.)
     }
   },
   async mounted() {
     await this.loadDeal()
+  },
+  computed: {
+    isDealClosed() {
+      return this.deal && this.deal.status === 'closed'
+    }
   },
   methods: {
     async loadDeal() {
@@ -222,11 +232,74 @@ export default {
             }
           })
         }
+        
+        // Check if order is included in the response
+        if (response.data.order) {
+          this.existingOrder = response.data.order
+          
+          // Store order metadata for checkout
+          this.existingOrderData = {
+            orderId: this.existingOrder.id,
+            paymentMethod: this.existingOrder.payment_method || 'cash',
+            deliveryMethod: this.existingOrder.delivery_method || 'pickup',
+            addressId: this.existingOrder.address_id || null,
+            pickupLocation: this.existingOrder.pickup_location || null,
+            notes: this.existingOrder.notes || null
+          }
+          
+          // Load order items into selectedItems
+          if (this.existingOrder.items && this.existingOrder.items.length > 0) {
+            this.existingOrder.items.forEach(item => {
+              if (this.selectedItems[item.product_id] !== undefined) {
+                this.selectedItems[item.product_id].quantity = item.quantity
+              }
+            })
+          }
+        } else {
+          // Fallback: try to load existing order separately (for backwards compatibility)
+          await this.loadExistingOrder()
+        }
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '加载团购详情失败'
         console.error('Failed to load deal:', error)
       } finally {
         this.loading = false
+      }
+    },
+    async loadExistingOrder() {
+      if (!this.deal) return
+      
+      try {
+        // Check if user has an existing order for this group deal
+        const response = await apiClient.get(`/orders?group_deal_id=${this.deal.id}`)
+        const orders = response.data.orders || []
+        
+        if (orders.length > 0) {
+          // Get the first (and should be only) order for this group deal
+          this.existingOrder = orders[0]
+          
+          // Store order metadata for checkout
+          this.existingOrderData = {
+            orderId: this.existingOrder.id,
+            paymentMethod: this.existingOrder.payment_method || 'cash',
+            deliveryMethod: this.existingOrder.delivery_method || 'pickup',
+            addressId: this.existingOrder.address_id || null,
+            pickupLocation: this.existingOrder.pickup_location || null,
+            notes: this.existingOrder.notes || null
+          }
+          
+          // Load order items into selectedItems
+          if (this.existingOrder.items && this.existingOrder.items.length > 0) {
+            this.existingOrder.items.forEach(item => {
+              if (this.selectedItems[item.product_id] !== undefined) {
+                this.selectedItems[item.product_id].quantity = item.quantity
+              }
+            })
+          }
+        }
+      } catch (error) {
+        // Silently fail - if we can't load existing order, user can still view
+        console.warn('Failed to load existing order:', error)
       }
     },
     formatDate(dateString) {
@@ -305,7 +378,7 @@ export default {
       const labels = {
         'upcoming': '即将开始',
         'active': '进行中',
-        'closed': '已结束',
+        'closed': '已截单',
         'completed': '已完成'
       }
       return labels[status] || status
@@ -381,7 +454,7 @@ export default {
       const result = this.calculateTotal()
       return result.hasEstimated
     },
-    confirmOrder() {
+    async confirmOrder() {
       // Build order items from selected products
       const orderItems = []
       this.deal.products.forEach(product => {
@@ -390,9 +463,7 @@ export default {
           orderItems.push({
             product_id: product.id,
             quantity: selection.quantity,
-            estimated_price: this.calculateItemTotal(product),
-            pricing_type: product.pricing_type,
-            is_estimated: product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'
+            pricing_type: product.pricing_type
           })
         }
       })
@@ -402,13 +473,45 @@ export default {
         return
       }
       
-      // Navigate to checkout page with order data
-      // Store order data in sessionStorage to pass to checkout
-      sessionStorage.setItem('checkout_order_data', JSON.stringify({
-        dealId: this.deal.id,
-        items: orderItems
-      }))
-      this.$router.push('/checkout')
+      try {
+        // Create or update order with selected items first
+        // This ensures checkout page can load the order from backend
+        const orderData = {
+          items: orderItems,
+          delivery_method: this.existingOrderData?.deliveryMethod || 'pickup',
+          address_id: this.existingOrderData?.addressId || null,
+          pickup_location: this.existingOrderData?.pickupLocation || 'markham',
+          payment_method: this.existingOrderData?.paymentMethod || 'cash',
+          notes: this.existingOrderData?.notes || null
+        }
+        
+        if (this.existingOrderData?.orderId) {
+          // Update existing order
+          await apiClient.patch(`/orders/${this.existingOrderData.orderId}`, orderData)
+        } else {
+          // Create new order
+          orderData.group_deal_id = this.deal.id
+          await apiClient.post('/orders', orderData)
+        }
+        
+        // Navigate to checkout page - it will load the order from backend
+        this.$router.push({
+          path: '/checkout',
+          query: {
+            dealId: this.deal.id
+          }
+        })
+      } catch (error) {
+        // If order creation fails, still navigate to checkout
+        // Checkout page will handle the error or create the order
+        console.error('Failed to create/update order:', error)
+        this.$router.push({
+          path: '/checkout',
+          query: {
+            dealId: this.deal.id
+          }
+        })
+      }
     }
   }
 }
@@ -548,6 +651,12 @@ export default {
 .deal-badge.upcoming {
   background: var(--md-primary-variant);
   color: var(--md-on-surface);
+}
+
+.deal-badge.closed {
+  background: #FFF3E0;
+  color: #F57C00;
+  box-shadow: 0 2px 4px rgba(245, 124, 0, 0.3);
 }
 
 .deal-description {
