@@ -64,3 +64,4 @@ def downgrade():
     op.drop_column('products', 'pricing_type')
 
 
+

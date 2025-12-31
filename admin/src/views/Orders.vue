@@ -48,6 +48,12 @@
           <option value="cash">现金</option>
           <option value="etransfer">电子转账</option>
         </select>
+        
+        <select v-model="deliveryMethodFilter" class="filter-select">
+          <option value="">全部配送方式</option>
+          <option value="pickup">自取</option>
+          <option value="delivery">配送</option>
+        </select>
       </div>
     </div>
 
@@ -57,142 +63,19 @@
       <p>暂无订单</p>
     </div>
     <div v-else class="orders-list">
-      <div v-for="order in orders" :key="order.id" class="order-card" @click="viewOrderDetail(order)">
-        <!-- Delete Icon - Bottom Right -->
-        <button 
-          @click.stop="deleteOrder(order.id)" 
-          class="delete-icon-btn"
-          title="删除订单">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
-        
-        <div class="order-header">
-          <div class="order-id">{{ order.order_number }}</div>
-          <div class="status-badges">
-            <div class="order-status" :class="`status-${order.status}`">
-              {{ getStatusText(order.status) }}
-            </div>
-            <div class="payment-status" :class="`payment-${order.payment_status}`">
-              {{ getPaymentStatusText(order.payment_status) }}
-            </div>
-          </div>
-        </div>
-        
-        <div class="order-info-row">
-          <div class="order-info-user">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span class="value">{{ order.user?.nickname || order.user?.phone || 'N/A' }}</span>
-          </div>
-          <div class="order-info-price">
-            <span class="value price">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
-          </div>
-        </div>
-        
-        <div class="order-info-row" v-if="order.group_deal">
-          <div class="order-info-group">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-            <span class="value">{{ order.group_deal.title }}</span>
-          </div>
-        </div>
-        
-        <div class="order-info-row">
-          <div class="order-info-delivery">
-            <svg v-if="order.delivery_method === 'pickup'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span class="value">{{ order.delivery_method === 'pickup' ? '自取' : '配送' }}</span>
-          </div>
-        </div>
-        
-        <!-- Address/Location Info -->
-        <div class="order-info-row" v-if="order.delivery_method === 'delivery' && order.address">
-          <div class="order-info-address">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span class="value">{{ formatAddress(order.address) }}</span>
-          </div>
-        </div>
-        
-        <div class="order-info-row" v-if="order.delivery_method === 'pickup'">
-          <div class="order-info-address">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span class="value">自取点: Markham / North York</span>
-          </div>
-        </div>
-        
-        <div class="order-actions" @click.stop>
-          <!-- Payment Status Toggle -->
-          <button 
-            v-if="order.status !== 'cancelled' && order.payment_status === 'unpaid'"
-            @click="updatePaymentStatus(order)" 
-            class="action-btn payment-btn">
-            标记为已付款
-          </button>
-          
-          <!-- Shipping Status Toggle for Delivery Orders -->
-          <button 
-            v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'delivery' && order.status === 'preparing'"
-            @click="markAsShipped(order)" 
-            class="action-btn shipping-btn">
-            标记为已发货
-          </button>
-          
-          <!-- Pickup Status Toggle for Pickup Orders -->
-          <button 
-            v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'pickup' && (order.status === 'preparing' || order.status === 'ready_for_pickup')"
-            @click="markAsShipped(order)" 
-            class="action-btn pickup-btn">
-            标记为已取货
-          </button>
-          
-          <!-- Order Status Updates -->
-          <!-- Note: Orders auto-confirm at 00:00 EST daily via Cloud Scheduler -->
-          
-          <button 
-            v-if="order.status === 'confirmed'"
-            @click="updateOrderStatus(order.id, 'preparing')" 
-            class="action-btn preparing-btn">
-            开始配货
-          </button>
-          
-          <button 
-            v-if="order.status === 'preparing' && order.delivery_method === 'pickup'"
-            @click="updateOrderStatus(order.id, 'ready_for_pickup')" 
-            class="action-btn ready-btn">
-            通知取货
-          </button>
-          
-          <button 
-            v-if="order.status === 'preparing' && order.delivery_method === 'delivery'"
-            @click="updateOrderStatus(order.id, 'out_for_delivery')" 
-            class="action-btn delivery-btn">
-            开始配送
-          </button>
-          
-          <!-- Cancel Order -->
-          <button 
-            v-if="order.status !== 'completed' && order.status !== 'cancelled'"
-            @click="cancelOrder(order.id)" 
-            class="action-btn cancel-btn">
-            取消订单
-          </button>
-        </div>
-      </div>
+      <OrderCard
+        v-for="order in orders"
+        :key="order.id"
+        :order="order"
+        :show-delete="true"
+        :show-actions="true"
+        @click="viewOrderDetail(order)"
+        @delete="deleteOrder"
+        @update-payment="updatePaymentStatus"
+        @mark-shipped="markAsShipped"
+        @update-status="updateOrderStatus"
+        @cancel="cancelOrder"
+      />
     </div>
     
     <!-- Pagination -->
@@ -230,153 +113,23 @@
       </div>
     </div>
 
-    <!-- Order Detail Modal with Weight Inputs -->
-    <div v-if="showOrderDetail" class="modal-overlay" @click="closeOrderDetail">
-      <div class="modal-content order-detail-modal" @click.stop>
-        <div class="modal-header">
-          <div class="header-content">
-            <div class="header-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div class="header-text">
-              <h2>订单详情</h2>
-              <p class="order-number">{{ selectedOrder?.order_number }}</p>
-            </div>
-          </div>
-        </div>
-        <div class="modal-body">
-          <div v-if="selectedOrder" class="order-detail-content">
-            <div class="order-info-section">
-              <div class="section-header">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <h3>订单信息</h3>
-              </div>
-              <div class="info-row">
-                <div class="info-item-user">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  <span class="value">{{ selectedOrder.user?.nickname || selectedOrder.user?.phone || 'N/A' }}</span>
-                </div>
-                <div class="info-item-price">
-                  <span class="value price">${{ parseFloat(selectedOrder.total || 0).toFixed(2) }}</span>
-                </div>
-              </div>
-              <div class="info-row">
-                <div class="info-item-payment-method">
-                  <label class="payment-method-label">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                    </svg>
-                    支付方式:
-                  </label>
-                  <select v-model="selectedPaymentMethod" class="payment-method-select">
-                    <option value="">未选择</option>
-                    <option value="cash">现金</option>
-                    <option value="etransfer">电子转账</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div class="order-items-section">
-              <div class="section-header">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                </svg>
-                <h3>商品列表</h3>
-                <button @click="showAddProductModal = true" class="add-item-btn">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                  添加商品
-                </button>
-              </div>
-              <div class="items-list">
-                <div v-for="(item, index) in editableItems" :key="item.tempId || item.id" class="order-item-row">
-                  <div class="item-info">
-                    <div class="item-name">{{ item.product?.name || 'N/A' }}</div>
-                    <div class="item-meta">
-                      <div class="quantity-controls">
-                        <button @click="decreaseQuantity(index)" class="qty-btn" :disabled="item.quantity <= 1">-</button>
-                      <input 
-                        type="number" 
-                        v-model.number="item.quantity" 
-                        @input="recalculateItemPrice(index)"
-                        min="1"
-                        class="quantity-input" />
-                        <button @click="increaseQuantity(index)" class="qty-btn">+</button>
-                      </div>
-                      <span class="item-price">${{ parseFloat(item.total_price || 0).toFixed(2) }}</span>
-                    </div>
-                    <div v-if="item.product?.pricing_type === 'weight_range' || item.product?.pricing_type === 'unit_weight'" class="weight-input-group">
-                      <label>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                        </svg>
-                        实际重量 (lb)
-                      </label>
-                      <input 
-                        type="number" 
-                        step="0.001"
-                        v-model.number="item.final_weight"
-                        @input="recalculateItemPrice(index)"
-                        :placeholder="item.final_weight ? item.final_weight.toString() : '输入重量'"
-                        class="weight-input" />
-                    </div>
-                  </div>
-                  <button @click="removeItem(index)" class="remove-item-btn" title="删除商品">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Add Product Modal -->
-            <div v-if="showAddProductModal" class="modal-overlay-inner" @click.stop>
-              <div class="modal-content-inner" @click.stop>
-                <div class="modal-header-inner">
-                  <h3>选择商品</h3>
-                  <button @click="showAddProductModal = false" class="close-btn-small">×</button>
-                </div>
-                <div class="modal-body-inner">
-                  <div v-if="availableProducts.length === 0" class="empty-products">暂无可用商品</div>
-                  <div v-else class="products-list">
-                    <div 
-                      v-for="product in availableProducts" 
-                      :key="product.id"
-                      @click="addProductToOrder(product)"
-                      class="product-item">
-                      <div class="product-name">{{ product.name }}</div>
-                      <div class="product-price">${{ parseFloat(product.deal_price || product.price || 0).toFixed(2) }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="updateError" class="error-message">{{ updateError }}</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button 
-            @click="updateOrder" 
-            class="update-order-btn"
-            :disabled="updatingOrder">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {{ updatingOrder ? '更新中...' : '更新订单' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- Order Detail Modal -->
+    <OrderDetailModal
+      :show="showOrderDetail"
+      :order="selectedOrder"
+      :available-products="availableProducts"
+      :updating-order="updatingOrder"
+      :marking-complete="markingComplete"
+      :update-error="updateError"
+      @close="closeOrderDetail"
+      @update="handleUpdateOrder"
+      @mark-paid="markOrderAsPaid"
+      @mark-complete="markOrderComplete"
+      @status-change="handleOrderStatusChange"
+      @payment-method-change="handlePaymentMethodChange"
+      @order-updated="handleOrderUpdated"
+      @update-error="(msg) => { this.updateError = msg }"
+    />
   </div>
 </template>
 
@@ -384,9 +137,16 @@
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
 import { Html5Qrcode } from 'html5-qrcode'
+import { formatDateEST_CN } from '../utils/date'
+import OrderCard from '../components/OrderCard.vue'
+import OrderDetailModal from '../components/OrderDetailModal.vue'
 
 export default {
   name: 'Orders',
+  components: {
+    OrderCard,
+    OrderDetailModal
+  },
   setup() {
     const { confirm, success, error } = useModal()
     return { confirm, success, error }
@@ -403,19 +163,17 @@ export default {
       statusFilter: '',
       paymentFilter: '',
       paymentMethodFilter: '',
+      deliveryMethodFilter: '',
       currentPage: 1,
       showQRScanner: false,
       qrScanner: null,
       scanError: null,
       showOrderDetail: false,
       selectedOrder: null,
-      selectedPaymentMethod: '',
-      editableItems: [],
       availableProducts: [],
-      showAddProductModal: false,
       updatingOrder: false,
       updateError: null,
-      tempIdCounter: 0
+      markingComplete: false
     }
   },
   watch: {
@@ -432,6 +190,10 @@ export default {
       this.fetchOrders()
     },
     paymentMethodFilter() {
+      this.currentPage = 1
+      this.fetchOrders()
+    },
+    deliveryMethodFilter() {
       this.currentPage = 1
       this.fetchOrders()
     }
@@ -483,6 +245,9 @@ export default {
         if (this.paymentMethodFilter) {
           params.payment_method = this.paymentMethodFilter
         }
+        if (this.deliveryMethodFilter) {
+          params.delivery_method = this.deliveryMethodFilter
+        }
         
         const response = await apiClient.get('/admin/orders', { params })
         this.orders = response.data.orders || []
@@ -528,21 +293,6 @@ export default {
         const response = await apiClient.get(`/admin/orders/${order.id}`)
         this.selectedOrder = response.data.order
         
-        // Initialize editable items (create copies for editing)
-        this.editableItems = []
-        if (this.selectedOrder.items) {
-          this.selectedOrder.items.forEach(item => {
-            this.editableItems.push({
-              ...item,
-              tempId: item.id,
-              final_weight: item.final_weight ? parseFloat(item.final_weight) : null
-            })
-          })
-        }
-        
-        // Initialize payment method
-        this.selectedPaymentMethod = this.selectedOrder.payment_method || ''
-        
         // Load available products from group deal
         await this.loadAvailableProducts()
         
@@ -565,154 +315,21 @@ export default {
         this.availableProducts = []
       }
     },
-    addProductToOrder(product) {
-      // Check if product already exists in order
-      const existingIndex = this.editableItems.findIndex(item => item.product_id === product.id)
-      if (existingIndex >= 0) {
-        // Increase quantity if already exists
-        this.editableItems[existingIndex].quantity += 1
-        this.recalculateItemPrice(existingIndex)
-      } else {
-        // Add new item
-        // For weight-based products, initial price is 0 until weight is entered
-        let initialPrice = 0
-        if (product.pricing_type === 'per_item') {
-          initialPrice = parseFloat(product.deal_price || product.price || 0)
-        }
-        
-        this.editableItems.push({
-          tempId: `temp_${++this.tempIdCounter}`,
-          product_id: product.id,
-          product: product,
-          quantity: 1,
-          unit_price: initialPrice,
-          total_price: initialPrice,
-          final_weight: null
-        })
-      }
-      this.showAddProductModal = false
-    },
-    removeItem(index) {
-      this.editableItems.splice(index, 1)
-    },
-    increaseQuantity(index) {
-      this.editableItems[index].quantity += 1
-      this.recalculateItemPrice(index)
-    },
-    decreaseQuantity(index) {
-      if (this.editableItems[index].quantity > 1) {
-        this.editableItems[index].quantity -= 1
-        this.recalculateItemPrice(index)
-      }
-    },
-    recalculateItemPrice(index) {
-      const item = this.editableItems[index]
-      const product = item.product
-      
-      if (!product) return
-      
-      // If weight-based product
-      if (product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight') {
-        // Must have final_weight to calculate price
-        if (!item.final_weight || item.final_weight <= 0) {
-          item.unit_price = 0
-          item.total_price = 0
-          return
-        }
-        
-        // For weight_range, find the matching range
-        if (product.pricing_type === 'weight_range') {
-          if (product.pricing_data && product.pricing_data.ranges && Array.isArray(product.pricing_data.ranges)) {
-            const ranges = product.pricing_data.ranges
-            let matchedPrice = 0
-            for (const range of ranges) {
-              const min = range.min || 0
-              const max = range.max
-              if (item.final_weight >= min && (max === null || max === undefined || item.final_weight < max)) {
-                matchedPrice = parseFloat(range.price || 0)
-                break
-              }
-            }
-            item.unit_price = matchedPrice
-            item.total_price = matchedPrice * item.quantity
-          } else {
-            // Fallback: use deal_price or price as base price per unit
-            const basePrice = parseFloat(product.deal_price || product.price || 0)
-            item.unit_price = basePrice
-            item.total_price = basePrice * item.quantity
-          }
-        } else if (product.pricing_type === 'unit_weight') {
-          // For unit_weight, price = price_per_unit * weight * quantity
-          if (product.pricing_data && product.pricing_data.price_per_unit) {
-            const pricePerUnit = parseFloat(product.pricing_data.price_per_unit || 0)
-            item.unit_price = pricePerUnit * item.final_weight
-            item.total_price = pricePerUnit * item.final_weight * item.quantity
-          } else {
-            // Fallback: use deal_price or price as price per unit
-            const pricePerUnit = parseFloat(product.deal_price || product.price || 0)
-            item.unit_price = pricePerUnit * item.final_weight
-            item.total_price = pricePerUnit * item.final_weight * item.quantity
-          }
-        }
-      } else {
-        // Regular pricing (per_item)
-        const unitPrice = parseFloat(product.deal_price || product.price || 0)
-        item.unit_price = unitPrice
-        item.total_price = unitPrice * item.quantity
-      }
-    },
     closeOrderDetail() {
       this.showOrderDetail = false
       this.selectedOrder = null
-      this.selectedPaymentMethod = ''
-      this.editableItems = []
       this.availableProducts = []
-      this.showAddProductModal = false
       this.updateError = null
-      this.tempIdCounter = 0
     },
-    async updateOrder() {
-      if (!this.selectedOrder || this.editableItems.length === 0) {
-        await this.error('订单必须至少包含一个商品')
-        return
-      }
-      
+    async handleUpdateOrder(orderId, updateData) {
       this.updatingOrder = true
       this.updateError = null
       
       try {
-        // Prepare items data
-        const items = this.editableItems.map(item => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-          final_weight: item.final_weight || null
-        }))
-        
-        const updateData = {
-          items: items
-        }
-        
-        // Add payment method if selected
-        if (this.selectedPaymentMethod) {
-          updateData.payment_method = this.selectedPaymentMethod
-        }
-        
-        const response = await apiClient.put(`/admin/orders/${this.selectedOrder.id}/update`, updateData)
+        const response = await apiClient.put(`/admin/orders/${orderId}/update`, updateData)
         
         // Update selected order with new data
         this.selectedOrder = response.data.order
-        
-        // Refresh editable items
-        this.editableItems = []
-        if (this.selectedOrder.items) {
-          this.selectedOrder.items.forEach(item => {
-            this.editableItems.push({
-              ...item,
-              tempId: item.id,
-              final_weight: item.final_weight ? parseFloat(item.final_weight) : null
-            })
-          })
-        }
         
         // Refresh orders list
         await this.fetchOrders()
@@ -725,6 +342,13 @@ export default {
       } finally {
         this.updatingOrder = false
       }
+    },
+    handleOrderUpdated(order) {
+      // Refresh the selected order after update from modal
+      if (order) {
+        this.selectedOrder = order
+      }
+      this.fetchOrders()
     },
     async openQRScanner() {
       this.showQRScanner = true
@@ -781,20 +405,13 @@ export default {
         // Show order detail
         this.selectedOrder = order
         
-        // Initialize editable items
-        this.editableItems = []
-        if (this.selectedOrder.items) {
-          this.selectedOrder.items.forEach(item => {
-            this.editableItems.push({
-              ...item,
-              tempId: item.id,
-              final_weight: item.final_weight ? parseFloat(item.final_weight) : null
-            })
-          })
+        // Auto-mark as paid if payment method is cash and order is unpaid
+        const existingPaymentMethod = this.selectedOrder.payment_method || ''
+        if (existingPaymentMethod === 'cash' && this.selectedOrder.payment_status === 'unpaid') {
+          // Use nextTick to ensure the order is fully loaded before auto-marking
+          await this.$nextTick()
+          await this.autoMarkAsPaid()
         }
-        
-        // Initialize payment method
-        this.selectedPaymentMethod = this.selectedOrder.payment_method || ''
         
         // Load available products
         await this.loadAvailableProducts()
@@ -807,6 +424,145 @@ export default {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || '订单未找到'
         await this.error(`扫描失败: ${errorMsg}`)
         console.error('Failed to fetch order by pickup code:', error)
+      }
+    },
+    
+    async handlePaymentMethodChange(paymentMethod) {
+      // Auto-mark as paid when cash is selected and order is unpaid
+      // Don't trigger for cancelled or completed orders
+      if (paymentMethod === 'cash' && 
+          this.selectedOrder && 
+          this.selectedOrder.payment_status === 'unpaid' &&
+          this.selectedOrder.status !== 'cancelled' &&
+          this.selectedOrder.status !== 'completed') {
+        await this.autoMarkAsPaid()
+      }
+    },
+    
+    async handleOrderStatusChange(orderId, newStatus) {
+      if (!this.selectedOrder || !newStatus) {
+        return
+      }
+      
+      // Don't update if status hasn't actually changed
+      if (newStatus === this.selectedOrder.status) {
+        return
+      }
+      
+      const statusText = this.getStatusText(newStatus)
+      const confirmed = await this.confirm(`确认将订单状态改为 "${statusText}"?`)
+      if (!confirmed) {
+        return
+      }
+      
+      try {
+        await apiClient.put(`/admin/orders/${orderId}/status`, { status: newStatus })
+        
+        // Refresh order details
+        const response = await apiClient.get(`/admin/orders/${orderId}`)
+        this.selectedOrder = response.data.order
+        
+        await this.success(`订单状态已更新为: ${statusText}`)
+        await this.fetchOrders()
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
+        await this.error(`更新失败: ${errorMsg}`)
+        console.error('Failed to update order status:', error)
+      }
+    },
+    
+    async autoMarkAsPaid() {
+      if (!this.selectedOrder || this.selectedOrder.payment_status === 'paid') {
+        return
+      }
+      
+      try {
+        const response = await apiClient.put(`/admin/orders/${this.selectedOrder.id}/payment`, { 
+          payment_status: 'paid',
+          payment_method: 'cash'
+        })
+        
+        // Update selected order with new data
+        this.selectedOrder = response.data.order
+        
+        const pointsAwarded = response.data.points_awarded || 0
+        await this.success(`订单已自动标记为已付款（现金）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
+        
+        // Refresh orders list
+        await this.fetchOrders()
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
+        await this.error(`更新失败: ${errorMsg}`)
+        console.error('Failed to auto-mark as paid:', error)
+      }
+    },
+    
+    async markOrderAsPaid() {
+      if (!this.selectedOrder || this.selectedOrder.payment_status === 'paid') {
+        return
+      }
+      
+      const amount = parseFloat(this.selectedOrder.total || 0).toFixed(2)
+      const pointsToEarn = Math.floor(parseFloat(this.selectedOrder.total) * 100)
+      
+      const confirmed = await this.confirm(`确认标记订单 #${this.selectedOrder.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
+      if (!confirmed) {
+        return
+      }
+      
+      try {
+        const response = await apiClient.put(`/admin/orders/${this.selectedOrder.id}/payment`, { 
+          payment_status: 'paid',
+          payment_method: 'etransfer'
+        })
+        
+        // Update selected order with new data
+        this.selectedOrder = response.data.order
+        
+        // Update order status in UI
+        this.selectedOrderStatus = this.selectedOrder.status || 'submitted'
+        
+        const pointsAwarded = response.data.points_awarded || 0
+        await this.success(`订单已标记为已付款（电子转账）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
+        
+        // Refresh orders list
+        await this.fetchOrders()
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
+        await this.error(`更新失败: ${errorMsg}`)
+        console.error('Failed to mark as paid:', error)
+      }
+    },
+    
+    async markOrderComplete() {
+      if (!this.selectedOrder || this.selectedOrder.status === 'completed') {
+        return
+      }
+      
+      const confirmed = await this.confirm(`确认标记订单 #${this.selectedOrder.order_number} 为已完成?`)
+      if (!confirmed) {
+        return
+      }
+      
+      this.markingComplete = true
+      try {
+        await apiClient.put(`/admin/orders/${this.selectedOrder.id}/status`, { status: 'completed' })
+        
+        // Refresh order details
+        const response = await apiClient.get(`/admin/orders/${this.selectedOrder.id}`)
+        this.selectedOrder = response.data.order
+        
+        // Update order status in UI
+        this.selectedOrderStatus = this.selectedOrder.status || 'submitted'
+        
+        await this.success('订单已标记为已完成')
+        await this.fetchOrders()
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
+        await this.error(`更新失败: ${errorMsg}`)
+        console.error('Failed to mark order complete:', error)
+      } finally {
+        this.markingComplete = false
       }
     },
     
@@ -940,13 +696,7 @@ export default {
     },
     
     formatDate(dateString) {
-      if (!dateString) return 'N/A'
-      // Only show date, no time
-      return new Date(dateString).toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      })
+      return formatDateEST_CN(dateString) || 'N/A'
     },
     formatAddress(address) {
       if (!address) return 'N/A'
@@ -954,7 +704,6 @@ export default {
       if (address.address_line1) parts.push(address.address_line1)
       if (address.address_line2) parts.push(address.address_line2)
       if (address.city) parts.push(address.city)
-      if (address.province) parts.push(address.province)
       if (address.postal_code) parts.push(address.postal_code)
       return parts.join(', ') || 'N/A'
     },
@@ -1676,6 +1425,7 @@ export default {
   display: flex;
   align-items: center;
   gap: var(--md-spacing-md);
+  width: 100%;
 }
 
 .header-icon {
@@ -1698,6 +1448,21 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;
+}
+
+.header-status-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  margin-left: auto;
+}
+
+.payment-status-badge-header {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .modal-header h2 {
@@ -2095,6 +1860,160 @@ export default {
   outline: none;
   border-color: var(--md-primary);
   border-width: 2px;
+}
+
+.info-item-order-status {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  width: 100%;
+}
+
+.order-status-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+}
+
+.order-status-select {
+  flex: 1;
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.order-status-select:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  border-width: 2px;
+}
+
+.mark-paid-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 24px;
+  border: 1px solid rgba(46, 125, 50, 0.2);
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #E8F5E9;
+  color: #2E7D32;
+  min-height: 40px;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  width: 100%;
+  justify-content: center;
+}
+
+.mark-paid-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(46, 125, 50, 0.1);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s, opacity 0.3s;
+  opacity: 0;
+}
+
+.mark-paid-btn:hover {
+  background: #C8E6C9;
+  border-color: rgba(46, 125, 50, 0.4);
+  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  transform: translateY(-1px);
+}
+
+.mark-paid-btn:active {
+  background: #A5D6A7;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  transform: translateY(0);
+}
+
+.mark-paid-btn:active::before {
+  width: 300px;
+  height: 300px;
+  opacity: 1;
+  transition: width 0s, height 0s, opacity 0.3s;
+}
+
+.complete-order-btn {
+  padding: 10px 24px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(46, 125, 50, 0.2);
+  background: #E8F5E9;
+  color: #2E7D32;
+  min-height: 40px;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.complete-order-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(46, 125, 50, 0.1);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s, opacity 0.3s;
+  opacity: 0;
+}
+
+.complete-order-btn:hover:not(:disabled) {
+  background: #C8E6C9;
+  border-color: rgba(46, 125, 50, 0.4);
+  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  transform: translateY(-1px);
+}
+
+.complete-order-btn:active:not(:disabled) {
+  background: #A5D6A7;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  transform: translateY(0);
+}
+
+.complete-order-btn:active:not(:disabled)::before {
+  width: 300px;
+  height: 300px;
+  opacity: 1;
+  transition: width 0s, height 0s, opacity 0.3s;
+}
+
+.complete-order-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .info-item .label {

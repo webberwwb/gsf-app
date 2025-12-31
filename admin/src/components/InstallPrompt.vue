@@ -48,7 +48,6 @@ export default {
     // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches || 
         window.navigator.standalone === true) {
-      console.log('Admin app already installed')
       return
     }
 
@@ -59,7 +58,6 @@ export default {
       const daysSinceDismissed = (Date.now() - dismissedTime) / (1000 * 60 * 60 * 24)
       // Show again after 7 days
       if (daysSinceDismissed < 7) {
-        console.log('Install prompt was dismissed recently')
         return
       }
     }
@@ -68,20 +66,16 @@ export default {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js', { scope: '/' })
         .then((registration) => {
-          console.log('Admin Service Worker registered:', registration)
           // Check for updates
           registration.update()
         })
         .catch((error) => {
           console.error('Service Worker registration failed:', error)
         })
-    } else {
-      console.warn('Service Workers are not supported')
     }
 
     // Listen for beforeinstallprompt event (Chrome/Edge)
     window.addEventListener('beforeinstallprompt', (e) => {
-      console.log('beforeinstallprompt event fired')
       e.preventDefault()
       this.deferredPrompt = e
       // Show prompt after a delay (better UX)
@@ -99,7 +93,6 @@ export default {
     if (this.isIOS && isSafari) {
       // iOS Safari doesn't support beforeinstallprompt
       // Show manual install instructions after a delay
-      console.log('iOS Safari detected - showing manual install instructions')
       setTimeout(() => {
         this.showPrompt = true
       }, 3000)
@@ -114,7 +107,6 @@ export default {
       }
 
       if (!this.deferredPrompt) {
-        console.warn('No deferred prompt available')
         this.showPrompt = false
         return
       }
@@ -127,10 +119,8 @@ export default {
         const { outcome } = await this.deferredPrompt.userChoice
 
         if (outcome === 'accepted') {
-          console.log('User accepted the install prompt')
           localStorage.removeItem('admin-pwa-install-dismissed')
         } else {
-          console.log('User dismissed the install prompt')
           this.dismissPrompt()
         }
       } catch (error) {
@@ -318,5 +308,6 @@ export default {
   }
 }
 </style>
+
 
 

@@ -6,7 +6,9 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
       </button>
-      <h1>团购详情</h1>
+      <div class="header-center">
+        <h1>团购详情</h1>
+      </div>
       <div class="header-spacer"></div>
     </header>
 
@@ -192,6 +194,8 @@
 
 <script>
 import apiClient from '../api/client'
+import { useCheckoutStore } from '../stores/checkout'
+import { formatDateEST_CN } from '../utils/date'
 
 export default {
   name: 'GroupDealDetail',
@@ -204,6 +208,10 @@ export default {
       existingOrder: null, // Store existing order if found
       existingOrderData: null // Store order metadata (payment method, delivery method, etc.)
     }
+  },
+  setup() {
+    const checkoutStore = useCheckoutStore()
+    return { checkoutStore }
   },
   async mounted() {
     await this.loadDeal()
@@ -303,14 +311,8 @@ export default {
       }
     },
     formatDate(dateString) {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      return date.toLocaleDateString('zh-CN', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      // This shows date only, not datetime
+      return formatDateEST_CN(dateString)
     },
     formatPrice(product) {
       if (product.deal_price) {
@@ -414,17 +416,14 @@ export default {
         const price = product.deal_price || product.display_price || product.sale_price || 0
         return (parseFloat(price) * quantity).toFixed(2)
       } else if (product.pricing_type === 'weight_range') {
-        // Use medium weight price for estimation
+        // Use LOWEST price for estimation (conservative estimate)
         const ranges = product.pricing_data?.ranges || []
         if (ranges.length === 0) return '0.00'
         
-        // Find the middle range (medium weight) for estimation
-        const sortedRanges = [...ranges].sort((a, b) => (a.min || 0) - (b.min || 0))
-        const middleIndex = Math.floor(sortedRanges.length / 2)
-        const mediumRange = sortedRanges[middleIndex]
-        const estimatedPrice = mediumRange.price || 0
+        // Find the minimum price across all ranges for conservative estimate
+        const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
         
-        return (parseFloat(estimatedPrice) * quantity).toFixed(2)
+        return (minPrice * quantity).toFixed(2)
       } else if (product.pricing_type === 'unit_weight') {
         // Use a default estimated weight (1 unit) for estimation
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
@@ -460,10 +459,36 @@ export default {
       this.deal.products.forEach(product => {
         const selection = this.selectedItems[product.id]
         if (selection && selection.quantity > 0) {
+          // Calculate estimated price for this item
+          const quantity = selection.quantity
+          let estimatedPrice = 0
+          let isEstimated = false
+          
+          if (product.pricing_type === 'per_item') {
+            const price = product.deal_price || product.display_price || product.sale_price || 0
+            estimatedPrice = parseFloat(price) * quantity
+          } else if (product.pricing_type === 'weight_range') {
+            // Use LOWEST price for estimation (conservative estimate)
+            const ranges = product.pricing_data?.ranges || []
+            if (ranges.length > 0) {
+              const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
+              estimatedPrice = minPrice * quantity
+              isEstimated = true
+            }
+          } else if (product.pricing_type === 'unit_weight') {
+            // Use a default estimated weight (1 unit) for estimation
+            const pricePerUnit = product.pricing_data?.price_per_unit || 0
+            const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
+            estimatedPrice = parseFloat(pricePerUnit) * estimatedWeight * quantity
+            isEstimated = true
+          }
+          
           orderItems.push({
             product_id: product.id,
             quantity: selection.quantity,
-            pricing_type: product.pricing_type
+            pricing_type: product.pricing_type,
+            estimated_price: estimatedPrice.toFixed(2),
+            is_estimated: isEstimated
           })
         }
       })
@@ -473,45 +498,29 @@ export default {
         return
       }
       
-      try {
-        // Create or update order with selected items first
-        // This ensures checkout page can load the order from backend
-        const orderData = {
-          items: orderItems,
-          delivery_method: this.existingOrderData?.deliveryMethod || 'pickup',
-          address_id: this.existingOrderData?.addressId || null,
-          pickup_location: this.existingOrderData?.pickupLocation || 'markham',
-          payment_method: this.existingOrderData?.paymentMethod || 'cash',
-          notes: this.existingOrderData?.notes || null
-        }
-        
-        if (this.existingOrderData?.orderId) {
-          // Update existing order
-          await apiClient.patch(`/orders/${this.existingOrderData.orderId}`, orderData)
-        } else {
-          // Create new order
-          orderData.group_deal_id = this.deal.id
-          await apiClient.post('/orders', orderData)
-        }
-        
-        // Navigate to checkout page - it will load the order from backend
-        this.$router.push({
-          path: '/checkout',
-          query: {
-            dealId: this.deal.id
+      // Store data in Pinia store for checkout page
+      this.checkoutStore.setDeal(this.deal)
+      this.checkoutStore.setOrderItems(orderItems)
+      
+      // If there's existing order data, store it
+      if (this.existingOrderData) {
+        this.checkoutStore.setExistingOrder(
+          this.existingOrderData.orderId,
+          {
+            paymentMethod: this.existingOrderData.paymentMethod,
+            deliveryMethod: this.existingOrderData.deliveryMethod,
+            pickupLocation: this.existingOrderData.pickupLocation,
+            addressId: this.existingOrderData.addressId,
+            notes: this.existingOrderData.notes
           }
-        })
-      } catch (error) {
-        // If order creation fails, still navigate to checkout
-        // Checkout page will handle the error or create the order
-        console.error('Failed to create/update order:', error)
-        this.$router.push({
-          path: '/checkout',
-          query: {
-            dealId: this.deal.id
-          }
-        })
+        )
+      } else {
+        // Clear existing order data
+        this.checkoutStore.setExistingOrder(null, null)
       }
+      
+      // Navigate to checkout page - it will use the store data
+      this.$router.push('/checkout')
     }
   }
 }
@@ -567,11 +576,25 @@ export default {
   flex-shrink: 0;
 }
 
+.header-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+
 .page-header h1 {
   font-size: var(--md-headline-size);
   color: white;
   font-weight: 500;
-  flex: 1;
   text-align: center;
   letter-spacing: -0.5px;
   margin: 0;
@@ -1023,7 +1046,7 @@ export default {
   bottom: calc(80px + env(safe-area-inset-bottom)); /* Above bottom nav */
   left: 0;
   right: 0;
-  background: var(--md-surface);
+  background: rgba(255, 255, 255, 0.95);
   padding: var(--md-spacing-md);
   box-shadow: var(--md-elevation-4);
   display: flex;

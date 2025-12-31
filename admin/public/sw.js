@@ -11,12 +11,11 @@ const urlsToCache = [
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
-  console.log(`Admin Service Worker ${VERSION} installing...`)
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         return cache.addAll(urlsToCache).catch((err) => {
-          console.log('Cache addAll failed:', err)
+          console.error('Cache addAll failed:', err)
         })
       })
   )
@@ -26,13 +25,11 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log(`Admin Service Worker ${VERSION} activated`)
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log(`Deleting old cache: ${cacheName}`)
             return caches.delete(cacheName)
           }
         })

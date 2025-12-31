@@ -9,6 +9,7 @@ from models.base import utc_now
 from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, PaymentMethod
 from schemas.order import CreateOrderSchema, UpdateOrderSchema
 from schemas.utils import validate_request
+from decimal import Decimal
 import random
 import string
 
@@ -296,18 +297,18 @@ def create_order():
                 else:
                     unit_price = product.get_display_price() or 0
             elif pricing_type == 'weight_range':
-                # Use medium weight price for estimation
+                # Use LOWEST price for estimation (conservative estimate)
                 ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
                 if ranges:
-                    sorted_ranges = sorted(ranges, key=lambda x: x.get('min', 0))
-                    middle_index = len(sorted_ranges) // 2
-                    unit_price = float(sorted_ranges[middle_index].get('price', 0))
+                    # Find the minimum price across all ranges
+                    min_price = min(float(r.get('price', 0)) for r in ranges)
+                    unit_price = min_price
                 else:
                     unit_price = 0
             elif pricing_type == 'unit_weight':
-                # Use price per unit with estimated weight
+                # Use price per unit with minimum estimated weight (conservative)
                 price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                estimated_weight = 1
+                estimated_weight = 1  # Minimum 1 unit for estimation
                 unit_price = price_per_unit * estimated_weight
             else:
                 unit_price = product.get_display_price() or 0
@@ -322,9 +323,18 @@ def create_order():
                 'total_price': total_price
             })
         
+        # Calculate shipping fee
+        from utils.shipping import calculate_shipping_fee
+        address = None
+        if delivery_method == DeliveryMethod.DELIVERY.value and address_id:
+            from models.address import Address
+            address = Address.query.get(address_id)
+        
+        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address)
+        
         # Calculate tax (0% for now, can be configured later)
-        tax = 0
-        total = subtotal + tax
+        tax = Decimal('0')
+        total = Decimal(str(subtotal)) + tax + shipping_fee
         
         # Calculate points (1 point per dollar)
         points_earned = int(total)
@@ -345,6 +355,7 @@ def create_order():
             order_number=order_number,
             subtotal=subtotal,
             tax=tax,
+            shipping_fee=shipping_fee,
             total=total,
             points_earned=points_earned,
             payment_method=payment_method,
@@ -598,18 +609,18 @@ def update_order(order_id):
                 else:
                     unit_price = product.get_display_price() or 0
             elif pricing_type == 'weight_range':
-                # Use medium weight price for estimation
+                # Use LOWEST price for estimation (conservative estimate)
                 ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
                 if ranges:
-                    sorted_ranges = sorted(ranges, key=lambda x: x.get('min', 0))
-                    middle_index = len(sorted_ranges) // 2
-                    unit_price = float(sorted_ranges[middle_index].get('price', 0))
+                    # Find the minimum price across all ranges
+                    min_price = min(float(r.get('price', 0)) for r in ranges)
+                    unit_price = min_price
                 else:
                     unit_price = 0
             elif pricing_type == 'unit_weight':
-                # Use price per unit with estimated weight
+                # Use price per unit with minimum estimated weight (conservative)
                 price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                estimated_weight = 1
+                estimated_weight = 1  # Minimum 1 unit for estimation
                 unit_price = price_per_unit * estimated_weight
             else:
                 unit_price = product.get_display_price() or 0
@@ -624,9 +635,18 @@ def update_order(order_id):
                 'total_price': total_price
             })
         
+        # Calculate shipping fee
+        from utils.shipping import calculate_shipping_fee
+        address = None
+        if delivery_method == DeliveryMethod.DELIVERY.value and address_id:
+            from models.address import Address
+            address = Address.query.get(address_id)
+        
+        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address)
+        
         # Calculate tax (0% for now, can be configured later)
-        tax = 0
-        total = subtotal + tax
+        tax = Decimal('0')
+        total = Decimal(str(subtotal)) + tax + shipping_fee
         
         # Calculate points (1 point per dollar)
         points_earned = int(total)
@@ -637,6 +657,7 @@ def update_order(order_id):
         # Update order totals, delivery method, address, pickup location, and payment method
         order.subtotal = subtotal
         order.tax = tax
+        order.shipping_fee = shipping_fee
         order.total = total
         order.points_earned = points_earned
         order.delivery_method = delivery_method

@@ -1,59 +1,35 @@
 /**
  * Authentication utilities
+ * These are thin wrappers around the auth store for backward compatibility
  */
 
-import apiClient from '../api/client'
+import { useAuthStore } from '../stores/auth'
 
 /**
  * Check if user is authenticated
  * @returns {Promise<boolean>}
  */
 export async function checkAuth() {
-  const token = localStorage.getItem('auth_token')
-  if (!token) {
-    return false
-  }
-
-  try {
-    const response = await apiClient.get('/auth/me')
-    if (response.data.user) {
-      localStorage.setItem('user', JSON.stringify(response.data.user))
-      // Update token expiration time if provided (token was refreshed)
-      if (response.data.token && response.data.token.expires_at) {
-        localStorage.setItem('auth_token_expires_at', response.data.token.expires_at)
-      }
-      return true
-    }
-    return false
-  } catch (error) {
-    // Token invalid, clear it
-    clearAuth()
-    return false
-  }
+  const authStore = useAuthStore()
+  return await authStore.checkAuth()
 }
 
 /**
- * Get current user from localStorage
+ * Get current user from store
  * @returns {Object|null}
  */
 export function getCurrentUser() {
-  const userStr = localStorage.getItem('user')
-  if (!userStr) {
-    return null
-  }
-  try {
-    return JSON.parse(userStr)
-  } catch (error) {
-    return null
-  }
+  const authStore = useAuthStore()
+  return authStore.currentUser
 }
 
 /**
- * Get auth token from localStorage
+ * Get auth token from store
  * @returns {string|null}
  */
 export function getAuthToken() {
-  return localStorage.getItem('auth_token')
+  const authStore = useAuthStore()
+  return authStore.token
 }
 
 /**
@@ -61,20 +37,16 @@ export function getAuthToken() {
  * @returns {boolean}
  */
 export function isTokenExpired() {
-  const expiresAt = localStorage.getItem('auth_token_expires_at')
-  if (!expiresAt) {
-    return false // Assume valid if no expiration stored
-  }
-  return new Date(expiresAt) < new Date()
+  const authStore = useAuthStore()
+  return authStore.isTokenExpired
 }
 
 /**
  * Clear authentication data
  */
 export function clearAuth() {
-  localStorage.removeItem('auth_token')
-  localStorage.removeItem('user')
-  localStorage.removeItem('auth_token_expires_at')
+  const authStore = useAuthStore()
+  authStore.clearAuth()
 }
 
 /**

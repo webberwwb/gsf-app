@@ -119,6 +119,7 @@
 
 <script>
 import apiClient from '../api/client'
+import { formatDateEST_CN, formatDateTimeEST_CN } from '../utils/date'
 
 export default {
   name: 'OTPStats',
@@ -169,18 +170,14 @@ export default {
     },
     formatDateShort(dateString) {
       if (!dateString) return ''
-      const date = new Date(dateString)
-      return `${date.getMonth() + 1}/${date.getDate()}`
+      const formatted = formatDateEST_CN(dateString)
+      if (!formatted) return ''
+      // Extract month/day from formatted date (format: YYYY/MM/DD)
+      const parts = formatted.split('/')
+      return parts.length >= 2 ? `${parts[1]}/${parts[2]}` : formatted
     },
     formatDateTime(dateString) {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      return date.toLocaleString('zh-CN', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      return formatDateTimeEST_CN(dateString) || ''
     }
   }
 }

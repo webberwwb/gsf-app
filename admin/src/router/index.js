@@ -25,6 +25,11 @@ const router = createRouter({
           component: () => import('../views/GroupDeals.vue')
         },
         {
+          path: 'group-deals/:id',
+          name: 'GroupDealDetail',
+          component: () => import('../views/GroupDealDetail.vue')
+        },
+        {
           path: 'orders',
           name: 'Orders',
           component: () => import('../views/Orders.vue')

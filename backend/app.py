@@ -15,6 +15,17 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate = Migrate(app, db)
     
+    # Test database connection on startup
+    import logging
+    logger = logging.getLogger(__name__)
+    with app.app_context():
+        try:
+            db.session.execute(db.text('SELECT 1'))
+            logger.info("Database connection successful")
+        except Exception as e:
+            logger.error(f"Database connection failed: {str(e)}")
+            logger.error(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI'].split('@')[0]}@***")
+    
     # CORS configuration - allow all origins
     # Note: When supports_credentials=True, we can't use origins="*", so we'll handle it manually
     CORS(app, 

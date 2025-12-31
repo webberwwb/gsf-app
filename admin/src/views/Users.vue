@@ -78,6 +78,7 @@
 import apiClient from '../api/client'
 import OTPStats from './OTPStats.vue'
 import { useModal } from '../composables/useModal'
+import { formatDateTimeEST_CN } from '../utils/date'
 
 export default {
   name: 'Users',
@@ -132,7 +133,6 @@ export default {
       return name.charAt(0).toUpperCase()
     },
     async viewUser(user) {
-      // TODO: Implement user detail view
       await this.$alert(`User ID: ${user.id}\nPhone: ${user.phone}\nNickname: ${user.nickname || 'N/A'}`, {
         title: '用户详情',
         type: 'info'
@@ -171,15 +171,7 @@ export default {
       }
     },
     formatDate(dateString) {
-      if (!dateString) return 'N/A'
-      const date = new Date(dateString)
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      return formatDateTimeEST_CN(dateString) || 'N/A'
     },
     getRoleLabel(role) {
       const labels = {

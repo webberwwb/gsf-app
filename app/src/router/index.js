@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import apiClient from '../api/client'
+import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -81,25 +81,35 @@ const router = createRouter({
 
 // Navigation guard to check authentication
 router.beforeEach(async (to, from, next) => {
-  const token = localStorage.getItem('auth_token')
+  const authStore = useAuthStore()
+  
+  // Load auth from storage if not already loaded
+  if (!authStore.token) {
+    authStore.loadFromStorage()
+  }
   
   // If route requires auth and no token, redirect to login
-  if (to.meta.requiresAuth && !token) {
+  if (to.meta.requiresAuth && !authStore.token) {
     next('/login')
     return
   }
   
   // If token exists, try to validate it
-  if (token) {
+  if (authStore.token) {
     try {
-      const response = await apiClient.get('/auth/me')
-      // Token is valid, store user info
-      if (response.data.user) {
-        localStorage.setItem('user', JSON.stringify(response.data.user))
+      // Check auth and update user data
+      const isValid = await authStore.checkAuth()
+      
+      if (!isValid) {
+        // Token is invalid, redirect to login if route requires auth
+        if (to.meta.requiresAuth) {
+          next('/login')
+          return
+        }
       }
       
       // If on login page with valid token, redirect to home
-      if (to.path === '/login') {
+      if (to.path === '/login' && isValid) {
         next('/')
         return
       }
@@ -112,9 +122,7 @@ router.beforeEach(async (to, from, next) => {
       // Other errors (network, 500, etc.) might be temporary - allow access with cached token
       if (error.response && error.response.status === 401) {
         // Token invalid, clear it
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('user')
-        localStorage.removeItem('auth_token_expires_at')
+        authStore.clearAuth()
         
         // Redirect to login if route requires auth
         if (to.meta.requiresAuth) {

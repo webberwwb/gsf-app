@@ -106,10 +106,10 @@ def create_address():
             address_line1=validated_data['address_line1'],
             address_line2=validated_data.get('address_line2'),
             city=validated_data['city'],
-            province='Ontario',  # Always Ontario for GTA area
             postal_code=validated_data['postal_code'],
             country='Canada',  # Always Canada
             delivery_instructions=validated_data.get('delivery_instructions'),
+            notification_email=validated_data.get('notification_email'),
             is_default=is_default
         )
         
@@ -165,9 +165,10 @@ def update_address(address_id):
             address.postal_code = validated_data['postal_code']
         if 'delivery_instructions' in validated_data:
             address.delivery_instructions = validated_data.get('delivery_instructions')
+        if 'notification_email' in validated_data:
+            address.notification_email = validated_data.get('notification_email')
         
-        # Always set province and country (not editable)
-        address.province = 'Ontario'
+        # Always set country (not editable)
         address.country = 'Canada'
         
         # Handle default address

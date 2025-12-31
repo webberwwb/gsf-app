@@ -16,7 +16,7 @@
       <button @click="openAddModal" class="add-first-btn">创建第一个团购</button>
     </div>
     <div v-else class="deals-list">
-      <div v-for="deal in groupDeals" :key="deal.id" class="deal-card">
+      <div v-for="deal in groupDeals" :key="deal.id" class="deal-card" @click="viewDealDetail(deal.id)">
         <div class="deal-header">
           <div class="deal-title-section">
             <h3>{{ deal.title }}</h3>
@@ -89,6 +89,7 @@
 <script>
 import apiClient from '../api/client'
 import GroupDealForm from '../components/GroupDealForm.vue'
+import { formatDateTimeEST_CN } from '../utils/date'
 
 export default {
   name: 'GroupDeals',
@@ -159,15 +160,10 @@ export default {
       return labels[status] || status
     },
     formatDateTime(dateString) {
-      if (!dateString) return 'N/A'
-      const date = new Date(dateString)
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      return formatDateTimeEST_CN(dateString) || 'N/A'
+    },
+    viewDealDetail(dealId) {
+      this.$router.push(`/group-deals/${dealId}`)
     }
   }
 }
@@ -250,6 +246,7 @@ export default {
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
+  cursor: pointer;
 }
 
 .deal-card:hover {

@@ -96,6 +96,17 @@
         </div>
 
         <div class="form-group">
+          <label for="notification_email">通知邮箱（可选）</label>
+          <input
+            id="notification_email"
+            v-model="formData.notification_email"
+            type="email"
+            placeholder="用于接收配送通知的邮箱地址"
+            class="form-input"
+          />
+        </div>
+
+        <div class="form-group">
           <label class="checkbox-label">
             <input
               type="checkbox"
@@ -146,6 +157,7 @@ export default {
         city: '',
         postal_code: '',
         delivery_instructions: '',
+        notification_email: '',
         is_default: false
       }
     }
@@ -175,6 +187,7 @@ export default {
           city: this.address.city || '',
           postal_code: this.address.postal_code || '',
           delivery_instructions: this.address.delivery_instructions || '',
+          notification_email: this.address.notification_email || '',
           is_default: this.address.is_default || false
         }
       } else {
@@ -190,6 +203,7 @@ export default {
         city: '',
         postal_code: '',
         delivery_instructions: '',
+        notification_email: '',
         is_default: false
       }
       this.error = null

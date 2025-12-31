@@ -18,6 +18,7 @@ class Order(BaseModel):
     # Order totals
     subtotal = db.Column(Numeric(10, 2), nullable=False)
     tax = db.Column(Numeric(10, 2), default=0, nullable=False)
+    shipping_fee = db.Column(Numeric(10, 2), default=0, nullable=False)
     total = db.Column(Numeric(10, 2), nullable=False)
     
     # Points accumulated for this order (1 point per dollar)
@@ -63,6 +64,7 @@ class Order(BaseModel):
             'order_number': self.order_number,
             'subtotal': float(self.subtotal) if self.subtotal else None,
             'tax': float(self.tax) if self.tax else None,
+            'shipping_fee': float(self.shipping_fee) if self.shipping_fee else None,
             'total': float(self.total) if self.total else None,
             'points_earned': self.points_earned,
             'delivery_method': self.delivery_method,

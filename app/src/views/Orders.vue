@@ -159,6 +159,7 @@
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
 import QRCode from 'qrcode'
+import { formatDateEST_CN } from '../utils/date'
 
 export default {
   name: 'Orders',
@@ -225,12 +226,7 @@ export default {
       // Filtering is handled by computed property
     },
     formatDate(dateString) {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      return `${year}-${month}-${day}`
+      return formatDateEST_CN(dateString)
     },
     getStatusLabel(status) {
       const labels = {
@@ -386,7 +382,15 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: var(--md-spacing-md);
   padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
+}
+
+.header-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
 }
 
 .page-header h1 {

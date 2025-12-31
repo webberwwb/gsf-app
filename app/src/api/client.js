@@ -29,16 +29,17 @@ apiClient.interceptors.response.use(
   (error) => {
     // Handle 401 Unauthorized - token expired or invalid
     if (error.response && error.response.status === 401) {
-      // Clear invalid token
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('user')
-      localStorage.removeItem('auth_token_expires_at')
-      
-      // Only redirect if not already on login page and not in router guard
-      // (router guard will handle the redirect)
-      if (window.location.pathname !== '/login' && !error.config?.skipRedirect) {
-        window.location.href = '/login'
-      }
+      // Import auth store dynamically to avoid circular dependencies
+      import('../stores/auth').then(({ useAuthStore }) => {
+        const authStore = useAuthStore()
+        authStore.clearAuth()
+        
+        // Only redirect if not already on login page and not in router guard
+        // (router guard will handle the redirect)
+        if (window.location.pathname !== '/login' && !error.config?.skipRedirect) {
+          window.location.href = '/login'
+        }
+      })
     }
     
     // Handle errors globally

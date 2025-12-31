@@ -68,12 +68,14 @@
 <script>
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
+import { useAuthStore } from '../stores/auth'
 
 export default {
   name: 'Login',
   setup() {
     const { alert } = useModal()
-    return { $alert: alert }
+    const authStore = useAuthStore()
+    return { $alert: alert, authStore }
   },
   data() {
     return {
@@ -81,7 +83,8 @@ export default {
       error: null,
       phone: '',
       otp: '',
-      otpSent: false
+      otpSent: false,
+      lastPhoneNumber: ''
     }
   },
   computed: {
@@ -94,30 +97,20 @@ export default {
     }
   },
   async mounted() {
-    // Load saved phone number
+    // Load saved phone number from localStorage (keeping this for UX convenience)
     const savedPhone = localStorage.getItem('last_phone_number')
     if (savedPhone) {
       this.phone = savedPhone
     }
     
     // Check if we have a valid cached token
-    const token = localStorage.getItem('auth_token')
-    if (token) {
-      try {
-        const response = await apiClient.get('/auth/me')
-        // Token is valid, redirect to home
-        if (response.data.user) {
-          localStorage.setItem('user', JSON.stringify(response.data.user))
-          this.$router.push('/')
-          return
-        }
-      } catch (error) {
-        // Token invalid, clear it and continue with login
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('user')
+    if (this.authStore.token || this.authStore.isAuthenticated) {
+      const isValid = await this.authStore.checkAuth()
+      if (isValid) {
+        this.$router.push('/')
+        return
       }
     }
-    
   },
   methods: {
     formatPhoneInput() {
@@ -135,7 +128,7 @@ export default {
           channel: 'sms'  // SMS only
         })
         
-        // Save phone number for next time
+        // Save phone number for next time (UX convenience)
         if (this.phone) {
           localStorage.setItem('last_phone_number', this.phone)
         }
@@ -158,8 +151,6 @@ export default {
         } else {
           // OTP sent successfully via Twilio
           this.error = null
-          // Show success message
-          console.log('OTP sent successfully:', response.data.message)
         }
       } catch (error) {
         const errorData = error.response?.data || {}
@@ -177,24 +168,13 @@ export default {
       this.error = null
 
       try {
-        const response = await apiClient.post('/auth/phone/verify', {
-          phone: this.phone,
-          otp: this.otp
-        })
-
-        // Save phone number for next time
+        // Save phone number for next time (UX convenience)
         if (this.phone) {
           localStorage.setItem('last_phone_number', this.phone)
         }
 
-        // Store token and user info (7 days expiration)
-        localStorage.setItem('auth_token', response.data.token)
-        localStorage.setItem('user', JSON.stringify(response.data.user))
-        
-        // Store expiration time for reference
-        if (response.data.expires_at) {
-          localStorage.setItem('auth_token_expires_at', response.data.expires_at)
-        }
+        // Use the auth store login method
+        await this.authStore.login(this.phone, this.otp)
 
         // Redirect to home
         this.$router.push('/')

@@ -34,8 +34,14 @@
 </template>
 
 <script>
+import { useUIStore } from '../stores/ui'
+
 export default {
   name: 'InstallPrompt',
+  setup() {
+    const uiStore = useUIStore()
+    return { uiStore }
+  },
   data() {
     return {
       showPrompt: false,
@@ -45,43 +51,34 @@ export default {
     }
   },
   mounted() {
+    // Load UI settings
+    this.uiStore.loadFromStorage()
+    
     // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches || 
         window.navigator.standalone === true) {
-      console.log('App already installed')
       return
     }
 
-    // Check if user has dismissed before
-    const dismissed = localStorage.getItem('pwa-install-dismissed')
-    if (dismissed) {
-      const dismissedTime = parseInt(dismissed)
-      const daysSinceDismissed = (Date.now() - dismissedTime) / (1000 * 60 * 60 * 24)
-      // Show again after 7 days
-      if (daysSinceDismissed < 7) {
-        console.log('Install prompt was dismissed recently')
-        return
-      }
+    // Check if should show prompt based on store
+    if (!this.uiStore.shouldShowPWAInstall) {
+      return
     }
 
     // Register service worker first (required for installability)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js', { scope: '/' })
         .then((registration) => {
-          console.log('Service Worker registered:', registration)
           // Check for updates
           registration.update()
         })
         .catch((error) => {
           console.error('Service Worker registration failed:', error)
         })
-    } else {
-      console.warn('Service Workers are not supported')
     }
 
     // Listen for beforeinstallprompt event (Chrome/Edge)
     window.addEventListener('beforeinstallprompt', (e) => {
-      console.log('beforeinstallprompt event fired')
       e.preventDefault()
       this.deferredPrompt = e
       // Show prompt after a delay (better UX)
@@ -99,7 +96,6 @@ export default {
     if (this.isIOS && isSafari) {
       // iOS Safari doesn't support beforeinstallprompt
       // Show manual install instructions after a delay
-      console.log('iOS Safari detected - showing manual install instructions')
       setTimeout(() => {
         this.showPrompt = true
       }, 3000)
@@ -114,7 +110,6 @@ export default {
       }
 
       if (!this.deferredPrompt) {
-        console.warn('No deferred prompt available')
         this.showPrompt = false
         return
       }
@@ -127,10 +122,8 @@ export default {
         const { outcome } = await this.deferredPrompt.userChoice
 
         if (outcome === 'accepted') {
-          console.log('User accepted the install prompt')
-          localStorage.removeItem('pwa-install-dismissed')
+          this.uiStore.resetPWAInstallDismissal()
         } else {
-          console.log('User dismissed the install prompt')
           this.dismissPrompt()
         }
       } catch (error) {
@@ -142,7 +135,7 @@ export default {
     },
     dismissPrompt() {
       this.showPrompt = false
-      localStorage.setItem('pwa-install-dismissed', Date.now().toString())
+      this.uiStore.dismissPWAInstall()
     }
   }
 }

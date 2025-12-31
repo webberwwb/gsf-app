@@ -1,6 +1,7 @@
 <template>
   <div class="favorites-page">
     <header class="page-header">
+      <img src="/logos/gsf-icon.png" alt="Logo" class="header-logo" />
       <h1>收藏</h1>
     </header>
     <main class="page-content">
@@ -53,54 +54,33 @@
 
 <script>
 import { useModal } from '../composables/useModal'
+import { useFavoritesStore } from '../stores/favorites'
+import { useCartStore } from '../stores/cart'
 
 export default {
   name: 'Favorites',
   setup() {
     const { success } = useModal()
-    return { success }
+    const favoritesStore = useFavoritesStore()
+    const cartStore = useCartStore()
+    return { success, favoritesStore, cartStore }
   },
-  data() {
-    return {
-      favorites: []
+  computed: {
+    favorites() {
+      return this.favoritesStore.items
     }
   },
   mounted() {
-    this.loadFavorites()
+    // Load favorites from storage on mount (for backward compatibility)
+    this.favoritesStore.loadFromStorage()
   },
   methods: {
-    loadFavorites() {
-      const savedFavorites = localStorage.getItem('favorites')
-      this.favorites = savedFavorites ? JSON.parse(savedFavorites) : []
-    },
     removeFavorite(productId) {
-      this.favorites = this.favorites.filter(item => item.id !== productId)
-      localStorage.setItem('favorites', JSON.stringify(this.favorites))
+      this.favoritesStore.removeFavorite(productId)
     },
     async addToCart(product) {
-      // Get current cart
-      const cart = JSON.parse(localStorage.getItem('cart') || '[]')
-      
-      // Check if product already in cart
-      const existingItem = cart.find(item => item.id === product.id)
-      
-      if (existingItem) {
-        existingItem.quantity++
-      } else {
-        cart.push({
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          image: product.image,
-          quantity: 1
-        })
-      }
-      
-      // Save cart
-      localStorage.setItem('cart', JSON.stringify(cart))
-      
-      // Update badge in bottom nav
-      this.$root.$emit('cart-updated')
+      // Add to cart store
+      this.cartStore.addItem(product, 1)
       
       await this.success(`已添加 ${product.name} 到购物车`)
     }
@@ -123,6 +103,16 @@ export default {
   position: sticky;
   top: 0;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .page-header h1 {

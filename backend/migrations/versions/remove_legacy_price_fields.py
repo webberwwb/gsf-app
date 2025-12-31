@@ -30,3 +30,4 @@ def downgrade():
         batch_op.add_column(sa.Column('original_price', mysql.NUMERIC(precision=10, scale=2), nullable=True))
 
 
+

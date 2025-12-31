@@ -7,6 +7,7 @@ from models.base import utc_now
 from config import Config
 from constants.status_enums import UserStatus
 from schemas.auth import SendOTPSchema, VerifyOTPSchema
+import os
 from schemas.utils import validate_request
 import secrets
 import requests
@@ -583,6 +584,11 @@ def google_callback():
         # Get frontend URL from config (set in .env for local, env var for prod)
         frontend_url = Config.ADMIN_FRONTEND_URL
         
+        # Ensure we're using the correct frontend URL (never localhost in production)
+        if not frontend_url or 'localhost' in frontend_url.lower():
+            current_app.logger.error(f'Invalid ADMIN_FRONTEND_URL: {frontend_url}. Using default.')
+            frontend_url = 'https://admin.grainstoryfarm.ca'
+        
         if admin_allowed_emails:
             if email.lower() not in [e.lower() for e in admin_allowed_emails]:
                 error_message = 'Your email address is not authorized for admin access. Please contact an administrator.'
@@ -643,6 +649,24 @@ def google_callback():
         # Always redirect to admin frontend with token
         # Get frontend URL from config (set in .env for local, env var for prod)
         frontend_url = Config.ADMIN_FRONTEND_URL
+        
+        # Log for debugging
+        current_app.logger.info(f'Redirecting to admin frontend: {frontend_url}/login#token={auth_token.token[:10]}...')
+        
+        # Only enforce production URL if we're running on Cloud Run (production)
+        # Allow localhost for local development
+        is_production = os.environ.get('K_SERVICE') is not None
+        if is_production:
+            # In production, never allow localhost
+            if not frontend_url or 'localhost' in frontend_url.lower():
+                current_app.logger.error(f'Invalid ADMIN_FRONTEND_URL in production: {frontend_url}. Using default.')
+                frontend_url = 'https://admin.grainstoryfarm.ca'
+        else:
+            # In local development, use localhost if ADMIN_FRONTEND_URL is not set or is production URL
+            if not frontend_url or 'grainstoryfarm.ca' in frontend_url:
+                frontend_url = 'http://localhost:3001'  # Admin frontend dev server port
+                current_app.logger.info(f'Using default localhost URL for local development: {frontend_url}')
+        
         return redirect(f'{frontend_url}/login#token={auth_token.token}&user={user.id}')
         
     except requests.exceptions.RequestException as e:

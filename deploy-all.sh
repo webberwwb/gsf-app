@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy all services to GCP Cloud Run
-# This is the single deployment script for the entire project
 # Usage: ./deploy-all.sh [region] [service-account-key-path]
+# Prerequisites: Run ./setup-secrets.sh once (secrets are reused automatically)
 
 set -e
 
@@ -32,20 +32,69 @@ gcloud config set project $PROJECT_ID
 echo "Checking/enabling required APIs..."
 gcloud services enable cloudbuild.googleapis.com run.googleapis.com containerregistry.googleapis.com --project=$PROJECT_ID 2>/dev/null || echo "APIs may already be enabled or require additional permissions. Continuing..."
 
+# Function to wait for build to complete
+wait_for_build() {
+    local BUILD_ID=$1
+    local PROJECT=$2
+    echo "Waiting for build $BUILD_ID to complete..."
+    while true; do
+        STATUS=$(gcloud builds describe $BUILD_ID --project=$PROJECT --format="value(status)" 2>/dev/null || echo "UNKNOWN")
+        case $STATUS in
+            SUCCESS)
+                echo "Build completed successfully!"
+                return 0
+                ;;
+            FAILURE|CANCELLED|EXPIRED|TIMEOUT)
+                echo "Build failed with status: $STATUS"
+                return 1
+                ;;
+            QUEUED|WORKING|PENDING)
+                echo "Build status: $STATUS. Waiting..."
+                sleep 10
+                ;;
+            *)
+                echo "Unknown build status: $STATUS. Waiting..."
+                sleep 10
+                ;;
+        esac
+    done
+}
+
 # Deploy Backend
 echo "Building and deploying backend..."
 cd backend
-BUILD_OUTPUT=$(gcloud builds submit --tag gcr.io/$PROJECT_ID/gsf-app-backend --project=$PROJECT_ID 2>&1)
+set +e
+BUILD_OUTPUT=$(gcloud builds submit --async --tag gcr.io/$PROJECT_ID/gsf-app-backend --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
-echo "$BUILD_OUTPUT" | grep -v "ERROR: (gcloud.builds.submit)$" || true
-if [ $BUILD_EXIT -ne 0 ] && ! echo "$BUILD_OUTPUT" | grep -q "ERROR: (gcloud.builds.submit)$"; then exit $BUILD_EXIT; fi
+set -e
+echo "$BUILD_OUTPUT"
+if [ $BUILD_EXIT -ne 0 ]; then
+    echo "Error: Failed to submit build"
+    exit $BUILD_EXIT
+fi
+# Extract build ID
+BUILD_ID=$(echo "$BUILD_OUTPUT" | grep 'builds/' | sed -E 's/.*builds\/([a-f0-9-]+).*/\1/' | head -1)
+if [ -z "$BUILD_ID" ]; then
+    echo "Error: Could not extract build ID from output"
+    exit 1
+fi
+wait_for_build $BUILD_ID $PROJECT_ID || {
+    echo "Error: Backend build failed"
+    exit 1
+}
+
+ENV_VARS="MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca"
+SECRETS="MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest"
+
 BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --image gcr.io/$PROJECT_ID/gsf-app-backend \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
     --add-cloudsql-instances $PROJECT_ID:us-central1:gsf-app-mysql \
-    --set-env-vars MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca \
+    --update-env-vars "$ENV_VARS" \
+    --remove-env-vars MYSQL_USER,MYSQL_PASSWORD,SECRET_KEY,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,GOOGLE_OAUTH_CLIENT_SECRET \
+    --update-secrets "$SECRETS" \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 
@@ -54,16 +103,31 @@ echo "Backend deployed at: $BACKEND_URL"
 # Deploy Frontend
 echo "Building and deploying frontend..."
 cd ../app
-BUILD_OUTPUT=$(gcloud builds submit --tag gcr.io/$PROJECT_ID/gsf-app-frontend --project=$PROJECT_ID 2>&1)
+set +e
+BUILD_OUTPUT=$(gcloud builds submit --async --tag gcr.io/$PROJECT_ID/gsf-app-frontend --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
-echo "$BUILD_OUTPUT" | grep -v "ERROR: (gcloud.builds.submit)$" || true
-if [ $BUILD_EXIT -ne 0 ] && ! echo "$BUILD_OUTPUT" | grep -q "ERROR: (gcloud.builds.submit)$"; then exit $BUILD_EXIT; fi
+set -e
+echo "$BUILD_OUTPUT"
+if [ $BUILD_EXIT -ne 0 ]; then
+    echo "Error: Failed to submit build"
+    exit $BUILD_EXIT
+fi
+# Extract build ID
+BUILD_ID=$(echo "$BUILD_OUTPUT" | grep 'builds/' | sed -E 's/.*builds\/([a-f0-9-]+).*/\1/' | head -1)
+if [ -z "$BUILD_ID" ]; then
+    echo "Error: Could not extract build ID from output"
+    exit 1
+fi
+wait_for_build $BUILD_ID $PROJECT_ID || {
+    echo "Error: Frontend build failed"
+    exit 1
+}
 FRONTEND_URL=$(gcloud run deploy gsf-app-frontend \
     --image gcr.io/$PROJECT_ID/gsf-app-frontend \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --set-env-vars VITE_API_BASE_URL=$BACKEND_URL/api \
+    --update-env-vars VITE_API_BASE_URL=$BACKEND_URL/api \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 
@@ -72,16 +136,31 @@ echo "Frontend deployed at: $FRONTEND_URL"
 # Deploy Admin
 echo "Building and deploying admin..."
 cd ../admin
-BUILD_OUTPUT=$(gcloud builds submit --tag gcr.io/$PROJECT_ID/gsf-app-admin --project=$PROJECT_ID 2>&1)
+set +e
+BUILD_OUTPUT=$(gcloud builds submit --async --tag gcr.io/$PROJECT_ID/gsf-app-admin --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
-echo "$BUILD_OUTPUT" | grep -v "ERROR: (gcloud.builds.submit)$" || true
-if [ $BUILD_EXIT -ne 0 ] && ! echo "$BUILD_OUTPUT" | grep -q "ERROR: (gcloud.builds.submit)$"; then exit $BUILD_EXIT; fi
+set -e
+echo "$BUILD_OUTPUT"
+if [ $BUILD_EXIT -ne 0 ]; then
+    echo "Error: Failed to submit build"
+    exit $BUILD_EXIT
+fi
+# Extract build ID
+BUILD_ID=$(echo "$BUILD_OUTPUT" | grep 'builds/' | sed -E 's/.*builds\/([a-f0-9-]+).*/\1/' | head -1)
+if [ -z "$BUILD_ID" ]; then
+    echo "Error: Could not extract build ID from output"
+    exit 1
+fi
+wait_for_build $BUILD_ID $PROJECT_ID || {
+    echo "Error: Admin build failed"
+    exit 1
+}
 ADMIN_URL=$(gcloud run deploy gsf-app-admin \
     --image gcr.io/$PROJECT_ID/gsf-app-admin \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --set-env-vars VITE_API_BASE_URL=$BACKEND_URL/api \
+    --update-env-vars VITE_API_BASE_URL=$BACKEND_URL/api \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 
@@ -121,4 +200,3 @@ echo "Admin URL: $ADMIN_URL"
 echo "Custom domains:"
 echo "  - app.grainstoryfarm.ca (may take a few minutes to propagate)"
 echo "  - admin.grainstoryfarm.ca (may take a few minutes to propagate)"
-

@@ -9,10 +9,10 @@ class CreateAddressSchema(Schema):
     address_line1 = fields.String(required=True, validate=validate.Length(min=1, max=255))
     address_line2 = fields.String(allow_none=True, validate=validate.Length(max=255))
     city = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    province = fields.String(required=True, validate=validate.Length(min=1, max=100))
     postal_code = fields.String(required=True, validate=validate.Length(min=1, max=20))
-    country = fields.String(missing='Canada', validate=validate.Length(max=100))
+    country = fields.String(missing='Canada', validate=validate.Length(max=100))  # Not required, backend sets to 'Canada'
     delivery_instructions = fields.String(allow_none=True)
+    notification_email = fields.Email(allow_none=True, validate=validate.Length(max=255))
     is_default = fields.Boolean(missing=False)
     
     class Meta:
@@ -26,10 +26,10 @@ class UpdateAddressSchema(Schema):
     address_line1 = fields.String(allow_none=True, validate=validate.Length(min=1, max=255))
     address_line2 = fields.String(allow_none=True, validate=validate.Length(max=255))
     city = fields.String(allow_none=True, validate=validate.Length(min=1, max=100))
-    province = fields.String(allow_none=True, validate=validate.Length(min=1, max=100))
     postal_code = fields.String(allow_none=True, validate=validate.Length(min=1, max=20))
     country = fields.String(allow_none=True, validate=validate.Length(max=100))
     delivery_instructions = fields.String(allow_none=True)
+    notification_email = fields.Email(allow_none=True, validate=validate.Length(max=255))
     is_default = fields.Boolean(allow_none=True)
     
     class Meta:

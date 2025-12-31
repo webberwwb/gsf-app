@@ -1,36 +1,37 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
-import { checkAuth } from './utils/auth'
+import { useAuthStore } from './stores/auth'
 
 // Initialize app
 const app = createApp(App)
+const pinia = createPinia()
+
+// Use pinia before any other plugins
+app.use(pinia)
+app.use(router)
+
+// Initialize stores after pinia is installed
+const authStore = useAuthStore()
+
+// Load auth from storage
+authStore.loadFromStorage()
 
 // Check authentication on app start
-checkAuth().then((isAuthenticated) => {
-  if (isAuthenticated) {
-    console.log('✅ User authenticated from cached token')
-  } else {
-    console.log('ℹ️  No valid cached token, user needs to login')
-  }
-}).catch((error) => {
-  console.error('❌ Error checking auth:', error)
+authStore.checkAuth().catch((error) => {
+  console.error('Error checking auth:', error)
 })
-
-app.use(router)
 
 // Add error handler
 app.config.errorHandler = (err, instance, info) => {
-  console.error('❌ Vue Error:', err)
-  console.error('❌ Error Info:', info)
-  console.error('❌ Component:', instance)
+  console.error('Vue Error:', err, info)
 }
 
 try {
   app.mount('#app')
-  console.log('✅ App mounted successfully')
 } catch (error) {
-  console.error('❌ Failed to mount app:', error)
+  console.error('Failed to mount app:', error)
   document.getElementById('app').innerHTML = `
     <div style="padding: 20px; text-align: center;">
       <h2>应用加载失败</h2>
@@ -45,18 +46,67 @@ if ('serviceWorker' in navigator) {
   // Check if we're in development mode
   const isDevelopment = import.meta.env.DEV || 
                         window.location.hostname === 'localhost' || 
-                        window.location.hostname === '127.0.0.1'
+                        window.location.hostname === '127.0.0.1' ||
+                        window.location.port === '3000'
   
   if (isDevelopment) {
-    console.log('🚫 Service Worker disabled in development mode')
-    // Unregister any existing service workers in development
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      for (const registration of registrations) {
-        registration.unregister().then(() => {
-          console.log('🗑️  Unregistered existing service worker')
-        })
+    // Aggressively unregister service workers immediately
+    // This must happen synchronously before any other code runs
+    const unregisterServiceWorkers = async () => {
+      try {
+        // First, unregister all service workers
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(
+          registrations.map(async (registration) => {
+            try {
+              // Unregister the service worker
+              await registration.unregister()
+              
+              // Also try to update and skip waiting if there's a waiting worker
+              if (registration.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+              }
+              if (registration.installing) {
+                registration.installing.postMessage({ type: 'SKIP_WAITING' })
+              }
+            } catch (err) {
+              console.warn('Failed to unregister service worker:', err)
+            }
+          })
+        )
+        
+        // Clear all caches
+        if ('caches' in window) {
+          const cacheNames = await caches.keys()
+          await Promise.all(
+            cacheNames.map(cacheName => caches.delete(cacheName))
+          )
+        }
+        
+        // Force reload if there's still a controller (service worker controlling the page)
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' })
+          // Small delay to let the message be sent
+          setTimeout(() => {
+            window.location.reload()
+          }, 100)
+          return
+        }
+      } catch (error) {
+        console.error('Error unregistering service workers:', error)
       }
-    })
+    }
+    
+    // Run immediately
+    unregisterServiceWorkers()
+    
+    // Also run on page load to catch any that might have registered after initial check
+    window.addEventListener('load', unregisterServiceWorkers)
+    
+    // Prevent service worker from being registered in dev mode
+    navigator.serviceWorker.register = function(...args) {
+      return Promise.reject(new Error('Service worker registration disabled in development'))
+    }
   } else {
     // Production mode - register service worker
     window.addEventListener('load', () => {
@@ -64,33 +114,25 @@ if ('serviceWorker' in navigator) {
         updateViaCache: 'none' // Critical: don't cache the service worker file itself
       })
         .then((registration) => {
-          console.log('✅ Service Worker registered:', registration)
-          
           // Check for updates every 2 minutes (more frequent for better UX)
           setInterval(() => {
-            registration.update().then(() => {
-              console.log('🔄 Checked for Service Worker updates')
-            })
+            registration.update()
           }, 2 * 60 * 1000)
           
           // Also check for updates when page becomes visible (important for iOS)
           document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-              registration.update().then(() => {
-                console.log('🔄 Checked for updates (page visible)')
-              })
+              registration.update()
             }
           })
           
           // Handle updates
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing
-            console.log('🆕 New Service Worker found')
             
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 // New service worker is installed but waiting to activate
-                console.log('🔄 New version available!')
                 // Show update notification to user
                 showUpdateNotification(registration)
               }
@@ -98,7 +140,7 @@ if ('serviceWorker' in navigator) {
           })
         })
         .catch((error) => {
-          console.error('❌ Service Worker registration failed:', error)
+          console.error('Service Worker registration failed:', error)
         })
     })
   }

@@ -6,7 +6,9 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
       </button>
-      <h1>确认订单</h1>
+      <div class="header-center">
+        <h1>确认订单</h1>
+      </div>
       <div class="header-spacer"></div>
     </header>
 
@@ -31,9 +33,31 @@
           </div>
           </div>
         </div>
-        <div class="order-total">
-          <span class="total-label">{{ hasEstimatedTotal ? '预估总计' : '总计' }}:</span>
-          <span class="total-amount">${{ calculateTotal() }}</span>
+        <div class="order-breakdown">
+          <div class="breakdown-row">
+            <span class="breakdown-label">小计:</span>
+            <span class="breakdown-amount">${{ calculateSubtotal() }}</span>
+          </div>
+          <div v-if="deliveryMethod === 'delivery'" class="breakdown-row">
+            <span class="breakdown-label">运费:</span>
+            <span class="breakdown-amount">{{ shippingFeeDisplay }}</span>
+          </div>
+          <div class="breakdown-row total-row">
+            <span class="total-label">{{ hasEstimatedTotal ? '预估总计' : '总计' }}:</span>
+            <span class="total-amount">${{ calculateTotal() }}</span>
+          </div>
+          <div v-if="deliveryMethod === 'delivery'" class="pricing-disclaimer">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>团购商品价格超过$150免运费</span>
+          </div>
+          <div class="pricing-disclaimer">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>最终价格以实际称重为准，所有商品均已含税</span>
+          </div>
         </div>
       </div>
 
@@ -73,7 +97,7 @@
             </div>
             <div class="option-content">
               <h4>配送</h4>
-              <p>配送到指定地址</p>
+              <p>配送到指定地址（限GTA）</p>
             </div>
             <div class="option-check">
               <svg v-if="deliveryMethod === 'delivery'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -246,7 +270,6 @@
           <span class="btn-text">确认订单</span>
           <span class="btn-amount">{{ hasEstimatedTotal ? '预估' : '' }}${{ calculateTotal() }}</span>
         </button>
-        <p v-if="hasEstimatedTotal" class="estimate-note">* 最终价格以实际称重为准</p>
       </div>
     </div>
 
@@ -321,32 +344,79 @@
 <script>
 import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
+import { useCheckoutStore } from '../stores/checkout'
+import { formatDateEST_CN } from '../utils/date'
 
 export default {
   name: 'Checkout',
   components: {
     AddressForm
   },
+  setup() {
+    const checkoutStore = useCheckoutStore()
+    return { checkoutStore }
+  },
   data() {
     return {
       loading: true,
       error: null,
-      deal: null,
-      orderItems: [],
-      paymentMethod: 'cash', // 'cash' or 'etransfer'
-      deliveryMethod: 'pickup', // 'pickup' or 'delivery'
-      selectedPickupLocation: 'markham', // 'markham' or 'northyork'
-      selectedAddressId: null,
       addresses: [],
       addressesLoading: false,
       showAddressModal: false,
       showAddressForm: false,
-      editingAddress: null,
-      existingOrderId: null, // Store existing order ID if found
-      notes: '' // User custom notes
+      editingAddress: null
     }
   },
   computed: {
+    deal() {
+      return this.checkoutStore.deal
+    },
+    orderItems() {
+      return this.checkoutStore.orderItems
+    },
+    paymentMethod: {
+      get() {
+        return this.checkoutStore.paymentMethod
+      },
+      set(value) {
+        this.checkoutStore.setPaymentMethod(value)
+      }
+    },
+    deliveryMethod: {
+      get() {
+        return this.checkoutStore.deliveryMethod
+      },
+      set(value) {
+        this.checkoutStore.setDeliveryMethod(value)
+      }
+    },
+    selectedPickupLocation: {
+      get() {
+        return this.checkoutStore.selectedPickupLocation
+      },
+      set(value) {
+        this.checkoutStore.setPickupLocation(value)
+      }
+    },
+    selectedAddressId: {
+      get() {
+        return this.checkoutStore.selectedAddressId
+      },
+      set(value) {
+        this.checkoutStore.setAddress(value)
+      }
+    },
+    notes: {
+      get() {
+        return this.checkoutStore.notes
+      },
+      set(value) {
+        this.checkoutStore.setNotes(value)
+      }
+    },
+    existingOrderId() {
+      return this.checkoutStore.existingOrderId
+    },
     canConfirm() {
       if (this.deliveryMethod === 'delivery') {
         return this.selectedAddressId !== null
@@ -356,11 +426,20 @@ export default {
       return true
     },
     hasEstimatedTotal() {
-      return this.orderItems.some(item => item.is_estimated)
+      return this.checkoutStore.hasEstimatedTotal
     },
     selectedAddress() {
       if (!this.selectedAddressId) return null
       return this.addresses.find(addr => addr.id === this.selectedAddressId)
+    },
+    shippingFee() {
+      return this.checkoutStore.shippingFee
+    },
+    shippingFeeDisplay() {
+      if (this.shippingFee === 0) {
+        return '免运费'
+      }
+      return `$${this.shippingFee.toFixed(2)}`
     }
   },
   async mounted() {
@@ -378,62 +457,18 @@ export default {
     async loadCheckoutData() {
       this.loading = true
       this.error = null
+      
       try {
-        // Get dealId from route query
-        const dealId = this.$route.query.dealId
-        if (!dealId) {
-          this.error = '订单数据无效，请重新选择商品'
+        // Check if we have data in the store
+        if (!this.checkoutStore.deal || this.checkoutStore.orderItems.length === 0) {
+          this.error = '请先在商品详情页选择商品'
           this.loading = false
           return
         }
-
-        // Load deal info (includes order if user has one)
-        const response = await apiClient.get(`/group-deals/${dealId}`)
-        this.deal = response.data.deal
         
-        // Check if order is included in the group deal response
-        if (response.data.order) {
-          const order = response.data.order
-          this.existingOrderId = order.id
-          
-          // Build order items from existing order
-          this.orderItems = order.items.map(item => ({
-            product_id: item.product_id,
-            quantity: item.quantity,
-            pricing_type: item.product?.pricing_type || 'per_item',
-            estimated_price: parseFloat(item.total_price || 0).toFixed(2),
-            is_estimated: false // Order items have final prices
-          }))
-          
-          // Restore payment method
-          if (order.payment_method) {
-            this.paymentMethod = order.payment_method
-          }
-          
-          // Restore delivery method
-          if (order.delivery_method) {
-            this.deliveryMethod = order.delivery_method
-            
-            // If delivery, restore address ID and load addresses
-            if (order.delivery_method === 'delivery' && order.address_id) {
-              this.selectedAddressId = order.address_id
-              await this.loadAddresses()
-            }
-            
-            // If pickup, restore pickup location
-            if (order.delivery_method === 'pickup' && order.pickup_location) {
-              this.selectedPickupLocation = order.pickup_location
-            }
-          }
-          
-          // Restore notes
-          if (order.notes) {
-            this.notes = order.notes
-          }
-        } else {
-          // No existing order - user needs to select items
-          // This shouldn't happen if coming from GroupDealDetail, but handle gracefully
-          this.error = '请先在商品详情页选择商品'
+        // Load addresses if delivery method is delivery
+        if (this.deliveryMethod === 'delivery') {
+          await this.loadAddresses()
         }
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '加载订单信息失败'
@@ -498,20 +533,14 @@ export default {
       const product = this.deal.products.find(p => p.id === productId)
       return product ? product.name : '商品'
     },
+    calculateSubtotal() {
+      return this.checkoutStore.subtotal.toFixed(2)
+    },
     calculateTotal() {
-      return this.orderItems.reduce((sum, item) => {
-        return sum + parseFloat(item.estimated_price || 0)
-      }, 0).toFixed(2)
+      return this.checkoutStore.total.toFixed(2)
     },
     formatDate(dateString) {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      // Only show date, no time
-      return date.toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      })
+      return formatDateEST_CN(dateString)
     },
     goToAddresses() {
       this.$router.push('/addresses')
@@ -522,24 +551,13 @@ export default {
       }
 
       try {
-        // Prepare order data
-        const orderData = {
-          items: this.orderItems.map(item => ({
-            product_id: item.product_id,
-            quantity: item.quantity,
-            pricing_type: item.pricing_type
-          })),
-          payment_method: this.paymentMethod,
-          delivery_method: this.deliveryMethod,
-          address_id: this.deliveryMethod === 'delivery' ? this.selectedAddressId : null,
-          pickup_location: this.deliveryMethod === 'pickup' ? this.selectedPickupLocation : null,
-          notes: this.notes.trim() || null
-        }
+        // Get order data from store
+        const orderData = this.checkoutStore.getOrderData()
 
         let response
         let isNew = true
         
-        // Check if we have an existing order ID or need to check for one
+        // Check if we have an existing order ID or need to create new
         if (this.existingOrderId) {
           // Update existing order using PATCH
           response = await apiClient.patch(`/orders/${this.existingOrderId}`, orderData)
@@ -563,6 +581,9 @@ export default {
             }
           }
         }
+        
+        // Clear checkout store after successful order
+        this.checkoutStore.clearCheckout()
         
         // Redirect to result page with order info in query params
         const orderNumber = response.data.order?.order_number || null
@@ -648,11 +669,25 @@ export default {
   flex-shrink: 0;
 }
 
+.header-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+
 .page-header h1 {
   font-size: var(--md-headline-size);
   color: white;
   font-weight: 500;
-  flex: 1;
   text-align: center;
   letter-spacing: -0.5px;
   margin: 0;
@@ -830,6 +865,62 @@ export default {
   font-size: var(--md-body-size);
   font-weight: 600;
   color: var(--md-primary);
+}
+
+.order-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-sm);
+  margin-top: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid var(--md-surface-variant);
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--md-spacing-xs) 0;
+}
+
+.breakdown-label {
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface-variant);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+
+.breakdown-amount {
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  color: var(--md-on-surface);
+}
+
+.breakdown-row.total-row {
+  padding-top: var(--md-spacing-sm);
+  border-top: 2px solid var(--md-primary);
+  margin-top: var(--md-spacing-xs);
+}
+
+.pricing-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  color: #757575;
+  padding: 8px 0 0 0;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.pricing-disclaimer svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  opacity: 0.7;
 }
 
 .order-total {

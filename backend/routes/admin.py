@@ -22,6 +22,8 @@ import uuid
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
 from decimal import Decimal
+import csv
+import io
 
 # Optional imports for image upload
 try:
@@ -1011,17 +1013,18 @@ def get_dashboard_stats():
         # Count users
         users_count = User.query.filter_by(status=UserStatus.ACTIVE.value).count()
         
-        # Count orders
-        orders_count = Order.query.count()
+        # Count orders (excluding soft-deleted)
+        orders_count = Order.query.filter(Order.deleted_at.is_(None)).count()
         
-        # Calculate total revenue (sum of all paid orders)
+        # Calculate total revenue (sum of all paid orders, excluding soft-deleted)
         revenue_result = db.session.query(func.sum(Order.total)).filter(
-            Order.payment_status == PaymentStatus.PAID.value
+            Order.payment_status == PaymentStatus.PAID.value,
+            Order.deleted_at.is_(None)
         ).scalar()
         total_revenue = float(revenue_result) if revenue_result else 0.0
         
-        # Get recent orders (last 10)
-        recent_orders = Order.query.order_by(Order.created_at.desc()).limit(10).all()
+        # Get recent orders (last 10, excluding soft-deleted)
+        recent_orders = Order.query.filter(Order.deleted_at.is_(None)).order_by(Order.created_at.desc()).limit(10).all()
         recent_orders_data = []
         for order in recent_orders:
             user = User.query.get(order.user_id)
@@ -1142,6 +1145,7 @@ def get_admin_orders():
         status_filter = request.args.get('status', '').strip()
         payment_filter = request.args.get('payment_status', '').strip()
         payment_method_filter = request.args.get('payment_method', '').strip()
+        delivery_method_filter = request.args.get('delivery_method', '').strip()
         group_deal_id = request.args.get('group_deal_id')
         search = request.args.get('search', '').strip()
         
@@ -1168,6 +1172,9 @@ def get_admin_orders():
         
         if payment_method_filter:
             query = query.filter(Order.payment_method == payment_method_filter)
+        
+        if delivery_method_filter:
+            query = query.filter(Order.delivery_method == delivery_method_filter)
         
         if group_deal_id:
             query = query.filter(Order.group_deal_id == int(group_deal_id))
@@ -2002,6 +2009,204 @@ def delete_supplier(supplier_id):
         current_app.logger.error(f'Error deleting supplier: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to delete supplier',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/group-deals/<int:deal_id>/export-orders-csv', methods=['GET'])
+def export_group_deal_orders_csv(deal_id):
+    """Export order products for a group deal as CSV, grouped by supplier with aggregated quantities"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get group deal
+        group_deal = GroupDeal.query.get_or_404(deal_id)
+        
+        # Get all orders for this group deal (excluding soft-deleted and cancelled)
+        orders = Order.query.filter(
+            Order.group_deal_id == deal_id,
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value
+        ).all()
+        
+        # Aggregate quantities by supplier and product
+        # Structure: {supplier_name: {product_name: total_quantity}}
+        aggregated_data = {}
+        
+        for order in orders:
+            for item in order.items:
+                product = Product.query.get(item.product_id)
+                if not product:
+                    continue
+                
+                # Get supplier (or use "No Supplier" if none)
+                supplier = product.supplier
+                supplier_name = supplier.name if supplier else "No Supplier"
+                product_name = product.name
+                
+                # Initialize nested dicts if needed
+                if supplier_name not in aggregated_data:
+                    aggregated_data[supplier_name] = {}
+                
+                if product_name not in aggregated_data[supplier_name]:
+                    aggregated_data[supplier_name][product_name] = 0
+                
+                # Aggregate quantity
+                aggregated_data[supplier_name][product_name] += item.quantity
+        
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            'Supplier',
+            'Product Name',
+            'Total Quantity'
+        ])
+        
+        # Sort suppliers alphabetically
+        sorted_suppliers = sorted(aggregated_data.keys())
+        
+        # Write data grouped by supplier
+        for supplier_name in sorted_suppliers:
+            products = aggregated_data[supplier_name]
+            # Sort products alphabetically
+            sorted_products = sorted(products.items())
+            
+            for product_name, total_quantity in sorted_products:
+                writer.writerow([
+                    supplier_name,
+                    product_name,
+                    total_quantity
+                ])
+        
+        # Get CSV content
+        csv_content = output.getvalue()
+        output.close()
+        
+        # Create response with CSV
+        response = Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=group_deal_{deal_id}_orders_by_supplier.csv'
+            }
+        )
+        
+        current_app.logger.info(f'Exported CSV for group deal {deal_id} with {len(orders)} orders')
+        
+        return response, 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error exporting CSV: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to export CSV',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/group-deals/<int:deal_id>/export-delivery-csv', methods=['GET'])
+def export_group_deal_delivery_csv(deal_id):
+    """Export delivery orders for a group deal as CSV with delivery info and contact"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get group deal
+        group_deal = GroupDeal.query.get_or_404(deal_id)
+        
+        # Get all delivery orders for this group deal (excluding soft-deleted and cancelled)
+        orders = Order.query.filter(
+            Order.group_deal_id == deal_id,
+            Order.delivery_method == 'delivery',
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value
+        ).all()
+        
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            'Order Number',
+            'Recipient Name',
+            'Phone',
+            'Email',
+            'Address Line 1',
+            'Address Line 2',
+            'City',
+            'Postal Code',
+            'Country',
+            'Delivery Instructions',
+            'Total Amount',
+            'Payment Status',
+            'Order Status',
+            'Items Count'
+        ])
+        
+        # Write order data
+        for order in orders:
+            # Get user info
+            user = User.query.get(order.user_id)
+            
+            # Get address info
+            address = None
+            if order.address_id:
+                from models.address import Address
+                address = Address.query.get(order.address_id)
+            
+            # Build address fields
+            recipient_name = address.recipient_name if address else (user.nickname if user else 'N/A')
+            phone = address.phone if address else (user.phone if user else '')
+            email = address.notification_email if address and address.notification_email else (user.email if user else '')
+            address_line1 = address.address_line1 if address else ''
+            address_line2 = address.address_line2 if address else ''
+            city = address.city if address else ''
+            postal_code = address.postal_code if address else ''
+            country = address.country if address else 'Canada'
+            delivery_instructions = address.delivery_instructions if address else ''
+            
+            writer.writerow([
+                order.order_number,
+                recipient_name,
+                phone,
+                email,
+                address_line1,
+                address_line2,
+                city,
+                postal_code,
+                country,
+                delivery_instructions,
+                f"{float(order.total) if order.total else 0:.2f}",
+                order.payment_status,
+                order.status,
+                len(order.items)
+            ])
+        
+        # Get CSV content
+        csv_content = output.getvalue()
+        output.close()
+        
+        # Create response with CSV
+        response = Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=group_deal_{deal_id}_delivery_orders.csv'
+            }
+        )
+        
+        current_app.logger.info(f'Exported delivery CSV for group deal {deal_id} with {len(orders)} delivery orders')
+        
+        return response, 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error exporting delivery CSV: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to export delivery CSV',
             'message': str(e)
         }), 500
 

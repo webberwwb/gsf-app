@@ -132,3 +132,4 @@ echo "  - Resume job: gcloud scheduler jobs resume $JOB_NAME --location=$REGION"
 echo ""
 
 
+

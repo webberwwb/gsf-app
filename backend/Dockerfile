@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Note: APP_VERSION should be set as environment variable during deployment
+# This ensures API version matches frontend version (from sw.js)
+
 # Cloud Run will provide PORT environment variable
 EXPOSE 8080
 

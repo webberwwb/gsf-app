@@ -29,3 +29,4 @@ def downgrade():
     op.drop_column('products', 'supplier_id')
 
 
+

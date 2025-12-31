@@ -50,3 +50,4 @@ def validate_request(schema_class, data=None, **kwargs):
             'message': str(e)
         }), 400
 
+

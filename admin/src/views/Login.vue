@@ -87,16 +87,9 @@ export default {
       this.error = null
 
       try {
-        // Use backend redirect URI (must match Google Cloud Console)
-        // Backend will handle callback and redirect to frontend with token
-        const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
-        const backendBase = apiBase.replace('/api', '')
-        const redirectUri = `${backendBase}/api/auth/google/callback`
-        
-        // Get Google OAuth login URL from backend
-        const response = await apiClient.get('/auth/google/login-url', {
-          params: { redirect_uri: redirectUri }
-        })
+        // Backend will handle redirect URI configuration
+        // No need to pass redirect_uri - backend uses GOOGLE_OAUTH_REDIRECT_URI from config
+        const response = await apiClient.get('/auth/google/login-url')
 
         if (response.data.auth_url) {
           // Redirect to Google OAuth
@@ -117,16 +110,11 @@ export default {
       this.error = null
 
       try {
-        // Use backend redirect URI (must match what was sent to Google)
-        const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
-        const backendBase = apiBase.replace('/api', '')
-        const redirectUri = `${backendBase}/api/auth/google/callback`
-        
+        // Backend handles redirect URI - no need to pass it
         // Exchange code for token via backend
         const response = await apiClient.get('/auth/google/callback', {
           params: {
-            code: code,
-            redirect_uri: redirectUri
+            code: code
           }
         })
 

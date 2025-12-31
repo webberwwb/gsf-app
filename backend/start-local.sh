@@ -34,10 +34,22 @@ if [ ! -d "venv" ]; then
     pip install -r requirements.txt
 fi
 
-# Check if proxy is already running
+# Check if proxy is already running and healthy
+PROXY_PID=""
 if lsof -Pi :3306 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo -e "${YELLOW}Cloud SQL Proxy is already running on port 3306${NC}"
-    PROXY_PID=""
+    # Check if proxy is healthy by looking for recent errors in logs
+    if tail -5 /tmp/cloud_sql_proxy.log 2>/dev/null | grep -qi "tls: bad certificate\|connection aborted"; then
+        echo -e "${YELLOW}Cloud SQL Proxy is running but has errors. Restarting...${NC}"
+        pkill -f cloud_sql_proxy || true
+        sleep 2
+        # Start fresh proxy
+        echo -e "${GREEN}Starting Cloud SQL Proxy...${NC}"
+        ./cloud_sql_proxy focused-mote-477703-f0:us-central1:gsf-app-mysql --port=3306 --address=127.0.0.1 > /tmp/cloud_sql_proxy.log 2>&1 &
+        PROXY_PID=$!
+    else
+        echo -e "${GREEN}Cloud SQL Proxy is already running on port 3306${NC}"
+        PROXY_PID=""
+    fi
 else
     # Start Cloud SQL Proxy in background
     echo -e "${GREEN}Starting Cloud SQL Proxy...${NC}"
@@ -66,8 +78,10 @@ if [ ! -z "$PROXY_PID" ]; then
     echo "Waiting for Cloud SQL Proxy to be ready..."
     for i in {1..30}; do
         if lsof -Pi :3306 -sTCP:LISTEN -t >/dev/null 2>&1; then
+            # Wait a bit more for proxy to fully initialize
+            sleep 2
             # Check if proxy is actually working by checking log for errors
-            if tail -10 /tmp/cloud_sql_proxy.log 2>/dev/null | grep -qi "error\|failed\|invalid"; then
+            if tail -10 /tmp/cloud_sql_proxy.log 2>/dev/null | grep -qi "tls: bad certificate\|connection aborted\|error\|failed\|invalid"; then
                 echo -e "${RED}Error detected in Cloud SQL Proxy logs${NC}"
                 tail -10 /tmp/cloud_sql_proxy.log
                 kill $PROXY_PID 2>/dev/null || true
@@ -87,6 +101,10 @@ if [ ! -z "$PROXY_PID" ]; then
     done
 else
     echo -e "${GREEN}Using existing Cloud SQL Proxy${NC}"
+    # Still verify it's healthy
+    if tail -5 /tmp/cloud_sql_proxy.log 2>/dev/null | grep -qi "tls: bad certificate\|connection aborted"; then
+        echo -e "${YELLOW}Warning: Proxy logs show potential issues. Consider restarting.${NC}"
+    fi
 fi
 
 # Activate virtual environment and start Flask

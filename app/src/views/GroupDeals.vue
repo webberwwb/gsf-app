@@ -29,6 +29,7 @@
 
 <script>
 import apiClient from '../api/client'
+import { parseDateEST, getNowEST } from '../utils/date'
 
 export default {
   name: 'GroupDeals',
@@ -57,12 +58,12 @@ export default {
           return
         }
         
-        const now = new Date()
+        const now = getNowEST()
         
         // Find active deal (status = 'active' and order_end_date > now)
         const activeDeal = deals.find(deal => {
-          const endDate = new Date(deal.order_end_date)
-          return deal.status === 'active' && endDate > now
+          const endDate = parseDateEST(deal.order_end_date)
+          return deal.status === 'active' && endDate && endDate > now
         })
         
         if (activeDeal) {
@@ -75,11 +76,14 @@ export default {
         // Find next upcoming deal (status = 'upcoming' and order_start_date > now)
         const upcomingDeals = deals
           .filter(deal => {
-            const startDate = new Date(deal.order_start_date)
-            return deal.status === 'upcoming' && startDate > now
+            const startDate = parseDateEST(deal.order_start_date)
+            return deal.status === 'upcoming' && startDate && startDate > now
           })
           .sort((a, b) => {
-            return new Date(a.order_start_date) - new Date(b.order_start_date)
+            const dateA = parseDateEST(a.order_start_date)
+            const dateB = parseDateEST(b.order_start_date)
+            if (!dateA || !dateB) return 0
+            return dateA - dateB
           })
         
         if (upcomingDeals.length > 0) {
@@ -194,5 +198,6 @@ export default {
   }
 }
 </style>
+
 
 

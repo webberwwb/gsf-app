@@ -1,6 +1,7 @@
 <template>
   <div class="cart-page">
     <header class="page-header">
+      <img src="/logos/gsf-icon.png" alt="Logo" class="header-logo" />
       <h1>购物车</h1>
     </header>
     <main class="page-content">
@@ -39,44 +40,32 @@
 </template>
 
 <script>
+import { useCartStore } from '../stores/cart'
+
 export default {
   name: 'Cart',
-  data() {
-    return {
-      cartItems: []
-    }
+  setup() {
+    const cartStore = useCartStore()
+    return { cartStore }
   },
   computed: {
+    cartItems() {
+      return this.cartStore.items
+    },
     totalPrice() {
-      return this.cartItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.price) * item.quantity)
-      }, 0).toFixed(2)
+      return this.cartStore.totalPrice.toFixed(2)
     }
   },
   mounted() {
-    this.loadCart()
+    // Load cart from storage on mount (for backward compatibility)
+    this.cartStore.loadFromStorage()
   },
   methods: {
-    loadCart() {
-      const savedCart = localStorage.getItem('cart')
-      this.cartItems = savedCart ? JSON.parse(savedCart) : []
-    },
     increaseQuantity(item) {
-      item.quantity++
-      this.saveCart()
+      this.cartStore.increaseQuantity(item.id)
     },
     decreaseQuantity(item) {
-      if (item.quantity > 1) {
-        item.quantity--
-      } else {
-        this.cartItems = this.cartItems.filter(i => i.id !== item.id)
-      }
-      this.saveCart()
-    },
-    saveCart() {
-      localStorage.setItem('cart', JSON.stringify(this.cartItems))
-      // Update badge in bottom nav
-      this.$root.$emit('cart-updated')
+      this.cartStore.decreaseQuantity(item.id)
     }
   }
 }
@@ -97,6 +86,16 @@ export default {
   position: sticky;
   top: 0;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .page-header h1 {

@@ -11,6 +11,19 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Enable HMR with proper WebSocket configuration
+    hmr: {
+      protocol: 'ws',
+      host: 'localhost',
+      port: 3000,
+      clientPort: 3000
+    },
+    // Disable caching in development
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:5001',

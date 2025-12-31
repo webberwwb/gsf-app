@@ -6,7 +6,9 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
       </button>
-      <h1>积分商城</h1>
+      <div class="header-center">
+        <h1>积分商城</h1>
+      </div>
       <div class="header-spacer"></div>
     </header>
 
@@ -88,11 +90,25 @@ export default {
   flex-shrink: 0;
 }
 
+.header-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+
 .page-header h1 {
   font-size: var(--md-headline-size);
   color: white;
   font-weight: 500;
-  flex: 1;
   text-align: center;
   letter-spacing: -0.5px;
   margin: 0;

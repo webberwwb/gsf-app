@@ -6,7 +6,10 @@
     <aside class="sidebar" :class="{ 'sidebar-open': sidebarOpen }">
       <div class="sidebar-header">
         <img src="/logos/gsf-icon.png" alt="谷语农庄" class="logo" />
-        <h2>管理后台</h2>
+        <div class="sidebar-title-container">
+          <h2>管理后台</h2>
+          <span class="version-text">v{{ version }}</span>
+        </div>
         <button class="sidebar-close-btn" @click="toggleSidebar" aria-label="Close sidebar">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -81,13 +84,15 @@
 
 <script>
 import { getCurrentUser, clearAuth } from '../utils/auth'
+import packageJson from '../../package.json'
 
 export default {
   name: 'Dashboard',
   data() {
     return {
       user: null,
-      sidebarOpen: false
+      sidebarOpen: false,
+      version: packageJson.version
     }
   },
   computed: {
@@ -233,10 +238,23 @@ export default {
   object-fit: contain;
 }
 
+.sidebar-title-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .sidebar-header h2 {
   font-size: var(--md-title-size);
   color: var(--md-on-surface);
   font-weight: 500;
+  margin: 0;
+}
+
+.version-text {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  font-weight: 400;
 }
 
 .sidebar-nav {

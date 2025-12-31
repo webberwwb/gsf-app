@@ -167,6 +167,7 @@
 
 <script>
 import apiClient from '../api/client'
+import { formatDateEST_CN, parseDateEST, getNowEST } from '../utils/date'
 
 export default {
   name: 'Home',
@@ -196,15 +197,16 @@ export default {
         this.deals = dealsRes.data.deals || []
         
         // Separate active and upcoming deals
-        const now = new Date()
+        // Use EST for date comparisons since backend dates are in EST
+        const now = getNowEST()
         this.activeDeals = this.deals.filter(deal => {
-          const endDate = new Date(deal.order_end_date)
-          return deal.status === 'active' && endDate > now
+          const endDate = parseDateEST(deal.order_end_date)
+          return deal.status === 'active' && endDate && endDate > now
         })
         
         this.upcomingDeals = this.deals.filter(deal => {
-          const startDate = new Date(deal.order_start_date)
-          return deal.status === 'upcoming' && startDate > now
+          const startDate = parseDateEST(deal.order_start_date)
+          return deal.status === 'upcoming' && startDate && startDate > now
         })
       } catch (error) {
         console.error('Failed to load data:', error)
@@ -218,14 +220,7 @@ export default {
       }
     },
     formatDate(dateString) {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      // Only show date, no time
-      return date.toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      })
+      return formatDateEST_CN(dateString)
     },
     formatWeightRangePrice(product) {
       if (product.pricing_data && product.pricing_data.ranges && product.pricing_data.ranges.length > 0) {
@@ -239,7 +234,7 @@ export default {
         return null
       }
       
-      const now = new Date()
+      const now = getNowEST()
       const productId = product.id
       
       // Find all deals that include this product (active or upcoming)
@@ -257,8 +252,8 @@ export default {
       
       // Check for active deals first
       const activeDeal = relevantDeals.find(deal => {
-        const endDate = new Date(deal.order_end_date)
-        return deal.status === 'active' && endDate > now
+        const endDate = parseDateEST(deal.order_end_date)
+        return deal.status === 'active' && endDate && endDate > now
       })
       
       if (activeDeal) {
@@ -268,12 +263,15 @@ export default {
       // Find the next upcoming deal
       const nextDeal = relevantDeals
         .filter(deal => {
-          const startDate = new Date(deal.order_start_date)
-          return deal.status === 'upcoming' && startDate > now
+          const startDate = parseDateEST(deal.order_start_date)
+          return deal.status === 'upcoming' && startDate && startDate > now
         })
         .sort((a, b) => {
           // Sort by order_start_date, earliest first
-          return new Date(a.order_start_date) - new Date(b.order_start_date)
+          const dateA = parseDateEST(a.order_start_date)
+          const dateB = parseDateEST(b.order_start_date)
+          if (!dateA || !dateB) return 0
+          return dateA - dateB
         })[0]
       
       if (!nextDeal) {
@@ -281,7 +279,8 @@ export default {
       }
       
       // Format the date: "1月1日开团"
-      const saleDate = new Date(nextDeal.order_start_date)
+      const saleDate = parseDateEST(nextDeal.order_start_date)
+      if (!saleDate) return null
       const month = saleDate.getMonth() + 1
       const day = saleDate.getDate()
       
@@ -292,7 +291,7 @@ export default {
         return false
       }
       
-      const now = new Date()
+      const now = getNowEST()
       const productId = product.id
       
       // Check if product is in any active deal
@@ -300,9 +299,9 @@ export default {
         if (!deal.products || deal.products.length === 0) {
           return false
         }
-        const endDate = new Date(deal.order_end_date)
+        const endDate = parseDateEST(deal.order_end_date)
         return deal.status === 'active' && 
-               endDate > now &&
+               endDate && endDate > now &&
                deal.products.some(p => p.id === productId)
       })
     },

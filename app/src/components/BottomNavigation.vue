@@ -15,8 +15,14 @@
 </template>
 
 <script>
+import { useCartStore } from '../stores/cart'
+
 export default {
   name: 'BottomNavigation',
+  setup() {
+    const cartStore = useCartStore()
+    return { cartStore }
+  },
   data() {
     return {
       navItems: [
@@ -48,18 +54,10 @@ export default {
     }
   },
   mounted() {
-    // Update cart badge if needed
-    this.updateCartBadge()
+    // Load cart from storage on mount
+    this.cartStore.loadFromStorage()
   },
   methods: {
-    updateCartBadge() {
-      // TODO: Get cart item count from store/API
-      const cartItems = JSON.parse(localStorage.getItem('cart') || '[]')
-      const cartItem = this.navItems.find(item => item.path === '/cart')
-      if (cartItem) {
-        cartItem.badge = cartItems.length > 0 ? cartItems.length : null
-      }
-    },
     isActive(item) {
       // For "团购" item, highlight when on group-deals routes
       if (item.path === '/group-deals') {
