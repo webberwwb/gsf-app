@@ -87,11 +87,16 @@
 <script>
 import apiClient from '../api/client'
 import ProductForm from '../components/ProductForm.vue'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Products',
   components: {
     ProductForm
+  },
+  setup() {
+    const { confirm, error: showError } = useModal()
+    return { confirm, showError }
   },
   data() {
     return {
@@ -136,7 +141,10 @@ export default {
       await this.fetchProducts()
     },
     async deleteProduct(id) {
-      if (!confirm('确定要删除这个商品吗？')) {
+      const confirmed = await this.confirm('确定要删除这个商品吗？', {
+        type: 'warning'
+      })
+      if (!confirmed) {
         return
       }
 
@@ -144,7 +152,7 @@ export default {
         await apiClient.delete(`/admin/products/${id}`)
         await this.fetchProducts()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '删除失败')
+        await this.showError(error.response?.data?.message || error.response?.data?.error || '删除失败')
         console.error('Delete product error:', error)
       }
     },

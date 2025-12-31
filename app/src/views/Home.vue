@@ -193,7 +193,8 @@ export default {
           apiClient.get('/group-deals')
         ])
         
-        this.products = productsRes.data.products || []
+        // Filter out inactive products for hot products section
+        this.products = (productsRes.data.products || []).filter(product => product.is_active === true)
         this.deals = dealsRes.data.deals || []
         
         // Separate active and upcoming deals

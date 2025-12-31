@@ -32,9 +32,24 @@
       <div class="deal-info-card">
         <div class="deal-header">
           <h2>{{ groupDeal.title }}</h2>
-          <span :class="['status-badge', groupDeal.status]">
-            {{ getStatusLabel(groupDeal.status) }}
-          </span>
+          <div class="status-control-group">
+            <span :class="['status-badge', groupDeal.status]">
+              {{ getStatusLabel(groupDeal.status) }}
+            </span>
+            <select 
+              v-model="groupDeal.status" 
+              @change="handleGroupDealStatusChange"
+              :disabled="updatingGroupDealStatus"
+              class="status-select"
+            >
+              <option value="upcoming">即将开始</option>
+              <option value="active">进行中</option>
+              <option value="closed">已截单</option>
+              <option value="preparing">正在配货</option>
+              <option value="ready_for_pickup">可以取货</option>
+              <option value="completed">已完成</option>
+            </select>
+          </div>
         </div>
         
         <div v-if="groupDeal.description" class="deal-description">
@@ -109,8 +124,8 @@ export default {
     OrderDetailModal
   },
   setup() {
-    const { confirm, success, error } = useModal()
-    return { confirm, success, error }
+    const { confirm, success, error: showError } = useModal()
+    return { confirm, success, showError }
   },
   data() {
     return {
@@ -123,7 +138,8 @@ export default {
       availableProducts: [],
       updatingOrder: false,
       updateError: null,
-      markingComplete: false
+      markingComplete: false,
+      updatingGroupDealStatus: false
     }
   },
   mounted() {
@@ -139,6 +155,14 @@ export default {
         // Fetch group deal
         const dealResponse = await apiClient.get(`/admin/group-deals/${dealId}`)
         this.groupDeal = dealResponse.data.group_deal
+        // Store previous status for change detection
+        if (this.groupDeal) {
+          this.groupDeal._previousStatus = this.groupDeal.status
+        }
+        // Store previous status for change detection
+        if (this.groupDeal) {
+          this.groupDeal._previousStatus = this.groupDeal.status
+        }
         
         // Fetch orders for this group deal (excluding cancelled orders)
         const ordersResponse = await apiClient.get('/admin/orders', {
@@ -185,7 +209,7 @@ export default {
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
       } catch (error) {
-        alert('导出供货单失败: ' + (error.message || 'Unknown error'))
+        await this.showError('导出供货单失败: ' + (error.message || 'Unknown error'))
         console.error('Export supplier order error:', error)
       }
     },
@@ -215,8 +239,57 @@ export default {
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
       } catch (error) {
-        alert('导出配送单失败: ' + (error.message || 'Unknown error'))
+        await this.showError('导出配送单失败: ' + (error.message || 'Unknown error'))
         console.error('Export delivery order error:', error)
+      }
+    },
+    async handleGroupDealStatusChange() {
+      if (!this.groupDeal) return
+      
+      const newStatus = this.groupDeal.status
+      const oldStatus = this.groupDeal._previousStatus || this.groupDeal.status
+      
+      // Don't update if status hasn't changed
+      if (newStatus === oldStatus) {
+        return
+      }
+      
+      const statusText = this.getStatusLabel(newStatus)
+      const confirmed = await this.confirm(`确认将团购状态改为 "${statusText}"?\n\n此操作将自动更新相关订单状态。`)
+      if (!confirmed) {
+        // Revert the status change
+        this.groupDeal.status = oldStatus
+        return
+      }
+      
+      this.updatingGroupDealStatus = true
+      try {
+        const response = await apiClient.put(`/admin/group-deals/${this.groupDeal.id}/status`, { 
+          status: newStatus 
+        })
+        
+        // Update group deal with response data
+        this.groupDeal = response.data.group_deal
+        // Update previous status
+        this.groupDeal._previousStatus = this.groupDeal.status
+        
+        // Refresh orders list to show updated order statuses
+        await this.fetchGroupDealDetail()
+        
+        const ordersUpdated = response.data.orders_updated || 0
+        if (ordersUpdated > 0) {
+          await this.success(`团购状态已更新为: ${statusText}\n已更新 ${ordersUpdated} 个订单状态`)
+        } else {
+          await this.success(`团购状态已更新为: ${statusText}`)
+        }
+      } catch (error) {
+        // Revert the status change on error
+        this.groupDeal.status = oldStatus
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || '更新失败'
+        await this.showError(`更新失败: ${errorMsg}`)
+        console.error('Failed to update group deal status:', error)
+      } finally {
+        this.updatingGroupDealStatus = false
       }
     },
     getStatusLabel(status) {
@@ -557,9 +630,52 @@ export default {
   color: #F57C00;
 }
 
+.status-badge.preparing {
+  background: #F3E5F5;
+  color: #7B1FA2;
+}
+
+.status-badge.ready_for_pickup {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
 .status-badge.completed {
   background: #F3E5F5;
   color: #7B1FA2;
+}
+
+.status-control-group {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+}
+
+.status-select {
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.status-select:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  border-width: 2px;
+}
+
+.status-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-select:hover:not(:disabled) {
+  border-color: var(--md-primary);
+  background: rgba(255, 140, 0, 0.05);
 }
 
 .deal-description {

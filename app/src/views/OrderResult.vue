@@ -69,8 +69,14 @@
 </template>
 
 <script>
+import { useCheckoutStore } from '../stores/checkout'
+
 export default {
   name: 'OrderResult',
+  setup() {
+    const checkoutStore = useCheckoutStore()
+    return { checkoutStore }
+  },
   data() {
     return {
       status: 'success', // 'success' or 'error'
@@ -96,6 +102,12 @@ export default {
       this.errorMessage = queryError || null
       this.errorDetails = queryErrorDetails || null
       this.isNew = queryIsNew !== 'false' // Default to true if not specified
+      
+      // Clear checkout store when result page successfully loads
+      // This is a backup in case navigation succeeded but checkout wasn't cleared
+      if (this.status === 'success') {
+        this.checkoutStore.clearCheckout()
+      }
     } else {
       // No query params - redirect to home or orders page
       this.$router.push('/')

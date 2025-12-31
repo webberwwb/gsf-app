@@ -12,7 +12,7 @@ class OrderStatus(str, Enum):
     Can be cancelled at any stage
     """
     SUBMITTED = 'submitted'           # 已提交订单 - User placed order, can edit/cancel
-    CONFIRMED = 'confirmed'           # 已确认订单 - Order deadline passed, user cannot edit
+    CONFIRMED = 'confirmed'           # 已确认订单 - Order deadline passed, user cannot edit products but can edit pickup/payment
     PREPARING = 'preparing'           # 正在配货 - Admin started preparing
     READY_FOR_PICKUP = 'ready_for_pickup'  # 可以取货 - Ready for customer pickup
     OUT_FOR_DELIVERY = 'out_for_delivery'  # 正在配送 - Out for delivery (delivery orders only)

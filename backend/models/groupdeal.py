@@ -23,6 +23,9 @@ class GroupDeal(BaseModel):
     # Manual: preparing → ready_for_pickup → completed (by admin)
     status = db.Column(db.String(50), default=GroupDealStatus.UPCOMING.value, nullable=False)
     
+    # Soft delete
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    
     # Relationships
     products = db.relationship('GroupDealProduct', backref='group_deal', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', backref='group_deal', lazy=True)

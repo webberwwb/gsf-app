@@ -71,6 +71,41 @@
     <div v-if="activeTab === 'otp-stats'" class="tab-content">
       <OTPStats />
     </div>
+
+    <!-- Role Management Modal -->
+    <div v-if="showRoleModal" class="modal-overlay" @click="closeRoleModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h2>管理角色</h2>
+          <button @click="closeRoleModal" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="role-info">
+            <p><strong>用户:</strong> {{ roleModalUser?.nickname || roleModalUser?.phone }}</p>
+            <p><strong>当前角色:</strong> {{ roleModalUser?.roles?.join(', ') || '无' }}</p>
+          </div>
+          <div class="role-form">
+            <label>操作:</label>
+            <select v-model="roleAction" class="role-select">
+              <option value="">请选择操作</option>
+              <option value="add">添加角色</option>
+              <option value="remove">移除角色</option>
+            </select>
+            <label>角色:</label>
+            <select v-model="roleName" class="role-select">
+              <option value="">请选择角色</option>
+              <option value="admin">管理员</option>
+              <option value="moderator">版主</option>
+              <option value="user">用户</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeRoleModal" class="cancel-btn">取消</button>
+          <button @click="executeRoleAction" class="confirm-btn" :disabled="!roleAction || !roleName">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -95,7 +130,11 @@ export default {
       loading: true,
       error: null,
       users: [],
-      searchQuery: ''
+      searchQuery: '',
+      showRoleModal: false,
+      roleModalUser: null,
+      roleAction: '',
+      roleName: ''
     }
   },
   computed: {
@@ -181,37 +220,37 @@ export default {
       }
       return labels[role] || role
     },
-    async manageRoles(user) {
-      const action = prompt(`用户: ${user.nickname || user.phone}\n当前角色: ${user.roles?.join(', ') || '无'}\n\n输入操作:\n1. 添加角色: add admin/moderator/user\n2. 移除角色: remove admin/moderator/user`)
-      
-      if (!action) return
-      
-      const parts = action.trim().split(' ')
-      if (parts.length !== 2) {
-        await this.$alert('格式错误，请使用: add/remove role_name', {
+    manageRoles(user) {
+      this.roleModalUser = user
+      this.roleAction = ''
+      this.roleName = ''
+      this.showRoleModal = true
+    },
+    closeRoleModal() {
+      this.showRoleModal = false
+      this.roleModalUser = null
+      this.roleAction = ''
+      this.roleName = ''
+    },
+    async executeRoleAction() {
+      if (!this.roleAction || !this.roleName || !this.roleModalUser) {
+        await this.$alert('请选择操作和角色', {
           type: 'warning',
-          title: '格式错误'
+          title: '输入错误'
         })
         return
       }
       
-      const [action_type, role_name] = parts
-      
       try {
-        if (action_type.toLowerCase() === 'add') {
-          await apiClient.post(`/admin/users/${user.id}/roles`, { role: role_name })
+        if (this.roleAction === 'add') {
+          await apiClient.post(`/admin/users/${this.roleModalUser.id}/roles`, { role: this.roleName })
           await this.success('角色添加成功')
-        } else if (action_type.toLowerCase() === 'remove') {
-          await apiClient.delete(`/admin/users/${user.id}/roles/${role_name}`)
+        } else if (this.roleAction === 'remove') {
+          await apiClient.delete(`/admin/users/${this.roleModalUser.id}/roles/${this.roleName}`)
           await this.success('角色移除成功')
-        } else {
-          await this.$alert('无效操作，请使用 add 或 remove', {
-            type: 'warning',
-            title: '无效操作'
-          })
-          return
         }
         await this.fetchUsers()
+        this.closeRoleModal()
       } catch (error) {
         await this.error(error.response?.data?.message || error.response?.data?.error || '操作失败')
         console.error('Role management error:', error)
@@ -477,7 +516,8 @@ export default {
 }
 
 .tab-content {
-  /* Tab content wrapper */
+  /* Tab content wrapper - styles applied via scoped styles */
+  display: block;
 }
 
 /* Mobile Responsive Styles */
@@ -560,6 +600,151 @@ export default {
   .roles-btn {
     width: 100%;
   }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #6b7280;
+  font-size: 24px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.role-info {
+  margin-bottom: 20px;
+}
+
+.role-info p {
+  margin: 8px 0;
+  color: #374151;
+  font-size: 14px;
+}
+
+.role-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.role-form label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.role-select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111827;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.role-select:hover {
+  border-color: #9ca3af;
+}
+
+.role-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  background: #f9fafb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.cancel-btn,
+.confirm-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-btn {
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.cancel-btn:hover {
+  background: #f3f4f6;
+}
+
+.confirm-btn {
+  background: #3b82f6;
+  color: white;
+}
+
+.confirm-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
 

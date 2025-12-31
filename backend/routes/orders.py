@@ -89,8 +89,11 @@ def get_user_orders():
         for order in orders:
             order_dict = order.to_dict()
             
-            # Get group deal info
-            group_deal = GroupDeal.query.get(order.group_deal_id)
+            # Get group deal info (excluding soft-deleted)
+            group_deal = GroupDeal.query.filter(
+                GroupDeal.id == order.group_deal_id,
+                GroupDeal.deleted_at.is_(None)
+            ).first()
             if group_deal:
                 # Auto-confirm order if past order_end_date but still submitted
                 now = utc_now()
@@ -127,6 +130,13 @@ def get_user_orders():
             
             order_dict['items'] = items_data
             
+            # Get address info if delivery order
+            if order.address_id:
+                from models.address import Address
+                address = Address.query.get(order.address_id)
+                if address:
+                    order_dict['address'] = address.to_dict()
+            
             orders_data.append(order_dict)
         
         return jsonify({
@@ -161,8 +171,11 @@ def get_order(order_id):
         
         order_dict = order.to_dict()
         
-        # Get group deal info
-        group_deal = GroupDeal.query.get(order.group_deal_id)
+        # Get group deal info (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if group_deal:
             # Auto-confirm order if past order_end_date but still submitted
             now = utc_now()
@@ -238,8 +251,11 @@ def create_order():
         payment_method = validated_data['payment_method']
         notes = validated_data.get('notes')  # User custom notes
         
-        # Validate group deal exists and is active
-        group_deal = GroupDeal.query.get(group_deal_id)
+        # Validate group deal exists and is active (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
         
@@ -456,8 +472,11 @@ def cancel_order(order_id):
         if order.status != 'submitted':
             return jsonify({'error': '订单已确认，无法取消'}), 400
         
-        # Get group deal for response
-        group_deal = GroupDeal.query.get(order.group_deal_id)
+        # Get group deal for response (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
         
@@ -530,8 +549,11 @@ def update_order(order_id):
         if not can_access_order(user_id, order):
             return jsonify({'error': 'Access denied'}), 403
         
-        # Get group deal for validation
-        group_deal = GroupDeal.query.get(order.group_deal_id)
+        # Get group deal for validation (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
         
@@ -559,6 +581,7 @@ def update_order(order_id):
         # If items are being changed, enforce normal restrictions
         if items_changed:
             # User can only edit items if order status is 'submitted'
+            # Confirmed orders (including when group deal is closed) cannot edit products
             if order.status != 'submitted':
                 return jsonify({'error': '订单已确认，不可修改商品'}), 400
             
@@ -567,12 +590,15 @@ def update_order(order_id):
             if group_deal.order_end_date and group_deal.order_end_date < now:
                 return jsonify({'error': '团购已截单，无法修改商品'}), 400
         
-        # If only delivery method is being changed, allow it even after deadline
-        # But still check order status - can't change delivery method if order is cancelled
-        if delivery_method_changed and not items_changed:
+        # If only delivery method or payment method is being changed, allow it even after deadline
+        # But still check order status - can't change if order is cancelled or completed
+        # Confirmed orders (including when group deal is closed) can still edit pickup/payment method
+        if (delivery_method_changed or payment_method) and not items_changed:
             if order.status == 'cancelled':
-                return jsonify({'error': '订单已取消，无法修改取货方式'}), 400
-            # Allow delivery method update even after order_end_date
+                return jsonify({'error': '订单已取消，无法修改'}), 400
+            if order.status == 'completed':
+                return jsonify({'error': '订单已完成，无法修改'}), 400
+            # Allow delivery/payment method update even after order_end_date or for confirmed orders
         
         # Verify address belongs to user if delivery method is selected
         if delivery_method == DeliveryMethod.DELIVERY.value:

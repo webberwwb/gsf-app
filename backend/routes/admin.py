@@ -573,8 +573,8 @@ def get_group_deals():
         per_page = request.args.get('per_page', 50, type=int)
         status_filter = request.args.get('status', '').strip()
         
-        # Build query
-        query = GroupDeal.query
+        # Build query - filter out soft-deleted deals
+        query = GroupDeal.query.filter(GroupDeal.deleted_at.is_(None))
         
         # Apply status filter
         if status_filter:
@@ -631,7 +631,10 @@ def get_group_deal(deal_id):
         return error_response, status_code
     
     try:
-        deal = GroupDeal.query.get_or_404(deal_id)
+        deal = GroupDeal.query.filter(
+            GroupDeal.id == deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first_or_404()
         deal_dict = deal.to_dict()
         
         # Get products for this deal
@@ -761,7 +764,10 @@ def update_group_deal(deal_id):
     if error_response:
         return error_response, status_code
     
-    deal = GroupDeal.query.get_or_404(deal_id)
+    deal = GroupDeal.query.filter(
+        GroupDeal.id == deal_id,
+        GroupDeal.deleted_at.is_(None)
+    ).first_or_404()
     
     # Validate request data using schema
     validated_data, error_response, status_code = validate_request(UpdateGroupDealSchema)
@@ -791,20 +797,78 @@ def update_group_deal(deal_id):
             # Normalize to 00:00:00 EST
             deal.pickup_date = normalize_date_start(validated_data['pickup_date'])
         
-        # Handle status update
-        if 'status' in validated_data:
-            deal.status = validated_data['status']
+        # Store original status before any updates
+        original_status = deal.status
         
-        # Re-evaluate status if dates were updated and current status is in auto-managed states
-        # This ensures status stays in sync with dates
-        if dates_updated and deal.status in GroupDealStatus.get_auto_managed_statuses():
-            now = est_now()
-            if deal.order_start_date > now:
-                deal.status = GroupDealStatus.UPCOMING.value
-            elif deal.order_start_date <= now <= deal.order_end_date:
-                deal.status = GroupDealStatus.ACTIVE.value
-            elif deal.order_end_date < now:
-                deal.status = GroupDealStatus.CLOSED.value
+        # Handle status update
+        status_explicitly_provided = 'status' in validated_data
+        new_status = None
+        if status_explicitly_provided:
+            new_status = validated_data['status']
+            deal.status = new_status
+        
+        # Re-evaluate status based on dates if dates were updated
+        # Priority: Manual status changes > Date-based auto-evaluation
+        if dates_updated:
+            # If status was explicitly changed to a manual status, respect it and don't re-evaluate
+            if status_explicitly_provided and new_status in GroupDealStatus.get_manual_managed_statuses():
+                # User explicitly set a manual status (preparing, ready_for_pickup, completed), respect it
+                pass
+            # Otherwise, re-evaluate based on dates (for auto-managed statuses or when status not provided)
+            else:
+                now = est_now()
+                if deal.order_start_date > now:
+                    deal.status = GroupDealStatus.UPCOMING.value
+                elif deal.order_start_date <= now <= deal.order_end_date:
+                    deal.status = GroupDealStatus.ACTIVE.value
+                elif deal.order_end_date < now:
+                    deal.status = GroupDealStatus.CLOSED.value
+        
+        # Determine final status after all updates
+        final_status = deal.status
+        
+        # Cascade status changes to orders (same logic as update_group_deal_status endpoint)
+        orders_updated = 0
+        if final_status != original_status:
+            if final_status == GroupDealStatus.PREPARING.value:
+                # All submitted/confirmed orders become preparing
+                orders = Order.query.filter(
+                    Order.group_deal_id == deal_id,
+                    Order.status.in_([OrderStatus.SUBMITTED.value, OrderStatus.CONFIRMED.value]),
+                    Order.status != OrderStatus.CANCELLED.value
+                ).all()
+                for order in orders:
+                    order.status = OrderStatus.PREPARING.value
+                    orders_updated += 1
+            
+            elif final_status == GroupDealStatus.READY_FOR_PICKUP.value:
+                # All submitted/confirmed/preparing orders become ready_for_pickup
+                orders = Order.query.filter(
+                    Order.group_deal_id == deal_id,
+                    Order.status.in_([
+                        OrderStatus.SUBMITTED.value,
+                        OrderStatus.CONFIRMED.value,
+                        OrderStatus.PREPARING.value
+                    ]),
+                    Order.status != OrderStatus.CANCELLED.value
+                ).all()
+                for order in orders:
+                    order.status = OrderStatus.READY_FOR_PICKUP.value
+                    orders_updated += 1
+            
+            elif final_status == GroupDealStatus.CLOSED.value:
+                # All submitted orders become confirmed when group deal is closed
+                orders = Order.query.filter(
+                    Order.group_deal_id == deal_id,
+                    Order.status == OrderStatus.SUBMITTED.value,
+                    Order.status != OrderStatus.CANCELLED.value
+                ).all()
+                for order in orders:
+                    order.status = OrderStatus.CONFIRMED.value
+                    orders_updated += 1
+            
+            if orders_updated > 0:
+                current_app.logger.info(f'Cascaded group deal status change from {original_status} to {final_status} to {orders_updated} orders')
         
         # Update products if provided
         if 'products' in validated_data:
@@ -862,22 +926,38 @@ def update_group_deal(deal_id):
 
 @admin_bp.route('/group-deals/<int:deal_id>', methods=['DELETE'])
 def delete_group_deal(deal_id):
-    """Delete a group deal"""
+    """Delete a group deal (soft delete) and all associated orders"""
     user_id, error_response, status_code = require_admin_auth()
     if error_response:
         return error_response, status_code
     
-    deal = GroupDeal.query.get_or_404(deal_id)
+    deal = GroupDeal.query.filter(
+        GroupDeal.id == deal_id,
+        GroupDeal.deleted_at.is_(None)
+    ).first_or_404()
     
     try:
-        # Cascade delete will handle GroupDealProduct records
-        db.session.delete(deal)
+        # Soft delete all associated orders that aren't already soft deleted
+        now = utc_now()
+        associated_orders = Order.query.filter(
+            Order.group_deal_id == deal_id,
+            Order.deleted_at.is_(None)
+        ).all()
+        
+        orders_deleted = 0
+        for order in associated_orders:
+            order.deleted_at = now
+            orders_deleted += 1
+        
+        # Soft delete the group deal
+        deal.deleted_at = now
         db.session.commit()
         
-        current_app.logger.info(f'Deleted group deal: {deal.id} - {deal.title}')
+        current_app.logger.info(f'Soft deleted group deal: {deal.id} - {deal.title} and {orders_deleted} associated orders')
         
         return jsonify({
-            'message': 'Group deal deleted successfully'
+            'message': 'Group deal deleted successfully',
+            'orders_deleted': orders_deleted
         }), 200
         
     except Exception as e:
@@ -1202,8 +1282,11 @@ def get_admin_orders():
                     'email': user.email
                 }
             
-            # Get group deal info
-            group_deal = GroupDeal.query.get(order.group_deal_id)
+            # Get group deal info (excluding soft-deleted)
+            group_deal = GroupDeal.query.filter(
+                GroupDeal.id == order.group_deal_id,
+                GroupDeal.deleted_at.is_(None)
+            ).first()
             if group_deal:
                 order_dict['group_deal'] = {
                     'id': group_deal.id,
@@ -1256,8 +1339,11 @@ def get_admin_order(order_id):
         if user:
             order_dict['user'] = user.to_dict()
         
-        # Get group deal info
-        group_deal = GroupDeal.query.get(order.group_deal_id)
+        # Get group deal info (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if group_deal:
             order_dict['group_deal'] = group_deal.to_dict()
         
@@ -1452,8 +1538,11 @@ def get_order_by_pickup_code(pickup_code):
         if user:
             order_dict['user'] = user.to_dict()
         
-        # Get group deal info
-        group_deal = GroupDeal.query.get(order.group_deal_id)
+        # Get group deal info (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if group_deal:
             order_dict['group_deal'] = group_deal.to_dict()
         
@@ -1558,8 +1647,11 @@ def update_order_weights(order_id):
         if user:
             order_dict['user'] = user.to_dict()
         
-        # Get group deal info
-        group_deal = GroupDeal.query.get(order.group_deal_id)
+        # Get group deal info (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if group_deal:
             order_dict['group_deal'] = group_deal.to_dict()
         
@@ -1605,8 +1697,11 @@ def update_admin_order(order_id):
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
         
-        # Get group deal for pricing
-        group_deal = GroupDeal.query.get(order.group_deal_id)
+        # Get group deal for pricing (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
         
@@ -1772,7 +1867,10 @@ def update_group_deal_status(deal_id):
     new_status = validated_data['status']
     
     try:
-        deal = GroupDeal.query.get_or_404(deal_id)
+        deal = GroupDeal.query.filter(
+            GroupDeal.id == deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first_or_404()
         old_status = deal.status
         deal.status = new_status
         
@@ -1790,14 +1888,30 @@ def update_group_deal_status(deal_id):
                 orders_updated += 1
         
         elif new_status == GroupDealStatus.READY_FOR_PICKUP.value:
-            # All preparing orders become ready_for_pickup
+            # All submitted/confirmed/preparing orders become ready_for_pickup
             orders = Order.query.filter(
                 Order.group_deal_id == deal_id,
-                Order.status == OrderStatus.PREPARING.value,
+                Order.status.in_([
+                    OrderStatus.SUBMITTED.value,
+                    OrderStatus.CONFIRMED.value,
+                    OrderStatus.PREPARING.value
+                ]),
                 Order.status != OrderStatus.CANCELLED.value
             ).all()
             for order in orders:
                 order.status = OrderStatus.READY_FOR_PICKUP.value
+                orders_updated += 1
+        
+        elif new_status == GroupDealStatus.CLOSED.value:
+            # All submitted orders become confirmed when group deal is closed
+            # Orders that are already confirmed or beyond should not be changed
+            orders = Order.query.filter(
+                Order.group_deal_id == deal_id,
+                Order.status == OrderStatus.SUBMITTED.value,
+                Order.status != OrderStatus.CANCELLED.value
+            ).all()
+            for order in orders:
+                order.status = OrderStatus.CONFIRMED.value
                 orders_updated += 1
         
         db.session.commit()
@@ -2020,8 +2134,11 @@ def export_group_deal_orders_csv(deal_id):
         return error_response, status_code
     
     try:
-        # Get group deal
-        group_deal = GroupDeal.query.get_or_404(deal_id)
+        # Get group deal (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first_or_404()
         
         # Get all orders for this group deal (excluding soft-deleted and cancelled)
         orders = Order.query.filter(
@@ -2114,8 +2231,11 @@ def export_group_deal_delivery_csv(deal_id):
         return error_response, status_code
     
     try:
-        # Get group deal
-        group_deal = GroupDeal.query.get_or_404(deal_id)
+        # Get group deal (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first_or_404()
         
         # Get all delivery orders for this group deal (excluding soft-deleted and cancelled)
         orders = Order.query.filter(

@@ -113,9 +113,14 @@
 <script>
 import apiClient from '../api/client'
 import { formatDateTimeEST_CN } from '../utils/date'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Suppliers',
+  setup() {
+    const { confirm, error: showError } = useModal()
+    return { confirm, showError }
+  },
   data() {
     return {
       loading: true,
@@ -207,13 +212,16 @@ export default {
         await this.fetchSuppliers()
         this.closeModal()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '保存失败')
+        await this.showError(error.response?.data?.message || error.response?.data?.error || '保存失败')
         console.error('Save supplier error:', error)
       }
     },
     async toggleSupplierStatus(supplier) {
       const action = supplier.is_active ? '禁用' : '启用'
-      if (!confirm(`确定要${action}这个供应商吗？`)) {
+      const confirmed = await this.confirm(`确定要${action}这个供应商吗？`, {
+        type: 'warning'
+      })
+      if (!confirmed) {
         return
       }
 
@@ -223,12 +231,15 @@ export default {
         })
         await this.fetchSuppliers()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || `${action}失败`)
+        await this.showError(error.response?.data?.message || error.response?.data?.error || `${action}失败`)
         console.error('Toggle supplier status error:', error)
       }
     },
     async deleteSupplier(id) {
-      if (!confirm('确定要删除这个供应商吗？删除后供应商将被禁用。')) {
+      const confirmed = await this.confirm('确定要删除这个供应商吗？删除后供应商将被禁用。', {
+        type: 'warning'
+      })
+      if (!confirmed) {
         return
       }
 
@@ -236,7 +247,7 @@ export default {
         await apiClient.delete(`/admin/suppliers/${id}`)
         await this.fetchSuppliers()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '删除失败')
+        await this.showError(error.response?.data?.message || error.response?.data?.error || '删除失败')
         console.error('Delete supplier error:', error)
       }
     },

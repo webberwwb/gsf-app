@@ -43,7 +43,7 @@
             <span class="breakdown-amount">{{ shippingFeeDisplay }}</span>
           </div>
           <div class="breakdown-row total-row">
-            <span class="total-label">{{ hasEstimatedTotal ? '预估总计' : '总计' }}:</span>
+            <span class="total-label">{{ isOrderCompleted ? '最终价格' : (hasEstimatedTotal ? '预估总计' : '总计') }}:</span>
             <span class="total-amount">${{ calculateTotal() }}</span>
           </div>
           <div v-if="deliveryMethod === 'delivery'" class="pricing-disclaimer">
@@ -268,7 +268,7 @@
           class="confirm-order-btn"
         >
           <span class="btn-text">确认订单</span>
-          <span class="btn-amount">{{ hasEstimatedTotal ? '预估' : '' }}${{ calculateTotal() }}</span>
+          <span class="btn-amount">{{ isOrderCompleted ? '' : (hasEstimatedTotal ? '预估' : '') }}${{ calculateTotal() }}</span>
         </button>
       </div>
     </div>
@@ -346,6 +346,7 @@ import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
 import { useCheckoutStore } from '../stores/checkout'
 import { formatDateEST_CN } from '../utils/date'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Checkout',
@@ -354,7 +355,8 @@ export default {
   },
   setup() {
     const checkoutStore = useCheckoutStore()
-    return { checkoutStore }
+    const { success, error: showError } = useModal()
+    return { checkoutStore, success, showError }
   },
   data() {
     return {
@@ -427,6 +429,9 @@ export default {
     },
     hasEstimatedTotal() {
       return this.checkoutStore.hasEstimatedTotal
+    },
+    isOrderCompleted() {
+      return this.checkoutStore.isOrderCompleted
     },
     selectedAddress() {
       if (!this.selectedAddressId) return null
@@ -582,33 +587,51 @@ export default {
           }
         }
         
-        // Clear checkout store after successful order
-        this.checkoutStore.clearCheckout()
-        
         // Redirect to result page with order info in query params
         const orderNumber = response.data.order?.order_number || null
         
-        this.$router.push({
-          path: '/order-result',
-          query: {
-            status: 'success',
-            orderNumber: orderNumber,
-            isNew: isNew ? 'true' : 'false'
-          }
-        })
+        // Only clear checkout store after successful navigation
+        // This prevents data loss if navigation fails on mobile browsers
+        try {
+          await this.$router.push({
+            path: '/order-result',
+            query: {
+              status: 'success',
+              orderNumber: orderNumber,
+              isNew: isNew ? 'true' : 'false'
+            }
+          })
+          // Only clear checkout after navigation succeeds
+          this.checkoutStore.clearCheckout()
+        } catch (navError) {
+          // If navigation fails, don't clear checkout so user can retry
+          console.error('Navigation failed:', navError)
+          // Still show success message but keep checkout data
+          // User can manually navigate or retry
+          await this.success('订单创建成功！订单号: ' + (orderNumber || 'N/A') + '\n\n如果页面没有自动跳转，请手动返回首页查看订单。')
+          // Clear checkout after showing message since order was created successfully
+          this.checkoutStore.clearCheckout()
+        }
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || '创建订单失败'
         const errorDetails = error.response?.data?.details || null
         
         // Redirect to result page with error info in query params
-        this.$router.push({
-          path: '/order-result',
-          query: {
-            status: 'error',
-            error: errorMsg,
-            errorDetails: errorDetails
-          }
-        })
+        // Don't clear checkout on error so user can retry
+        try {
+          await this.$router.push({
+            path: '/order-result',
+            query: {
+              status: 'error',
+              error: errorMsg,
+              errorDetails: errorDetails
+            }
+          })
+        } catch (navError) {
+          // If navigation fails, show error message
+          console.error('Navigation failed:', navError)
+          await this.showError('订单创建失败: ' + errorMsg + '\n\n请检查网络连接后重试。')
+        }
         console.error('Failed to create/update order:', error)
       }
     }

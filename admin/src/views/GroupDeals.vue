@@ -25,8 +25,8 @@
             </span>
           </div>
           <div class="deal-actions">
-            <button @click="editDeal(deal)" class="edit-btn">编辑</button>
-            <button @click="deleteDeal(deal.id)" class="delete-btn">删除</button>
+            <button @click.stop="editDeal(deal)" class="edit-btn">编辑</button>
+            <button @click.stop="deleteDeal(deal.id)" class="delete-btn">删除</button>
           </div>
         </div>
         
@@ -90,11 +90,16 @@
 import apiClient from '../api/client'
 import GroupDealForm from '../components/GroupDealForm.vue'
 import { formatDateTimeEST_CN } from '../utils/date'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'GroupDeals',
   components: {
     GroupDealForm
+  },
+  setup() {
+    const { confirm, error: showError } = useModal()
+    return { confirm, showError }
   },
   data() {
     return {
@@ -138,7 +143,10 @@ export default {
       await this.fetchGroupDeals()
     },
     async deleteDeal(id) {
-      if (!confirm('确定要删除这个团购活动吗？')) {
+      const confirmed = await this.confirm('确定要删除这个团购活动吗？', {
+        type: 'warning'
+      })
+      if (!confirmed) {
         return
       }
 
@@ -146,7 +154,7 @@ export default {
         await apiClient.delete(`/admin/group-deals/${id}`)
         await this.fetchGroupDeals()
       } catch (error) {
-        alert(error.response?.data?.message || error.response?.data?.error || '删除失败')
+        await this.showError(error.response?.data?.message || error.response?.data?.error || '删除失败')
         console.error('Delete group deal error:', error)
       }
     },
@@ -155,6 +163,8 @@ export default {
         'upcoming': '即将开始',
         'active': '进行中',
         'closed': '已截单',
+        'preparing': '正在配货',
+        'ready_for_pickup': '可以取货',
         'completed': '已完成'
       }
       return labels[status] || status
@@ -296,6 +306,16 @@ export default {
 .status-badge.closed {
   background: #FFF3E0;
   color: #F57C00;
+}
+
+.status-badge.preparing {
+  background: #F3E5F5;
+  color: #7B1FA2;
+}
+
+.status-badge.ready_for_pickup {
+  background: #E8F5E9;
+  color: #2E7D32;
 }
 
 .status-badge.completed {

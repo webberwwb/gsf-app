@@ -71,9 +71,9 @@ import { useAuthStore } from '../stores/auth'
 export default {
   name: 'Me',
   setup() {
-    const { confirm } = useModal()
+    const { confirm, error: showError } = useModal()
     const authStore = useAuthStore()
-    return { confirm, authStore }
+    return { confirm, showError, authStore }
   },
   data() {
     return {
@@ -326,7 +326,7 @@ export default {
       } catch (error) {
         console.error('Update error:', error)
         this.isUpdating = false
-        alert('更新失败，请手动刷新页面')
+        await this.showError('更新失败，请手动刷新页面')
       }
     }
   }

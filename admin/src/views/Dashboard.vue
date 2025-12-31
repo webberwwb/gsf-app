@@ -85,9 +85,14 @@
 <script>
 import { getCurrentUser, clearAuth } from '../utils/auth'
 import packageJson from '../../package.json'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'Dashboard',
+  setup() {
+    const { confirm } = useModal()
+    return { confirm }
+  },
   data() {
     return {
       user: null,
@@ -136,8 +141,11 @@ export default {
     toggleSidebar() {
       this.sidebarOpen = !this.sidebarOpen
     },
-    handleLogout() {
-      if (confirm('确定要退出登录吗？')) {
+    async handleLogout() {
+      const confirmed = await this.confirm('确定要退出登录吗？', {
+        type: 'warning'
+      })
+      if (confirmed) {
         clearAuth()
         this.$router.push('/login')
       }

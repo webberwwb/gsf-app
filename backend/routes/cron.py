@@ -58,7 +58,8 @@ def auto_confirm_orders_cron():
             GroupDeal, Order.group_deal_id == GroupDeal.id
         ).filter(
             Order.status == OrderStatus.SUBMITTED.value,
-            GroupDeal.order_end_date < now
+            GroupDeal.order_end_date < now,
+            GroupDeal.deleted_at.is_(None)
         ).all()
         
         confirmed_orders = []
@@ -83,9 +84,10 @@ def auto_confirm_orders_cron():
         # ==============================================
         current_app.logger.info("Task 2: Updating group deal statuses...")
         
-        # Find all group deals that are not in final states
+        # Find all group deals that are not in final states (excluding soft-deleted)
         active_deals = GroupDeal.query.filter(
-            GroupDeal.status.in_(GroupDealStatus.get_auto_managed_statuses())
+            GroupDeal.status.in_(GroupDealStatus.get_auto_managed_statuses()),
+            GroupDeal.deleted_at.is_(None)
         ).all()
         
         updated_deals = []

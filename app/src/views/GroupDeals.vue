@@ -73,6 +73,19 @@ export default {
           return
         }
         
+        // Find deals ready for pickup (status = 'ready_for_pickup')
+        // These should be visible to users so they can see their orders
+        const readyForPickupDeal = deals.find(deal => {
+          return deal.status === 'ready_for_pickup'
+        })
+        
+        if (readyForPickupDeal) {
+          // Redirect to ready for pickup deal
+          this.redirectDealId = readyForPickupDeal.id
+          this.$router.replace(`/group-deals/${readyForPickupDeal.id}`)
+          return
+        }
+        
         // Find next upcoming deal (status = 'upcoming' and order_start_date > now)
         const upcomingDeals = deals
           .filter(deal => {

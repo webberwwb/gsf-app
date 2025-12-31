@@ -11,6 +11,7 @@ export const useCheckoutStore = defineStore('checkout', {
     // Existing order information (for updates)
     existingOrderId: null,
     existingOrderData: null,
+    existingOrderStatus: null, // Store order status to check if completed
     
     // Checkout form data
     paymentMethod: 'cash',
@@ -30,7 +31,15 @@ export const useCheckoutStore = defineStore('checkout', {
     },
     
     hasEstimatedTotal: (state) => {
+      // If order is completed, don't show estimated total
+      if (state.existingOrderStatus === 'completed') {
+        return false
+      }
       return state.orderItems.some(item => item.is_estimated)
+    },
+    
+    isOrderCompleted: (state) => {
+      return state.existingOrderStatus === 'completed'
     },
     
     shippingFee: (state) => {
@@ -83,9 +92,10 @@ export const useCheckoutStore = defineStore('checkout', {
     /**
      * Set existing order information (for updates)
      */
-    setExistingOrder(orderId, orderData) {
+    setExistingOrder(orderId, orderData, orderStatus = null) {
       this.existingOrderId = orderId
       this.existingOrderData = orderData
+      this.existingOrderStatus = orderStatus
       
       // Restore saved preferences if available
       if (orderData) {
@@ -150,6 +160,7 @@ export const useCheckoutStore = defineStore('checkout', {
       this.orderItems = []
       this.existingOrderId = null
       this.existingOrderData = null
+      this.existingOrderStatus = null
       this.paymentMethod = 'cash'
       this.deliveryMethod = 'pickup'
       this.selectedPickupLocation = 'markham'

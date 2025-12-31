@@ -135,12 +135,14 @@ def get_product(product_id):
 
 @products_bp.route('/group-deals', methods=['GET'])
 def get_group_deals():
-    """Get all active and upcoming group deals"""
+    """Get all active, upcoming, and ready-for-pickup group deals"""
     try:
-        # Get active and upcoming deals
+        # Get active, upcoming, preparing, and ready_for_pickup deals (excluding soft-deleted)
+        # These statuses should be visible to users so they can see their orders
         now = utc_now()
         deals = GroupDeal.query.filter(
-            GroupDeal.status.in_(['active', 'upcoming'])
+            GroupDeal.status.in_(['active', 'upcoming', 'preparing', 'ready_for_pickup']),
+            GroupDeal.deleted_at.is_(None)
         ).order_by(GroupDeal.order_start_date.desc()).all()
         
         # Include products for each deal
@@ -175,7 +177,10 @@ def get_group_deals():
 def get_group_deal(deal_id):
     """Get a single group deal by ID with products and user's order (if authenticated)"""
     try:
-        deal = GroupDeal.query.get_or_404(deal_id)
+        deal = GroupDeal.query.filter(
+            GroupDeal.id == deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first_or_404()
         deal_dict = deal.to_dict()
         
         # Get products for this deal
