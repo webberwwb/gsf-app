@@ -202,10 +202,15 @@ def create_product():
         return error_response, status_code
     
     try:
+        # Handle images: prefer images array, fallback to single image for backward compatibility
+        images = validated_data.get('images')
+        if not images and validated_data.get('image'):
+            images = [validated_data.get('image')]
         
         product = Product(
             name=validated_data['name'],
-            image=validated_data.get('image'),
+            image=validated_data.get('image'),  # Keep for backward compatibility
+            images=images,  # New multiple images array
             pricing_type=validated_data['pricing_type'],
             pricing_data=validated_data['pricing_data'],
             description=validated_data.get('description', ''),
@@ -269,8 +274,18 @@ def update_product(product_id):
         
         if 'name' in validated_data:
             product.name = validated_data['name']
-        if 'image' in validated_data:
+        if 'images' in validated_data:
+            product.images = validated_data['images']
+            # Also update single image for backward compatibility (use first image)
+            if validated_data['images'] and len(validated_data['images']) > 0:
+                product.image = validated_data['images'][0]
+        elif 'image' in validated_data:
+            # Backward compatibility: convert single image to array
             product.image = validated_data['image']
+            if validated_data['image']:
+                product.images = [validated_data['image']]
+            else:
+                product.images = []
         if 'pricing_data' in validated_data:
             product.pricing_data = validated_data['pricing_data']
         if 'description' in validated_data:
@@ -1279,7 +1294,8 @@ def get_admin_orders():
                     'id': user.id,
                     'nickname': user.nickname,
                     'phone': user.phone,
-                    'email': user.email
+                    'email': user.email,
+                    'wechat': user.wechat
                 }
             
             # Get group deal info (excluding soft-deleted)

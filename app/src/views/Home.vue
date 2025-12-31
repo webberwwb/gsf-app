@@ -119,11 +119,12 @@
             v-for="product in products"
             :key="product.id"
             class="product-card browse-only"
+            @click="openProductModal(product)"
           >
             <div class="product-image">
               <img
-                v-if="product.image"
-                :src="product.image"
+                v-if="getProductImage(product)"
+                :src="getProductImage(product)"
                 :alt="product.name"
               />
               <div v-else class="image-placeholder">
@@ -134,9 +135,6 @@
             </div>
             <div class="product-info">
               <h3 class="product-name">{{ product.name }}</h3>
-              <p v-if="product.description" class="product-description">
-                {{ product.description.substring(0, 50) }}...
-              </p>
               <div class="product-price">
                 <template v-if="product.pricing_type === 'per_item'">
                   <span class="sale-price">${{ product.price }}</span>
@@ -162,22 +160,35 @@
         </div>
       </section>
     </main>
+
+    <!-- Product Detail Modal -->
+    <ProductDetailModal
+      :show="showProductModal"
+      :product="selectedProduct"
+      @close="closeProductModal"
+    />
   </div>
 </template>
 
 <script>
 import apiClient from '../api/client'
 import { formatDateEST_CN, parseDateEST, getNowEST } from '../utils/date'
+import ProductDetailModal from '../components/ProductDetailModal.vue'
 
 export default {
   name: 'Home',
+  components: {
+    ProductDetailModal
+  },
   data() {
     return {
       loading: true,
       products: [],
       deals: [],
       activeDeals: [],
-      upcomingDeals: []
+      upcomingDeals: [],
+      showProductModal: false,
+      selectedProduct: null
     }
   },
   async mounted() {
@@ -308,6 +319,24 @@ export default {
     },
     viewDeal(deal) {
       this.$router.push(`/group-deals/${deal.id}`)
+    },
+    openProductModal(product) {
+      this.selectedProduct = product
+      this.showProductModal = true
+    },
+    closeProductModal() {
+      this.showProductModal = false
+      this.selectedProduct = null
+    },
+    getProductImage(product) {
+      // Support both old single image format and new multiple images format
+      if (product.images && Array.isArray(product.images) && product.images.length > 0) {
+        return product.images[0]
+      }
+      if (product.image) {
+        return product.image
+      }
+      return null
     }
   }
 }
@@ -596,15 +625,17 @@ export default {
   box-shadow: var(--md-elevation-1);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  border: 2px solid transparent;
 }
 
 .product-card.browse-only {
-  cursor: default;
+  cursor: pointer;
 }
 
 .product-card.browse-only:hover {
-  transform: none;
-  box-shadow: var(--md-elevation-1);
+  transform: translateY(-4px);
+  box-shadow: var(--md-elevation-3);
+  border-color: var(--md-primary-variant);
 }
 
 .product-image {
@@ -671,16 +702,6 @@ export default {
   line-height: 1.4;
 }
 
-.product-description {
-  font-size: var(--md-label-size);
-  color: var(--md-on-surface-variant);
-  margin-bottom: var(--md-spacing-sm);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  line-height: 1.4;
-}
 
 .product-price {
   display: flex;

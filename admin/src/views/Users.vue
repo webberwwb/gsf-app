@@ -41,6 +41,7 @@
             <span v-if="user.is_admin" class="admin-badge">管理员</span>
           </div>
           <div class="user-phone">{{ user.phone || user.email || 'N/A' }}</div>
+          <div v-if="user.wechat" class="user-wechat">微信号: {{ user.wechat }}</div>
           <div class="user-meta">
             <span v-if="!user.is_admin" class="meta-item">积分: {{ user.points || 0 }}</span>
             <span class="meta-item">注册时间: {{ formatDate(user.creation_date) }}</span>
@@ -400,6 +401,13 @@ export default {
   font-size: var(--md-body-size);
   color: var(--md-on-surface-variant);
   margin-bottom: var(--md-spacing-sm);
+}
+
+.user-wechat {
+  font-size: var(--md-body-size);
+  color: #2E7D32;
+  margin-bottom: var(--md-spacing-sm);
+  font-weight: 500;
 }
 
 .user-meta {

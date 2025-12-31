@@ -10,6 +10,7 @@
           <div class="profile-info">
             <h2>{{ userNickname || '用户' }}</h2>
             <p class="phone">{{ userPhone || '未设置手机号' }}</p>
+            <p v-if="userWechat" class="wechat">微信号: {{ userWechat }}</p>
             <p class="points">积分: {{ userPoints || 0 }}</p>
           </div>
         </div>
@@ -92,6 +93,9 @@ export default {
     },
     userPhone() {
       return this.user?.phone
+    },
+    userWechat() {
+      return this.user?.wechat
     },
     userPoints() {
       return this.user?.points || 0
@@ -424,6 +428,12 @@ export default {
 }
 
 .profile-info .phone {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.profile-info .wechat {
   color: rgba(255, 255, 255, 0.9);
   font-size: 0.9rem;
   margin-bottom: 0.25rem;

@@ -39,6 +39,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 <span class="value">{{ order.user?.nickname || order.user?.phone || 'N/A' }}</span>
+                <span v-if="order.user?.wechat" class="wechat-badge">微信: {{ order.user.wechat }}</span>
               </div>
               <div class="info-item-price">
                 <span class="value price">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
@@ -862,6 +863,16 @@ export default {
   width: 18px;
   height: 18px;
   color: rgba(0, 0, 0, 0.6);
+}
+
+.info-item-user .wechat-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #E8F5E9;
+  color: #2E7D32;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .info-item-price {

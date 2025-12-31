@@ -4,6 +4,10 @@
     <BottomNavigation v-if="showBottomNav" />
     <InstallPrompt />
     <UpdatePrompt />
+    <WechatInputModal
+      :show="showWechatModal"
+      @success="handleWechatSuccess"
+    />
     <Modal
       :show="modalState.show"
       :type="modalState.type"
@@ -27,7 +31,9 @@ import BottomNavigation from './components/BottomNavigation.vue'
 import InstallPrompt from './components/InstallPrompt.vue'
 import UpdatePrompt from './components/UpdatePrompt.vue'
 import Modal from './components/Modal.vue'
+import WechatInputModal from './components/WechatInputModal.vue'
 import { useModal } from './composables/useModal'
+import { useAuthStore } from './stores/auth'
 
 export default {
   name: 'App',
@@ -35,15 +41,41 @@ export default {
     BottomNavigation,
     InstallPrompt,
     UpdatePrompt,
-    Modal
+    Modal,
+    WechatInputModal
   },
   setup() {
     const { modalState } = useModal()
-    return { modalState }
+    const authStore = useAuthStore()
+    return { modalState, authStore }
   },
   computed: {
     showBottomNav() {
       return this.$route.meta.showBottomNav === true
+    },
+    showWechatModal() {
+      // Show modal if user is authenticated but doesn't have wechat
+      // and is trying to access a protected route
+      return this.authStore.isAuthenticated && 
+             !this.authStore.hasWechat && 
+             this.$route.meta.requiresAuth
+    }
+  },
+  watch: {
+    '$route'(to, from) {
+      // When route changes, check if wechat modal should be shown
+      // This ensures the modal appears even if user navigates while authenticated
+      this.$nextTick(() => {
+        // Modal visibility is handled by computed property
+      })
+    }
+  },
+  methods: {
+    handleWechatSuccess(user) {
+      // WeChat ID was successfully updated
+      // The auth store is already updated by the component
+      // Modal will automatically hide due to computed property
+      this.authStore.setUser(user)
     }
   }
 }

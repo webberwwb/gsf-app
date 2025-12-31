@@ -37,6 +37,9 @@ class User(BaseModel):
     whatsapp_number = db.Column(db.String(20), unique=True, nullable=True, index=True)
     whatsapp_verified = db.Column(db.Boolean, default=False)
     
+    # WeChat ID for group buying (required for users)
+    wechat = db.Column(db.String(255), nullable=True)
+    
     # Relationships
     addresses = db.relationship('Address', backref='user', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', backref='user', lazy=True)
@@ -76,6 +79,7 @@ class User(BaseModel):
             'last_login_date': self.last_login_date.isoformat() if self.last_login_date else None,
             'status': self.status,
             'email': self.email,
+            'wechat': self.wechat,
             'is_active': self.is_active,
             'is_admin': self.is_admin,
             'roles': self.get_roles()

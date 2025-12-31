@@ -59,8 +59,8 @@
             :key="product.id"
             class="product-item"
           >
-            <div class="product-image">
-              <img v-if="product.image" :src="product.image" :alt="product.name" />
+            <div class="product-image" @click="openProductModal(product)">
+              <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" />
               <div v-else class="image-placeholder">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -68,8 +68,10 @@
               </div>
             </div>
             <div class="product-details">
-              <h4 class="product-name">{{ product.name }}</h4>
-              <p v-if="product.description" class="product-description">{{ product.description }}</p>
+              <h4 class="product-name" @click="openProductModal(product)">{{ product.name }}</h4>
+              <p v-if="product.description" class="product-description-preview" @click="openProductModal(product)">
+                {{ product.description.length > 80 ? product.description.substring(0, 80) + '...' : product.description }}
+              </p>
               
               <!-- Price Display -->
               <div class="product-price">
@@ -189,6 +191,13 @@
         {{ isOrderCompleted ? '订单已完成' : (isOrderConfirmed || isDealClosed ? '更新取货方式' : '确认订单') }}
       </button>
     </div>
+
+    <!-- Product Detail Modal -->
+    <ProductDetailModal
+      :show="showProductModal"
+      :product="selectedProduct"
+      @close="closeProductModal"
+    />
   </div>
 </template>
 
@@ -197,9 +206,13 @@ import apiClient from '../api/client'
 import { useCheckoutStore } from '../stores/checkout'
 import { formatDateEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
+import ProductDetailModal from '../components/ProductDetailModal.vue'
 
 export default {
   name: 'GroupDealDetail',
+  components: {
+    ProductDetailModal
+  },
   data() {
     return {
       loading: true,
@@ -207,7 +220,9 @@ export default {
       deal: null,
       selectedItems: {}, // { productId: { quantity } }
       existingOrder: null, // Store existing order if found
-      existingOrderData: null // Store order metadata (payment method, delivery method, etc.)
+      existingOrderData: null, // Store order metadata (payment method, delivery method, etc.)
+      showProductModal: false,
+      selectedProduct: null
     }
   },
   setup() {
@@ -562,6 +577,24 @@ export default {
       
       // Navigate to checkout page - it will use the store data
       this.$router.push('/checkout')
+    },
+    openProductModal(product) {
+      this.selectedProduct = product
+      this.showProductModal = true
+    },
+    closeProductModal() {
+      this.showProductModal = false
+      this.selectedProduct = null
+    },
+    getProductImage(product) {
+      // Support both old single image format and new multiple images format
+      if (product.images && Array.isArray(product.images) && product.images.length > 0) {
+        return product.images[0]
+      }
+      if (product.image) {
+        return product.image
+      }
+      return null
     }
   }
 }
@@ -829,6 +862,13 @@ export default {
   border-radius: var(--md-radius-md);
   overflow: hidden;
   background: var(--md-surface-variant);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.product-image:hover {
+  transform: scale(1.05);
+  box-shadow: var(--md-elevation-2);
 }
 
 @media (max-width: 480px) {
@@ -870,12 +910,24 @@ export default {
   font-size: var(--md-body-size);
   font-weight: 500;
   color: var(--md-on-surface);
+  cursor: pointer;
+  transition: color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.product-description {
+.product-name:hover {
+  color: var(--md-primary);
+}
+
+.product-description-preview {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
   line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.product-description-preview:hover {
+  color: var(--md-on-surface);
 }
 
 .product-price {

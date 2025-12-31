@@ -11,19 +11,22 @@
       </div>
 
       <form @submit.prevent="submitForm" class="product-form">
-        <!-- Image Upload -->
+        <!-- Images Upload -->
         <div class="form-group">
-          <label>商品图片</label>
+          <label>商品图片 (可上传多张)</label>
           <div class="image-upload-section">
-            <div v-if="imagePreview" class="image-preview">
-              <img :src="imagePreview" alt="Preview" />
-              <button type="button" @click="removeImage" class="remove-image-btn">×</button>
+            <div v-if="imagePreviews.length > 0" class="images-preview-grid">
+              <div v-for="(preview, index) in imagePreviews" :key="index" class="image-preview-item">
+                <img :src="preview" alt="Preview" />
+                <button type="button" @click="removeImage(index)" class="remove-image-btn">×</button>
+              </div>
             </div>
-            <div v-else class="image-upload-placeholder">
+            <div class="image-upload-placeholder">
               <input
                 ref="fileInput"
                 type="file"
                 accept="image/*"
+                multiple
                 @change="handleImageSelect"
                 class="file-input"
                 id="image-upload"
@@ -32,7 +35,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span>点击上传图片</span>
+                <span>点击上传图片 (可多选)</span>
               </label>
             </div>
             <div v-if="uploading" class="upload-progress">
@@ -265,7 +268,7 @@ export default {
     return {
       formData: {
         name: '',
-        image: '',
+        images: [],
         description: '',
         pricing_type: 'per_item',
         pricing_data: {
@@ -279,7 +282,7 @@ export default {
         is_active: true
       },
       suppliers: [],
-      imagePreview: '',
+      imagePreviews: [],
       uploading: false,
       uploadProgress: 0,
       submitting: false,
@@ -309,7 +312,7 @@ export default {
     resetForm() {
       this.formData = {
         name: '',
-        image: '',
+        images: [],
         description: '',
         pricing_type: 'per_item',
         pricing_data: {
@@ -322,7 +325,7 @@ export default {
         stock_limit: null,
         is_active: true
       }
-      this.imagePreview = ''
+      this.imagePreviews = []
       this.error = null
       this.uploading = false
       this.uploadProgress = 0
@@ -343,9 +346,17 @@ export default {
         const pricingType = this.product.pricing_type || 'per_item'
         let pricingData = this.product.pricing_data || {}
         
+        // Handle images: prefer images array, fallback to single image
+        let images = []
+        if (this.product.images && Array.isArray(this.product.images)) {
+          images = this.product.images.filter(img => img) // Filter out null/empty
+        } else if (this.product.image) {
+          images = [this.product.image]
+        }
+        
         this.formData = {
           name: this.product.name || '',
-          image: this.product.image || '',
+          images: images,
           description: this.product.description || '',
           pricing_type: pricingType,
           pricing_data: {
@@ -358,7 +369,7 @@ export default {
           stock_limit: this.product.stock_limit || null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true
         }
-        this.imagePreview = this.product.image || ''
+        this.imagePreviews = [...images]
       }
     },
     onPricingTypeChange() {
@@ -394,30 +405,32 @@ export default {
       this.formData.pricing_data.ranges.splice(index, 1)
     },
     async handleImageSelect(event) {
-      const file = event.target.files[0]
-      if (!file) return
+      const files = Array.from(event.target.files || [])
+      if (files.length === 0) return
 
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        this.error = '请选择图片文件'
-        return
+      // Validate all files
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+          this.error = '请选择图片文件'
+          return
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          this.error = '图片大小不能超过 5MB'
+          return
+        }
       }
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        this.error = '图片大小不能超过 5MB'
-        return
+      // Upload all files
+      for (const file of files) {
+        await this.uploadImage(file)
       }
 
-      // Show preview
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        this.imagePreview = e.target.result
+      // Reset file input
+      if (this.$refs.fileInput) {
+        this.$refs.fileInput.value = ''
       }
-      reader.readAsDataURL(file)
-
-      // Upload to server
-      await this.uploadImage(file)
     },
     async uploadImage(file) {
       this.uploading = true
@@ -439,24 +452,21 @@ export default {
           }
         })
 
-        this.formData.image = response.data.url
-        this.imagePreview = response.data.url
-        console.log('Image uploaded:', response.data.url)
+        const imageUrl = response.data.url
+        this.formData.images.push(imageUrl)
+        this.imagePreviews.push(imageUrl)
+        console.log('Image uploaded:', imageUrl)
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '图片上传失败'
-        this.imagePreview = ''
         console.error('Image upload error:', error)
       } finally {
         this.uploading = false
         this.uploadProgress = 0
       }
     },
-    removeImage() {
-      this.imagePreview = ''
-      this.formData.image = ''
-      if (this.$refs.fileInput) {
-        this.$refs.fileInput.value = ''
-      }
+    removeImage(index) {
+      this.formData.images.splice(index, 1)
+      this.imagePreviews.splice(index, 1)
     },
     async submitForm() {
       this.submitting = true
@@ -493,8 +503,8 @@ export default {
           data.pricing_data.unit = this.formData.pricing_data.unit
         }
 
-        if (this.formData.image) {
-          data.image = this.formData.image
+        if (this.formData.images && this.formData.images.length > 0) {
+          data.images = this.formData.images
         }
         if (this.formData.description) {
           data.description = this.formData.description
@@ -654,18 +664,26 @@ label {
   margin-top: var(--md-spacing-sm);
 }
 
-.image-preview {
-  position: relative;
-  width: 100%;
-  max-width: 300px;
+.images-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--md-spacing-md);
   margin-bottom: var(--md-spacing-md);
 }
 
-.image-preview img {
+.image-preview-item {
+  position: relative;
   width: 100%;
-  height: auto;
+  aspect-ratio: 1;
   border-radius: var(--md-radius-md);
+  overflow: hidden;
   box-shadow: var(--md-elevation-1);
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .remove-image-btn {

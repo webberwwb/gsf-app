@@ -281,7 +281,9 @@ export default {
     async viewOrder(order) {
       // Navigate to order detail or show modal
       const items = order.items_count || 0
-      await this.confirm(`订单详情\n\n订单号: ${order.order_number}\n用户: ${order.user?.nickname || order.user?.phone}\n总金额: $${order.total}\n订单状态: ${this.getStatusText(order.status)}\n支付状态: ${this.getPaymentStatusText(order.payment_status)}\n商品数量: ${items} 件`, {
+      const userInfo = order.user?.nickname || order.user?.phone || 'N/A'
+      const wechatInfo = order.user?.wechat ? `\n微信号: ${order.user.wechat}` : ''
+      await this.confirm(`订单详情\n\n订单号: ${order.order_number}\n用户: ${userInfo}${wechatInfo}\n总金额: $${order.total}\n订单状态: ${this.getStatusText(order.status)}\n支付状态: ${this.getPaymentStatusText(order.payment_status)}\n商品数量: ${items} 件`, {
         type: 'info',
         title: '订单详情',
         showCancel: false

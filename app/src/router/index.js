@@ -108,8 +108,12 @@ router.beforeEach(async (to, from, next) => {
         }
       }
       
-      // If on login page with valid token, redirect to home
-      if (to.path === '/login' && isValid) {
+      // If authenticated and user doesn't have wechat, allow navigation
+      // but the wechat modal will block the UI (handled in App.vue)
+      // This ensures the modal appears even after successful login
+      
+      // If on login page with valid token and has wechat, redirect to home
+      if (to.path === '/login' && isValid && authStore.hasWechat) {
         next('/')
         return
       }

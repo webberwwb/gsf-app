@@ -18,3 +18,12 @@ class VerifyOTPSchema(Schema):
     class Meta:
         unknown = EXCLUDE  # Ignore unknown fields
 
+
+class UpdateWechatSchema(Schema):
+    """Schema for updating WeChat ID and nickname"""
+    wechat = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    nickname = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    
+    class Meta:
+        unknown = EXCLUDE
+

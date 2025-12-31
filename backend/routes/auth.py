@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from models.base import utc_now
 from config import Config
 from constants.status_enums import UserStatus
-from schemas.auth import SendOTPSchema, VerifyOTPSchema
+from schemas.auth import SendOTPSchema, VerifyOTPSchema, UpdateWechatSchema
 import os
 from schemas.utils import validate_request
 import secrets
@@ -486,6 +486,65 @@ def logout():
             current_app.logger.info(f'Revoked token for user {auth_token.user_id}')
 
     return jsonify({'message': 'Logged out successfully'}), 200
+
+@auth_bp.route('/me/wechat', methods=['PUT'])
+def update_wechat():
+    """Update current user's WeChat ID"""
+    try:
+        # Extract token from Authorization header
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '').strip()
+        else:
+            token = auth_header.strip()
+        
+        if not token:
+            return jsonify({'error': 'No token provided'}), 401
+        
+        # Find valid auth token
+        auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
+        
+        if not auth_token:
+            return jsonify({'error': 'Invalid token'}), 401
+        
+        if not auth_token.is_valid():
+            return jsonify({'error': 'Token expired'}), 401
+        
+        # Get user
+        user = User.query.get(auth_token.user_id)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 401
+        
+        if not user.is_active:
+            return jsonify({'error': 'User account is inactive'}), 403
+        
+        # Validate request data
+        validated_data, error_response, status_code = validate_request(UpdateWechatSchema)
+        if error_response:
+            return error_response, status_code
+        
+        # Update wechat
+        user.wechat = validated_data['wechat']
+        
+        # Update nickname (required)
+        user.nickname = validated_data['nickname'].strip()
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated wechat and nickname for user {user.id}')
+        
+        return jsonify({
+            'user': user.to_dict(),
+            'message': '个人信息更新成功'
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error updating wechat: {e}', exc_info=True)
+        db.session.rollback()
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
 
 # Google OAuth routes for Admin
 @auth_bp.route('/google/login-url', methods=['GET'])

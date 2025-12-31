@@ -7,7 +7,8 @@ class Product(BaseModel):
     __tablename__ = 'products'
     
     name = db.Column(db.String(255), nullable=False, index=True)
-    image = db.Column(db.String(512), nullable=True)  # URL to product image
+    image = db.Column(db.String(512), nullable=True)  # URL to product image (deprecated, use images)
+    images = db.Column(JSON, nullable=True)  # Array of image URLs
     
     # Pricing type: determines how the product is priced
     pricing_type = db.Column(db.String(20), default='per_item', nullable=False)
@@ -87,9 +88,15 @@ class Product(BaseModel):
     
     def to_dict(self):
         data = super().to_dict()
+        # Convert images: use images array if available, otherwise convert single image to array
+        images = self.images if self.images and isinstance(self.images, list) else []
+        if not images and self.image:
+            images = [self.image]
+        
         data.update({
             'name': self.name,
-            'image': self.image,
+            'image': images[0] if images else None,  # Keep for backward compatibility
+            'images': images,  # New multiple images array
             'pricing_type': self.pricing_type,
             'pricing_data': self.pricing_data,
             'price': self.get_display_price(),  # Main price field for FE

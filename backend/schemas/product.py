@@ -28,7 +28,8 @@ class PricingDataUnitWeightSchema(Schema):
 class CreateProductSchema(Schema):
     """Schema for creating a product"""
     name = fields.String(required=True, validate=validate.Length(min=1, max=255))
-    image = fields.String(allow_none=True, validate=validate.Length(max=512))
+    image = fields.String(allow_none=True, validate=validate.Length(max=512))  # Deprecated, use images
+    images = fields.List(fields.String(validate=validate.Length(max=512)), allow_none=True)  # Array of image URLs
     pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight']))
     pricing_data = fields.Dict(required=True)
     description = fields.String(allow_none=True)
@@ -73,7 +74,8 @@ class CreateProductSchema(Schema):
 class UpdateProductSchema(Schema):
     """Schema for updating a product"""
     name = fields.String(allow_none=True, validate=validate.Length(min=1, max=255))
-    image = fields.String(allow_none=True, validate=validate.Length(max=512))
+    image = fields.String(allow_none=True, validate=validate.Length(max=512))  # Deprecated, use images
+    images = fields.List(fields.String(validate=validate.Length(max=512)), allow_none=True)  # Array of image URLs
     pricing_type = fields.String(allow_none=True, validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight']))
     pricing_data = fields.Dict(allow_none=True)
     description = fields.String(allow_none=True)

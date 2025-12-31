@@ -14,6 +14,9 @@ export const useAuthStore = defineStore('auth', {
     isTokenExpired: (state) => {
       if (!state.tokenExpiresAt) return false
       return new Date(state.tokenExpiresAt) < new Date()
+    },
+    hasWechat: (state) => {
+      return !!(state.user && state.user.wechat && state.user.wechat.trim().length > 0)
     }
   },
   
@@ -141,6 +144,26 @@ export const useAuthStore = defineStore('auth', {
      */
     logout() {
       this.clearAuth()
+    },
+    
+    /**
+     * Update user's WeChat ID
+     */
+    async updateWechat(wechat) {
+      try {
+        const response = await apiClient.put('/auth/me/wechat', {
+          wechat: wechat.trim()
+        })
+        
+        if (response.data.user) {
+          this.setUser(response.data.user)
+          return true
+        }
+        return false
+      } catch (error) {
+        console.error('Failed to update wechat:', error)
+        throw error
+      }
     }
   }
 })
