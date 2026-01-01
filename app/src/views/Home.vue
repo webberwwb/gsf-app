@@ -135,6 +135,9 @@
             </div>
             <div class="product-info">
               <h3 class="product-name">{{ product.name }}</h3>
+              <div v-if="product.counts_toward_free_shipping === false" class="shipping-excluded-badge">
+                不计入免运门槛
+              </div>
               <div class="product-price">
                 <template v-if="product.pricing_type === 'per_item'">
                   <span class="sale-price">${{ product.price }}</span>
@@ -702,6 +705,17 @@ export default {
   line-height: 1.4;
 }
 
+.shipping-excluded-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #FFF3E0;
+  color: #E65100;
+  margin-bottom: var(--md-spacing-xs);
+  width: fit-content;
+}
 
 .product-price {
   display: flex;

@@ -47,17 +47,24 @@ export const useCheckoutStore = defineStore('checkout', {
         return 0
       }
       
-      const subtotal = state.orderItems.reduce((sum, item) => {
-        return sum + parseFloat(item.estimated_price || 0)
+      // Calculate subtotal for free shipping threshold
+      // Exclude products with counts_toward_free_shipping = false
+      const freeShippingSubtotal = state.orderItems.reduce((sum, item) => {
+        // Check if product counts toward free shipping (default is true)
+        const countsTowardFreeShipping = item.counts_toward_free_shipping !== false
+        if (countsTowardFreeShipping) {
+          return sum + parseFloat(item.estimated_price || 0)
+        }
+        return sum
       }, 0)
       
-      // Free shipping for orders >= $150
-      if (subtotal >= 150) {
+      // Free shipping for orders >= $150 (using adjusted subtotal)
+      if (freeShippingSubtotal >= 150) {
         return 0
       }
       
       // GTA shipping fee for orders < $150
-      return 7.50
+      return 7.99
     },
     
     total: (state) => {
@@ -67,7 +74,15 @@ export const useCheckoutStore = defineStore('checkout', {
       
       let shipping = 0
       if (state.deliveryMethod === 'delivery') {
-        shipping = subtotal >= 150 ? 0 : 7.50
+        // Calculate free shipping subtotal (excluding products that don't count)
+        const freeShippingSubtotal = state.orderItems.reduce((sum, item) => {
+          const countsTowardFreeShipping = item.counts_toward_free_shipping !== false
+          if (countsTowardFreeShipping) {
+            return sum + parseFloat(item.estimated_price || 0)
+          }
+          return sum
+        }, 0)
+        shipping = freeShippingSubtotal >= 150 ? 0 : 7.99
       }
       
       return subtotal + shipping

@@ -29,10 +29,13 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>
           </div>
+          <div class="image-mask"></div>
+          <div v-if="product.description" class="image-description-overlay">
+            {{ truncateDescription(product.description) }}
+          </div>
         </div>
         <div class="product-info">
           <h3>{{ product.name }}</h3>
-          <p class="description">{{ product.description }}</p>
           <div v-if="product.supplier" class="supplier-info">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="supplier-icon">
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -61,6 +64,12 @@
           <div class="product-status">
             <span :class="['status-badge', product.is_active ? 'active' : 'inactive']">
               {{ product.is_active ? '上架' : '下架' }}
+            </span>
+            <span 
+              :class="['shipping-badge', product.counts_toward_free_shipping !== false ? 'counts-toward' : 'excluded']"
+              :title="product.counts_toward_free_shipping !== false ? '计入免运费门槛' : '不计入免运费门槛'"
+            >
+              {{ product.counts_toward_free_shipping !== false ? '✓ 计入免运' : '✗ 不计免运' }}
             </span>
             <span v-if="product.sales_stats && product.sales_stats.total_sold > 0" class="sales-badge">
               已售: {{ product.sales_stats.total_sold }}
@@ -165,6 +174,11 @@ export default {
         return `$${ranges[0].price || '0.00'} - $${ranges[ranges.length - 1].price || '0.00'}`
       }
       return `$${product.price || product.pricing_data?.price || '0.00'}`
+    },
+    truncateDescription(description) {
+      if (!description) return ''
+      if (description.length <= 30) return description
+      return description.substring(0, 30) + '...'
     }
   }
 }
@@ -265,12 +279,42 @@ export default {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  position: relative;
 }
 
 .product-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.image-mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.4) 50%, transparent 100%);
+  pointer-events: none;
+}
+
+.image-description-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--md-spacing-md);
+  color: white;
+  font-size: var(--md-label-size);
+  line-height: 1.4;
+  word-wrap: break-word;
+  word-break: break-word;
+  display: flex;
+  align-items: flex-end;
+  z-index: 1;
+  box-sizing: border-box;
 }
 
 .image-placeholder {
@@ -293,10 +337,16 @@ export default {
 }
 
 .product-info h3 {
-  font-size: var(--md-title-size);
+  font-size: 16px;
   color: var(--md-on-surface);
   margin-bottom: var(--md-spacing-sm);
   font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
 }
 
 .description {
@@ -361,6 +411,25 @@ export default {
   font-weight: 500;
   background: #E3F2FD;
   color: #1976D2;
+}
+
+.shipping-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--md-radius-xl);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  cursor: help;
+}
+
+.shipping-badge.counts-toward {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.shipping-badge.excluded {
+  background: #FFF3E0;
+  color: #E65100;
 }
 
 .status-badge.active {

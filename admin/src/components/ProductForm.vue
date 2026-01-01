@@ -230,6 +230,19 @@
           </label>
         </div>
 
+        <!-- Counts Toward Free Shipping -->
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              v-model="formData.counts_toward_free_shipping"
+              class="checkbox-input"
+            />
+            <span>计入免运费门槛 ($150)</span>
+          </label>
+          <small class="form-hint">取消勾选后，此商品价格不会计入免运费门槛计算</small>
+        </div>
+
         <!-- Error Message -->
         <div v-if="error" class="error-message">
           {{ error }}
@@ -279,7 +292,8 @@ export default {
         },
         supplier_id: null,
         stock_limit: null,
-        is_active: true
+        is_active: true,
+        counts_toward_free_shipping: true
       },
       suppliers: [],
       imagePreviews: [],
@@ -323,7 +337,8 @@ export default {
         },
         supplier_id: null,
         stock_limit: null,
-        is_active: true
+        is_active: true,
+        counts_toward_free_shipping: true
       }
       this.imagePreviews = []
       this.error = null
@@ -367,7 +382,8 @@ export default {
           },
           supplier_id: this.product.supplier_id || null,
           stock_limit: this.product.stock_limit || null,
-          is_active: this.product.is_active !== undefined ? this.product.is_active : true
+          is_active: this.product.is_active !== undefined ? this.product.is_active : true,
+          counts_toward_free_shipping: this.product.counts_toward_free_shipping !== undefined ? this.product.counts_toward_free_shipping : true
         }
         this.imagePreviews = [...images]
       }
@@ -487,7 +503,8 @@ export default {
           name: this.formData.name,
           pricing_type: this.formData.pricing_type,
           pricing_data: { ...this.formData.pricing_data },
-          is_active: this.formData.is_active
+          is_active: this.formData.is_active,
+          counts_toward_free_shipping: this.formData.counts_toward_free_shipping
         }
 
         // Clean up pricing_data based on type

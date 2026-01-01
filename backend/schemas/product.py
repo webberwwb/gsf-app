@@ -36,6 +36,7 @@ class CreateProductSchema(Schema):
     stock_limit = fields.Integer(allow_none=True, validate=validate.Range(min=0))
     is_active = fields.Boolean(missing=True)
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    counts_toward_free_shipping = fields.Boolean(missing=True)
     
     @post_load
     def validate_pricing_data(self, data, **kwargs):
@@ -82,6 +83,7 @@ class UpdateProductSchema(Schema):
     stock_limit = fields.Integer(allow_none=True, validate=validate.Range(min=0))
     is_active = fields.Boolean(allow_none=True)
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    counts_toward_free_shipping = fields.Boolean(allow_none=True)
     
     @post_load
     def validate_pricing_data(self, data, **kwargs):

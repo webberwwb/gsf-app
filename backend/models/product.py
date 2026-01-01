@@ -32,6 +32,10 @@ class Product(BaseModel):
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True, index=True)
     supplier = db.relationship('Supplier', backref='products', lazy=True)
     
+    # Whether this product counts toward the free shipping threshold ($150)
+    # If False, product price won't be included in subtotal calculation for free shipping
+    counts_toward_free_shipping = db.Column(db.Boolean, default=True, nullable=False)
+    
     # Relationships
     group_deal_products = db.relationship('GroupDealProduct', backref='product', lazy=True)
     order_items = db.relationship('OrderItem', backref='product', lazy=True)
@@ -105,7 +109,8 @@ class Product(BaseModel):
             'is_active': self.is_active,
             'is_available': self.is_available,
             'supplier_id': self.supplier_id,
-            'supplier': self.supplier.to_dict() if self.supplier else None
+            'supplier': self.supplier.to_dict() if self.supplier else None,
+            'counts_toward_free_shipping': self.counts_toward_free_shipping
         })
         return data
 

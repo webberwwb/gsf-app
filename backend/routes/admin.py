@@ -216,7 +216,8 @@ def create_product():
             description=validated_data.get('description', ''),
             stock_limit=validated_data.get('stock_limit'),
             is_active=validated_data.get('is_active', True),
-            supplier_id=validated_data.get('supplier_id')
+            supplier_id=validated_data.get('supplier_id'),
+            counts_toward_free_shipping=validated_data.get('counts_toward_free_shipping', True)
         )
         
         db.session.add(product)
@@ -296,6 +297,8 @@ def update_product(product_id):
             product.is_active = validated_data['is_active']
         if 'supplier_id' in validated_data:
             product.supplier_id = validated_data['supplier_id'] if validated_data['supplier_id'] else None
+        if 'counts_toward_free_shipping' in validated_data:
+            product.counts_toward_free_shipping = validated_data['counts_toward_free_shipping']
         
         db.session.commit()
         
@@ -887,7 +890,45 @@ def update_group_deal(deal_id):
         
         # Update products if provided
         if 'products' in validated_data:
-            # Remove existing products
+            # Check if there are existing orders for this group deal
+            existing_orders_count = Order.query.filter(
+                Order.group_deal_id == deal.id,
+                Order.deleted_at.is_(None)
+            ).count()
+            
+            if existing_orders_count > 0:
+                # If there are existing orders, check which products are in orders
+                # Get product IDs that are in existing order items
+                products_in_orders = db.session.query(OrderItem.product_id).join(
+                    Order, OrderItem.order_id == Order.id
+                ).filter(
+                    Order.group_deal_id == deal.id,
+                    Order.deleted_at.is_(None)
+                ).distinct().all()
+                products_in_orders_set = {pid[0] for pid in products_in_orders}
+                
+                # Get current products in the deal
+                current_deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
+                current_product_ids = {dp.product_id for dp in current_deal_products}
+                
+                # Get new product IDs from request
+                new_product_ids = {product_data.get('product_id') for product_data in validated_data['products'] if product_data.get('product_id')}
+                
+                # Check if any products in orders are being removed
+                products_being_removed = current_product_ids - new_product_ids
+                products_in_orders_being_removed = products_being_removed & products_in_orders_set
+                
+                if products_in_orders_being_removed:
+                    product_names = db.session.query(Product.name).filter(
+                        Product.id.in_(products_in_orders_being_removed)
+                    ).all()
+                    product_names_list = [name[0] for name in product_names]
+                    return jsonify({
+                        'error': 'Cannot remove products that are in existing orders',
+                        'message': f'以下商品已在订单中，无法移除: {", ".join(product_names_list)}'
+                    }), 400
+            
+            # Remove existing products (safe now - we've validated)
             GroupDealProduct.query.filter_by(group_deal_id=deal.id).delete()
             
             # Add new products

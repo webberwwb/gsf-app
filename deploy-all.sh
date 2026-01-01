@@ -32,6 +32,34 @@ gcloud config set project $PROJECT_ID
 echo "Checking/enabling required APIs..."
 gcloud services enable cloudbuild.googleapis.com run.googleapis.com containerregistry.googleapis.com --project=$PROJECT_ID 2>/dev/null || echo "APIs may already be enabled or require additional permissions. Continuing..."
 
+# Function to update frontend version
+# Function to extract version from sw.js
+# Function to extract version from sw.js
+get_frontend_version() {
+    local APP_DIR=$1
+    if [ -f "$APP_DIR/public/sw.js" ]; then
+        grep "const VERSION = " "$APP_DIR/public/sw.js" | sed "s/.*const VERSION = '\([^']*\)'.*/\1/"
+    else
+        echo ""
+    fi
+}
+
+
+update_frontend_version() {
+    local APP_DIR=$1
+    local VERSION=$(date +"%Y.%m.%d.%H%M")
+    echo "🔄 Updating frontend version to: $VERSION"
+    
+    if [ -f "$APP_DIR/public/sw.js" ]; then
+        sed -i '' "s/const VERSION = '[^']*'/const VERSION = '$VERSION'/" "$APP_DIR/public/sw.js"
+        echo "✅ Service Worker version updated in $APP_DIR/public/sw.js"
+        return 0
+    else
+        echo "⚠️  Warning: $APP_DIR/public/sw.js not found, skipping version update"
+        return 1
+    fi
+}
+
 # Function to wait for build to complete
 wait_for_build() {
     local BUILD_ID=$1
@@ -60,6 +88,14 @@ wait_for_build() {
     done
 }
 
+# Update frontend version first (before backend deployment so backend knows the version)
+echo "🔄 Updating frontend version before deployment..."
+cd app
+update_frontend_version "$(pwd)"
+FRONTEND_VERSION=$(get_frontend_version "$(pwd)")
+echo "📦 Frontend version set to: $FRONTEND_VERSION"
+cd ..
+
 # Deploy Backend
 echo "Building and deploying backend..."
 cd backend
@@ -83,7 +119,7 @@ wait_for_build $BUILD_ID $PROJECT_ID || {
     exit 1
 }
 
-ENV_VARS="MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca"
+ENV_VARS="MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca,APP_VERSION=$FRONTEND_VERSION"
 SECRETS="MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest"
 
 BACKEND_URL=$(gcloud run deploy gsf-app-backend \
@@ -103,7 +139,6 @@ echo "Backend deployed at: $BACKEND_URL"
 # Deploy Frontend
 echo "Building and deploying frontend..."
 cd ../app
-set +e
 BUILD_OUTPUT=$(gcloud builds submit --async --tag gcr.io/$PROJECT_ID/gsf-app-frontend --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
 set -e

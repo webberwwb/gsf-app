@@ -68,7 +68,12 @@
               </div>
             </div>
             <div class="product-details">
-              <h4 class="product-name" @click="openProductModal(product)">{{ product.name }}</h4>
+              <div class="product-name-row">
+                <h4 class="product-name" @click="openProductModal(product)">{{ product.name }}</h4>
+                <span v-if="product.counts_toward_free_shipping === false" class="shipping-excluded-badge">
+                  不计入免运
+                </span>
+              </div>
               <p v-if="product.description" class="product-description-preview" @click="openProductModal(product)">
                 {{ product.description.length > 80 ? product.description.substring(0, 80) + '...' : product.description }}
               </p>
@@ -244,10 +249,15 @@ export default {
       return this.existingOrder && this.existingOrder.status === 'confirmed'
     },
     isOrderEditable() {
-      // Product list is editable only if order is submitted
-      // When deal is closed or order is confirmed, products cannot be edited
+      // Product list is editable if:
+      // 1. No existing order (new order) AND deal is not closed
+      // 2. OR existing order is submitted (not completed/confirmed)
+      if (!this.existingOrder) {
+        // No order yet - allow editing if deal is active
+        return !this.isDealClosed
+      }
+      // Has existing order - only editable if status is 'submitted'
       return !this.isOrderCompleted && 
-             this.existingOrder && 
              this.existingOrder.status === 'submitted'
     },
     canEditPickupPayment() {
@@ -506,7 +516,10 @@ export default {
           quantity: item.quantity,
           pricing_type: item.product?.pricing_type || 'per_item',
           estimated_price: parseFloat(item.total_price || 0).toFixed(2),
-          is_estimated: false
+          is_estimated: false,
+          counts_toward_free_shipping: item.product?.counts_toward_free_shipping !== undefined 
+            ? item.product.counts_toward_free_shipping 
+            : true
         }))
       } else {
         // Build order items from selected products (for new orders or editable orders)
@@ -542,7 +555,10 @@ export default {
               quantity: selection.quantity,
               pricing_type: product.pricing_type,
               estimated_price: estimatedPrice.toFixed(2),
-              is_estimated: isEstimated
+              is_estimated: isEstimated,
+              counts_toward_free_shipping: product.counts_toward_free_shipping !== undefined 
+                ? product.counts_toward_free_shipping 
+                : true
             })
           }
         })
@@ -906,16 +922,35 @@ export default {
   gap: var(--md-spacing-sm);
 }
 
+.product-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  flex-wrap: wrap;
+}
+
 .product-name {
   font-size: var(--md-body-size);
   font-weight: 500;
   color: var(--md-on-surface);
   cursor: pointer;
   transition: color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 0;
 }
 
 .product-name:hover {
   color: var(--md-primary);
+}
+
+.shipping-excluded-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #FFF3E0;
+  color: #E65100;
+  flex-shrink: 0;
 }
 
 .product-description-preview {

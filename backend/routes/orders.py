@@ -334,6 +334,7 @@ def create_order():
             
             order_items.append({
                 'product_id': product_id,
+                'product': product,  # Include product object for shipping calculation
                 'quantity': quantity,
                 'unit_price': unit_price,
                 'total_price': total_price
@@ -346,7 +347,7 @@ def create_order():
             from models.address import Address
             address = Address.query.get(address_id)
         
-        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address)
+        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address, order_items)
         
         # Calculate tax (0% for now, can be configured later)
         tax = Decimal('0')
@@ -656,6 +657,7 @@ def update_order(order_id):
             
             new_order_items.append({
                 'product_id': product_id,
+                'product': product,  # Include product object for shipping calculation
                 'quantity': quantity,
                 'unit_price': unit_price,
                 'total_price': total_price
@@ -668,7 +670,7 @@ def update_order(order_id):
             from models.address import Address
             address = Address.query.get(address_id)
         
-        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address)
+        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address, new_order_items)
         
         # Calculate tax (0% for now, can be configured later)
         tax = Decimal('0')

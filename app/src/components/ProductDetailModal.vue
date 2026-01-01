@@ -16,10 +16,15 @@
           <div class="product-image-section">
             <div v-if="productImages.length > 0" class="image-carousel">
               <div class="carousel-main">
-                <img :src="productImages[currentImageIndex]" :alt="product.name" />
+                <img 
+                  :src="productImages[currentImageIndex]" 
+                  :alt="product.name" 
+                  @click="openFullScreen"
+                  class="carousel-main-image"
+                />
                 <button 
                   v-if="productImages.length > 1"
-                  @click="previousImage" 
+                  @click.stop="previousImage" 
                   class="carousel-btn carousel-btn-prev"
                   aria-label="Previous image"
                 >
@@ -29,7 +34,7 @@
                 </button>
                 <button 
                   v-if="productImages.length > 1"
-                  @click="nextImage" 
+                  @click.stop="nextImage" 
                   class="carousel-btn carousel-btn-next"
                   aria-label="Next image"
                 >
@@ -105,6 +110,47 @@
       </div>
     </div>
   </Transition>
+
+  <!-- Full Screen Image Viewer -->
+  <Transition name="fullscreen">
+    <div v-if="showFullScreen" class="fullscreen-overlay" @click="closeFullScreen">
+      <div class="fullscreen-container" @click.stop>
+        <button @click="closeFullScreen" class="fullscreen-close">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <img 
+          :src="productImages[fullScreenImageIndex]" 
+          :alt="product.name" 
+          class="fullscreen-image"
+        />
+        <button 
+          v-if="productImages.length > 1"
+          @click.stop="previousFullScreenImage" 
+          class="fullscreen-btn fullscreen-btn-prev"
+          aria-label="Previous image"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button 
+          v-if="productImages.length > 1"
+          @click.stop="nextFullScreenImage" 
+          class="fullscreen-btn fullscreen-btn-next"
+          aria-label="Next image"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+        <div v-if="productImages.length > 1" class="fullscreen-indicator">
+          {{ fullScreenImageIndex + 1 }} / {{ productImages.length }}
+        </div>
+      </div>
+    </div>
+  </Transition>
 </template>
 
 <script>
@@ -123,7 +169,9 @@ export default {
   emits: ['close'],
   data() {
     return {
-      currentImageIndex: 0
+      currentImageIndex: 0,
+      showFullScreen: false,
+      fullScreenImageIndex: 0
     }
   },
   computed: {
@@ -143,8 +191,24 @@ export default {
     show(newVal) {
       if (newVal) {
         this.currentImageIndex = 0
+        this.showFullScreen = false
+      }
+    },
+    showFullScreen(newVal) {
+      if (newVal) {
+        document.body.style.overflow = 'hidden'
+        this.fullScreenImageIndex = this.currentImageIndex
+      } else {
+        document.body.style.overflow = ''
       }
     }
+  },
+  mounted() {
+    document.addEventListener('keydown', this.handleKeydown)
+  },
+  beforeUnmount() {
+    document.removeEventListener('keydown', this.handleKeydown)
+    document.body.style.overflow = ''
   },
   methods: {
     handleClose() {
@@ -218,6 +282,37 @@ export default {
         return `$${parseFloat(pricePerUnit).toFixed(2)}/${unit}`
       }
       return '价格待定'
+    },
+    openFullScreen() {
+      if (this.productImages.length > 0) {
+        this.showFullScreen = true
+        this.fullScreenImageIndex = this.currentImageIndex
+      }
+    },
+    closeFullScreen() {
+      this.showFullScreen = false
+      this.currentImageIndex = this.fullScreenImageIndex
+    },
+    nextFullScreenImage() {
+      if (this.productImages.length > 0) {
+        this.fullScreenImageIndex = (this.fullScreenImageIndex + 1) % this.productImages.length
+      }
+    },
+    previousFullScreenImage() {
+      if (this.productImages.length > 0) {
+        this.fullScreenImageIndex = (this.fullScreenImageIndex - 1 + this.productImages.length) % this.productImages.length
+      }
+    },
+    handleKeydown(event) {
+      if (!this.showFullScreen) return
+      
+      if (event.key === 'Escape') {
+        this.closeFullScreen()
+      } else if (event.key === 'ArrowLeft') {
+        this.previousFullScreenImage()
+      } else if (event.key === 'ArrowRight') {
+        this.nextFullScreenImage()
+      }
     }
   }
 }
@@ -321,6 +416,15 @@ export default {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.carousel-main-image {
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.carousel-main-image:hover {
+  transform: scale(1.02);
 }
 
 .carousel-btn {
@@ -552,6 +656,137 @@ export default {
 .modal-leave-to .modal-container {
   transform: scale(0.95);
   opacity: 0;
+}
+
+/* Full Screen Image Viewer */
+.fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.fullscreen-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+.fullscreen-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10001;
+}
+
+.fullscreen-close:hover {
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: scale(1.1);
+}
+
+.fullscreen-close svg {
+  width: 24px;
+  height: 24px;
+  color: #111827;
+}
+
+.fullscreen-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10001;
+}
+
+.fullscreen-btn:hover {
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.fullscreen-btn svg {
+  width: 28px;
+  height: 28px;
+  color: #111827;
+}
+
+.fullscreen-btn-prev {
+  left: 20px;
+}
+
+.fullscreen-btn-next {
+  right: 20px;
+}
+
+.fullscreen-indicator {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Fullscreen transitions */
+.fullscreen-enter-active, .fullscreen-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fullscreen-enter-active .fullscreen-container,
+.fullscreen-leave-active .fullscreen-container {
+  transition: transform 0.3s ease;
+}
+
+.fullscreen-enter-from, .fullscreen-leave-to {
+  opacity: 0;
+}
+
+.fullscreen-enter-from .fullscreen-container,
+.fullscreen-leave-to .fullscreen-container {
+  transform: scale(0.9);
 }
 </style>
 
