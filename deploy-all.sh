@@ -1,24 +1,27 @@
 #!/bin/bash
 # Deploy all services to GCP Cloud Run
 # Usage: ./deploy-all.sh [region] [service-account-key-path]
-# Prerequisites: Run ./setup-secrets.sh once (secrets are reused automatically)
 
 set -e
 
 PROJECT_ID="focused-mote-477703-f0"
 REGION=${1:-"us-central1"}
-USE_SERVICE_ACCOUNT=${USE_SERVICE_ACCOUNT:-"true"}
 SERVICE_ACCOUNT_KEY="${2:-instance/service_accounts/focused-mote-477703-f0-0571d061607f.json}"
 
 echo "Deploying to project: $PROJECT_ID, region: $REGION"
 
 # Always authenticate with service account first (required for Cloud Build)
 if [ -f "$SERVICE_ACCOUNT_KEY" ]; then
-    echo "Authenticating with service account: $SERVICE_ACCOUNT_KEY"
+    echo "🔐 Authenticating with service account: $SERVICE_ACCOUNT_KEY"
     gcloud auth activate-service-account --key-file="$SERVICE_ACCOUNT_KEY" || {
         echo "Error: Failed to authenticate with service account"
         exit 1
     }
+    echo "✅ Service account authenticated successfully"
+    
+    # Verify the active account
+    ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" | head -1)
+    echo "📋 Active account: $ACTIVE_ACCOUNT"
 else
     echo "Error: Service account key not found at $SERVICE_ACCOUNT_KEY"
     echo "Please ensure the service account key exists at: $SERVICE_ACCOUNT_KEY"
@@ -27,6 +30,10 @@ fi
 
 # Set the project
 gcloud config set project $PROJECT_ID
+
+# Set application default credentials to use the service account
+export GOOGLE_APPLICATION_CREDENTIALS="$SERVICE_ACCOUNT_KEY"
+echo "🔑 Set GOOGLE_APPLICATION_CREDENTIALS to service account key"
 
 # Enable required APIs (skip if already enabled or if you don't have permission)
 echo "Checking/enabling required APIs..."
@@ -139,7 +146,21 @@ echo "Backend deployed at: $BACKEND_URL"
 # Deploy Frontend
 echo "Building and deploying frontend..."
 cd ../app
-BUILD_OUTPUT=$(gcloud builds submit --async --tag gcr.io/$PROJECT_ID/gsf-app-frontend --project=$PROJECT_ID 2>&1)
+
+# Get Google Maps API key from Secret Manager for build-time use (required for Vite build)
+echo "📋 Fetching Google Maps API key from Secret Manager..."
+GOOGLE_MAPS_API_KEY=$(gcloud secrets versions access latest --secret="google-maps-api-key" --project=$PROJECT_ID 2>/dev/null || echo "")
+if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
+    echo "❌ Error: Google Maps API key not found in Secret Manager"
+    echo "   The secret 'google-maps-api-key' must exist in Secret Manager for the frontend build."
+    exit 1
+fi
+echo "✅ Google Maps API key retrieved from Secret Manager"
+
+# Build with substitutions for Vite env vars (needed at build time)
+BUILD_SUBSTITUTIONS="--substitutions=_VITE_API_BASE_URL=$BACKEND_URL/api,_VITE_GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
+
+BUILD_OUTPUT=$(gcloud builds submit --async --config=cloudbuild.yaml $BUILD_SUBSTITUTIONS --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
 set -e
 echo "$BUILD_OUTPUT"
@@ -158,7 +179,7 @@ wait_for_build $BUILD_ID $PROJECT_ID || {
     exit 1
 }
 FRONTEND_URL=$(gcloud run deploy gsf-app-frontend \
-    --image gcr.io/$PROJECT_ID/gsf-app-frontend \
+    --image gcr.io/$PROJECT_ID/gsf-app-frontend:latest \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \

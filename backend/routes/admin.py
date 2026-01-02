@@ -19,6 +19,7 @@ from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
 from schemas.utils import validate_request
 import os
 import uuid
+import secrets
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
 from decimal import Decimal
@@ -59,10 +60,10 @@ def require_admin_auth():
     if not auth_token or not auth_token.is_valid():
         return None, jsonify({'error': 'Invalid or expired token'}), 401
     
-    # Refresh token expiration on each use (extend to 30 days from now)
-    # This ensures if user uses app at least once a month, they never need to OTP again
+    # Refresh token expiration on each use (extend to 100 years from now)
+    # Token effectively never expires
     # Make sure expires_at is stored as naive datetime (MySQL doesn't support timezone-aware)
-    new_expires_at = utc_now() + timedelta(days=30)
+    new_expires_at = utc_now() + timedelta(days=36500)  # 100 years
     auth_token.expires_at = new_expires_at  # Already naive UTC datetime
     db.session.commit()
     
@@ -207,6 +208,13 @@ def create_product():
         if not images and validated_data.get('image'):
             images = [validated_data.get('image')]
         
+        # Handle stock_limit: explicitly preserve 0 value (0 means out of stock, None means unlimited)
+        stock_limit_value = validated_data.get('stock_limit')
+        if stock_limit_value is None or stock_limit_value == '':
+            final_stock_limit = None
+        else:
+            final_stock_limit = int(stock_limit_value)  # Convert to int, preserving 0
+        
         product = Product(
             name=validated_data['name'],
             image=validated_data.get('image'),  # Keep for backward compatibility
@@ -214,7 +222,7 @@ def create_product():
             pricing_type=validated_data['pricing_type'],
             pricing_data=validated_data['pricing_data'],
             description=validated_data.get('description', ''),
-            stock_limit=validated_data.get('stock_limit'),
+            stock_limit=final_stock_limit,
             is_active=validated_data.get('is_active', True),
             supplier_id=validated_data.get('supplier_id'),
             counts_toward_free_shipping=validated_data.get('counts_toward_free_shipping', True)
@@ -292,7 +300,13 @@ def update_product(product_id):
         if 'description' in validated_data:
             product.description = validated_data['description']
         if 'stock_limit' in validated_data:
-            product.stock_limit = validated_data['stock_limit'] if validated_data['stock_limit'] else None
+            # Explicitly handle 0 as a valid value (out of stock)
+            # None means unlimited stock, 0 means out of stock
+            stock_limit_value = validated_data['stock_limit']
+            if stock_limit_value is None or stock_limit_value == '':
+                product.stock_limit = None
+            else:
+                product.stock_limit = int(stock_limit_value)  # Convert to int, preserving 0
         if 'is_active' in validated_data:
             product.is_active = validated_data['is_active']
         if 'supplier_id' in validated_data:
@@ -419,6 +433,62 @@ def get_user(user_id):
             'error': 'User not found',
             'message': str(e)
         }), 404
+
+@admin_bp.route('/users/<int:user_id>/impersonate', methods=['POST'])
+def impersonate_user(user_id):
+    """Generate a token for a user to allow admin to impersonate them"""
+    admin_user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        target_user = User.query.get_or_404(user_id)
+        
+        # Check if user is active
+        if not target_user.is_active:
+            return jsonify({
+                'error': 'Cannot impersonate inactive user'
+            }), 400
+        
+        # Generate new auth token for the target user (100 years expiration - effectively never expires)
+        expires_at = utc_now() + timedelta(days=36500)  # 100 years
+        auth_token = AuthToken(
+            user_id=target_user.id,
+            token=secrets.token_urlsafe(32),
+            token_type='bearer',
+            expires_at=expires_at
+        )
+        db.session.add(auth_token)
+        db.session.commit()
+        
+        # Get app frontend URL from config
+        app_frontend_url = Config.APP_FRONTEND_URL
+        
+        # Handle local development
+        is_production = os.environ.get('K_SERVICE') is not None
+        if not is_production:
+            # In local development, use localhost if APP_FRONTEND_URL is not set or is production URL
+            if not app_frontend_url or 'grainstoryfarm.ca' in app_frontend_url:
+                app_frontend_url = 'http://localhost:5173'  # App frontend dev server port
+                current_app.logger.info(f'Using default localhost URL for local development: {app_frontend_url}')
+        
+        current_app.logger.info(f'Admin {admin_user_id} impersonating user {user_id}, token: {auth_token.token[:10]}...')
+        
+        # Return token and redirect URL
+        return jsonify({
+            'token': auth_token.token,
+            'user': target_user.to_dict(),
+            'redirect_url': f'{app_frontend_url}/login#token={auth_token.token}',
+            'expires_at': auth_token.expires_at.isoformat()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error impersonating user: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to impersonate user',
+            'message': str(e)
+        }), 500
 
 @admin_bp.route('/users/<int:user_id>/ban', methods=['POST'])
 def ban_user(user_id):

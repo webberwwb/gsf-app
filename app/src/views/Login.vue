@@ -97,6 +97,38 @@ export default {
     }
   },
   async mounted() {
+    // Check for impersonation token in URL hash (from admin panel)
+    const hash = window.location.hash
+    if (hash && hash.includes('token=')) {
+      const tokenMatch = hash.match(/token=([^&]+)/)
+      if (tokenMatch && tokenMatch[1]) {
+        const token = tokenMatch[1]
+        this.loading = true
+        try {
+          // Set the token and verify it
+          this.authStore.setAuth(token, null, null)
+          const isValid = await this.authStore.checkAuth()
+          if (isValid) {
+            // Clear the hash and redirect to home
+            window.location.hash = ''
+            this.$router.push('/')
+            return
+          } else {
+            // Token invalid, clear it
+            this.authStore.clearAuth()
+            this.error = '登录令牌无效或已过期'
+          }
+        } catch (error) {
+          console.error('Token validation error:', error)
+          this.authStore.clearAuth()
+          this.error = '登录失败，请重试'
+        } finally {
+          this.loading = false
+        }
+        return
+      }
+    }
+    
     // Load saved phone number from localStorage (keeping this for UX convenience)
     const savedPhone = localStorage.getItem('last_phone_number')
     if (savedPhone) {

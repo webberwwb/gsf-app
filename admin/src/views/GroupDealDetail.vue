@@ -70,6 +70,79 @@
         </div>
       </div>
 
+      <!-- Statistics Section -->
+      <div v-if="orders.length > 0" class="statistics-section">
+        <h3>统计汇总</h3>
+        <div class="stats-grid">
+          <!-- Total Orders -->
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div class="stat-content">
+              <div class="stat-label">总订单数</div>
+              <div class="stat-value">{{ statistics.totalOrders }}</div>
+            </div>
+          </div>
+
+          <!-- Total Revenue (Combined Payment Status) -->
+          <div class="stat-card">
+            <div class="stat-icon paid-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="stat-content">
+              <div class="stat-label">总收入</div>
+              <div class="stat-value">{{ statistics.totalPaidOrders }} / {{ statistics.totalOrders }}</div>
+              <div class="stat-subvalue">${{ statistics.totalPaidAmount.toFixed(2) }} / ${{ statistics.totalAmount.toFixed(2) }}</div>
+            </div>
+          </div>
+
+          <!-- Delivery vs Pickup -->
+          <div class="stat-card">
+            <div class="stat-icon delivery-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </div>
+            <div class="stat-content">
+              <div class="stat-label">配送进度</div>
+              <div class="stat-value">{{ statistics.totalShippedDelivery }} / {{ statistics.totalDelivery }}</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon pickup-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <div class="stat-content">
+              <div class="stat-label">取货进度</div>
+              <div class="stat-value">{{ statistics.totalPickedUpPickup }} / {{ statistics.totalPickup }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Product Statistics -->
+        <div v-if="statistics.productCounts.length > 0" class="product-stats-section">
+          <h4>商品统计</h4>
+          <div class="product-stats-list">
+            <div 
+              v-for="productStat in statistics.productCounts" 
+              :key="productStat.productId"
+              class="product-stat-item">
+              <div class="product-stat-name">{{ productStat.productName }}</div>
+              <div class="product-stat-value">{{ productStat.totalQuantity }} {{ productStat.unit || '件' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Orders List -->
       <div class="orders-section">
         <h3>订单列表 ({{ orders.length }})</h3>
@@ -142,6 +215,123 @@ export default {
       updatingGroupDealStatus: false
     }
   },
+  computed: {
+    statistics() {
+      if (!this.orders || this.orders.length === 0) {
+        return {
+          totalOrders: 0,
+          totalAmount: 0,
+          totalPaidOrders: 0,
+          totalPaidAmount: 0,
+          totalUnpaidOrders: 0,
+          totalUnpaidAmount: 0,
+          totalDelivery: 0,
+          totalPickup: 0,
+          totalShippedOrPickedUp: 0,
+          totalShippedDelivery: 0,
+          totalPickedUpPickup: 0,
+          productCounts: []
+        }
+      }
+
+      let totalAmount = 0
+      let totalPaidOrders = 0
+      let totalPaidAmount = 0
+      let totalUnpaidOrders = 0
+      let totalUnpaidAmount = 0
+      let totalDelivery = 0
+      let totalPickup = 0
+      let totalShippedOrPickedUp = 0
+      let totalShippedDelivery = 0
+      let totalPickedUpPickup = 0
+      const productCountsMap = new Map()
+
+      this.orders.forEach(order => {
+        // Total amount
+        const orderTotal = parseFloat(order.total || 0)
+        totalAmount += orderTotal
+
+        // Payment status
+        if (order.payment_status === 'paid') {
+          totalPaidOrders++
+          totalPaidAmount += orderTotal
+        } else {
+          totalUnpaidOrders++
+          totalUnpaidAmount += orderTotal
+        }
+
+        // Delivery method and shipped/picked up status
+        if (order.delivery_method === 'delivery') {
+          totalDelivery++
+          // Check if delivery order is shipped
+          if (order.status === 'out_for_delivery' || order.status === 'delivering' || order.status === 'completed') {
+            totalShippedDelivery++
+          }
+        } else if (order.delivery_method === 'pickup') {
+          totalPickup++
+          // Check if pickup order is picked up
+          if (order.status === 'ready_for_pickup' || order.status === 'completed') {
+            totalPickedUpPickup++
+          }
+        }
+
+        // Shipped/Picked Up status (combined)
+        // For delivery: out_for_delivery, delivering, or completed
+        // For pickup: ready_for_pickup or completed
+        const isShippedOrPickedUp = 
+          (order.delivery_method === 'delivery' && 
+           (order.status === 'out_for_delivery' || order.status === 'delivering' || order.status === 'completed')) ||
+          (order.delivery_method === 'pickup' && 
+           (order.status === 'ready_for_pickup' || order.status === 'completed'))
+        
+        if (isShippedOrPickedUp) {
+          totalShippedOrPickedUp++
+        }
+
+        // Product counts - need to fetch full order details for items
+        // For now, we'll calculate from orders that have items loaded
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach(item => {
+            const productId = item.product?.id || item.product_id
+            const productName = item.product?.name || 'Unknown Product'
+            const quantity = item.quantity || 0
+            const unit = item.product?.unit || '件'
+
+            if (productCountsMap.has(productId)) {
+              const existing = productCountsMap.get(productId)
+              existing.totalQuantity += quantity
+            } else {
+              productCountsMap.set(productId, {
+                productId,
+                productName,
+                totalQuantity: quantity,
+                unit
+              })
+            }
+          })
+        }
+      })
+
+      // Convert map to array and sort by product name
+      const productCounts = Array.from(productCountsMap.values())
+        .sort((a, b) => a.productName.localeCompare(b.productName))
+
+      return {
+        totalOrders: this.orders.length,
+        totalAmount,
+        totalPaidOrders,
+        totalPaidAmount,
+        totalUnpaidOrders,
+        totalUnpaidAmount,
+        totalDelivery,
+        totalPickup,
+        totalShippedOrPickedUp,
+        totalShippedDelivery,
+        totalPickedUpPickup,
+        productCounts
+      }
+    }
+  },
   mounted() {
     this.fetchGroupDealDetail()
   },
@@ -172,7 +362,33 @@ export default {
           }
         })
         // Filter out cancelled orders
-        this.orders = (ordersResponse.data.orders || []).filter(order => order.status !== 'cancelled')
+        const orders = (ordersResponse.data.orders || []).filter(order => order.status !== 'cancelled')
+        
+        // Fetch order items for product statistics (limit to first 100 orders for performance)
+        // Load items in batches to avoid overwhelming the server
+        const ordersToLoad = orders.slice(0, 100)
+        const orderItemPromises = ordersToLoad.map(order => 
+          apiClient.get(`/admin/orders/${order.id}`)
+            .then(response => {
+              order.items = response.data.order?.items || []
+              return order
+            })
+            .catch(error => {
+              console.warn(`Failed to load items for order ${order.id}:`, error)
+              order.items = []
+              return order
+            })
+        )
+        
+        // Wait for all order details to load (with items)
+        await Promise.all(orderItemPromises)
+        
+        // For orders beyond the first 100, set empty items array
+        orders.slice(100).forEach(order => {
+          order.items = []
+        })
+        
+        this.orders = orders
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to load group deal'
         console.error('Failed to fetch group deal detail:', error)
@@ -706,6 +922,163 @@ export default {
 
 .date-value {
   color: var(--md-on-surface);
+}
+
+.statistics-section {
+  background: #FFFFFF;
+  border-radius: var(--md-radius-lg);
+  padding: var(--md-spacing-lg);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  margin-bottom: var(--md-spacing-lg);
+}
+
+.statistics-section h3 {
+  font-size: var(--md-title-size);
+  color: var(--md-on-surface);
+  margin-bottom: var(--md-spacing-lg);
+  font-weight: 500;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--md-spacing-md);
+  margin-bottom: var(--md-spacing-lg);
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-md);
+  padding: var(--md-spacing-md);
+  background: var(--md-surface-variant);
+  border-radius: var(--md-radius-md);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stat-card:hover {
+  background: rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--md-radius-md);
+  background: rgba(255, 140, 0, 0.1);
+  color: var(--md-primary);
+  flex-shrink: 0;
+}
+
+.stat-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.stat-icon.amount-icon {
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+}
+
+.stat-icon.paid-icon {
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+}
+
+.stat-icon.unpaid-icon {
+  background: rgba(255, 152, 0, 0.1);
+  color: #FF9800;
+}
+
+.stat-icon.delivery-icon {
+  background: rgba(33, 150, 243, 0.1);
+  color: #2196F3;
+}
+
+.stat-icon.pickup-icon {
+  background: rgba(156, 39, 176, 0.1);
+  color: #9C27B0;
+}
+
+.stat-icon.shipped-icon {
+  background: rgba(0, 150, 136, 0.1);
+  color: #009688;
+}
+
+.stat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-xs);
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: var(--md-headline-size);
+  color: var(--md-on-surface);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stat-subvalue {
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface-variant);
+  margin-top: 2px;
+}
+
+.product-stats-section {
+  margin-top: var(--md-spacing-lg);
+  padding-top: var(--md-spacing-lg);
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.product-stats-section h4 {
+  font-size: var(--md-title-size);
+  color: var(--md-on-surface);
+  margin-bottom: var(--md-spacing-md);
+  font-weight: 500;
+}
+
+.product-stats-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--md-spacing-sm);
+}
+
+.product-stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--md-radius-sm);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.product-stat-name {
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface);
+  flex: 1;
+  min-width: 0;
+  margin-right: var(--md-spacing-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-stat-value {
+  font-size: var(--md-body-size);
+  color: var(--md-primary);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .orders-section {

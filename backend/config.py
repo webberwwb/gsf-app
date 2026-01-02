@@ -68,6 +68,7 @@ class Config:
     GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
     GOOGLE_OAUTH_REDIRECT_URI = os.environ.get('GOOGLE_OAUTH_REDIRECT_URI', 'https://backend.grainstoryfarm.ca/api/auth/google/callback')
     ADMIN_FRONTEND_URL = os.environ.get('ADMIN_FRONTEND_URL', 'https://admin.grainstoryfarm.ca')
+    APP_FRONTEND_URL = os.environ.get('APP_FRONTEND_URL', 'https://app.grainstoryfarm.ca')
     
     # Admin allowed email domains (comma-separated)
     ADMIN_ALLOWED_DOMAINS = os.environ.get('ADMIN_ALLOWED_DOMAINS', '').split(',') if os.environ.get('ADMIN_ALLOWED_DOMAINS') else []

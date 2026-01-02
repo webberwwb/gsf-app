@@ -56,6 +56,7 @@
         </div>
         <div class="user-actions">
           <button @click="viewUser(user)" class="view-btn">查看</button>
+          <button v-if="!user.is_admin" @click="impersonateUser(user.id)" class="impersonate-btn">代登录</button>
           <button v-if="user.is_admin" @click="manageRoles(user)" class="roles-btn">角色</button>
           <button v-if="user.status === 'active'" @click="banUser(user.id)" class="ban-btn">
             禁用
@@ -256,6 +257,26 @@ export default {
         await this.error(error.response?.data?.message || error.response?.data?.error || '操作失败')
         console.error('Role management error:', error)
       }
+    },
+    async impersonateUser(userId) {
+      const confirmed = await this.confirm('确定要以该用户身份登录吗？您将被重定向到用户端应用。', {
+        type: 'warning',
+        title: '代登录确认'
+      })
+      if (!confirmed) {
+        return
+      }
+
+      try {
+        const response = await apiClient.post(`/admin/users/${userId}/impersonate`)
+        const { redirect_url } = response.data
+        
+        // Redirect to app frontend with token
+        window.location.href = redirect_url
+      } catch (error) {
+        await this.error(error.response?.data?.message || error.response?.data?.error || '代登录失败')
+        console.error('Impersonate user error:', error)
+      }
     }
   }
 }
@@ -427,7 +448,7 @@ export default {
   gap: var(--md-spacing-sm);
 }
 
-.view-btn, .ban-btn, .unban-btn, .roles-btn {
+.view-btn, .ban-btn, .unban-btn, .roles-btn, .impersonate-btn {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border: none;
   border-radius: var(--md-radius-md);
@@ -451,6 +472,20 @@ export default {
   border-color: transparent;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+}
+
+.impersonate-btn {
+  background: rgba(33, 150, 243, 0.1);
+  color: #2196F3;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.impersonate-btn:hover {
+  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
 }
 
 .view-btn {
@@ -567,7 +602,8 @@ export default {
   .view-btn,
   .ban-btn,
   .unban-btn,
-  .roles-btn {
+  .roles-btn,
+  .impersonate-btn {
     flex: 1 1 auto;
     min-width: 80px;
   }
@@ -605,7 +641,8 @@ export default {
   .view-btn,
   .ban-btn,
   .unban-btn,
-  .roles-btn {
+  .roles-btn,
+  .impersonate-btn {
     width: 100%;
   }
 }

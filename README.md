@@ -132,7 +132,27 @@ npm install
 3. Create a `.env` file in the app directory (optional, defaults to `/api`):
 ```env
 VITE_API_BASE_URL=http://localhost:5000/api
+VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key-here
 ```
+
+**Note:** The `VITE_GOOGLE_MAPS_API_KEY` is required for address autocomplete functionality. To get a Google Maps API key:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the "Places API" and "Maps JavaScript API"
+4. Create credentials (API Key)
+5. **Configure API key restrictions:**
+   - Go to APIs & Services > Credentials
+   - Click on your API key
+   - Under "Application restrictions", select "HTTP referrers (web sites)"
+   - Add the following referrers:
+     - `http://localhost:3000/*` (for local development)
+     - `http://localhost:*/*` (for any localhost port)
+     - `https://app.grainstoryfarm.ca/*` (for production)
+     - `https://*.grainstoryfarm.ca/*` (for all subdomains)
+   - Under "API restrictions", restrict to:
+     - Maps JavaScript API
+     - Places API
+   - Save the changes
 
 4. Run the development server:
 ```bash

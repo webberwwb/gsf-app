@@ -39,12 +39,17 @@
           <label for="address_line1">详细地址 *</label>
           <input
             id="address_line1"
+            ref="addressInput"
             v-model="formData.address_line1"
             type="text"
             required
-            placeholder="街道地址、门牌号等"
+            placeholder="开始输入地址，选择自动完成建议"
             class="form-input"
+            autocomplete="off"
           />
+          <div v-if="autocompleteError" class="autocomplete-error">
+            {{ autocompleteError }}
+          </div>
         </div>
 
         <div class="form-group">
@@ -131,7 +136,9 @@
 </template>
 
 <script>
+import { watch, nextTick } from 'vue'
 import apiClient from '../api/client'
+import { useAddressAutocomplete } from '../composables/useAddressAutocomplete'
 
 export default {
   name: 'AddressForm',
@@ -149,6 +156,8 @@ export default {
     return {
       submitting: false,
       error: null,
+      autocompleteError: null,
+      autocompleteInstance: null,
       formData: {
         recipient_name: '',
         phone: '',
@@ -166,8 +175,13 @@ export default {
     show(newVal) {
       if (newVal) {
         this.loadAddressData()
+        // Initialize autocomplete when modal opens
+        nextTick(() => {
+          this.initAutocomplete()
+        })
       } else {
         this.resetForm()
+        this.destroyAutocomplete()
       }
     },
     address(newVal) {
@@ -176,7 +190,75 @@ export default {
       }
     }
   },
+  mounted() {
+    // Initialize autocomplete if modal is already open
+    if (this.show) {
+      nextTick(() => {
+        this.initAutocomplete()
+      })
+    }
+  },
+  beforeUnmount() {
+    this.destroyAutocomplete()
+  },
   methods: {
+    async initAutocomplete() {
+      // Wait for DOM to be ready
+      await nextTick()
+      
+      // Access the input element via $refs (Options API way)
+      const inputElement = this.$refs.addressInput
+      if (!inputElement) {
+        console.warn('Address input element not found, retrying...')
+        // Retry after a short delay
+        setTimeout(() => {
+          this.initAutocomplete()
+        }, 100)
+        return
+      }
+
+      // Destroy existing instance if any
+      this.destroyAutocomplete()
+
+      // Create a ref-like object for the composable
+      const inputRef = { value: inputElement }
+
+      const { initAutocomplete, destroy } = useAddressAutocomplete(
+        inputRef,
+        {
+          onPlaceSelected: (parsedAddress) => {
+            // Auto-fill form fields when place is selected
+            this.formData.address_line1 = parsedAddress.address_line1 || this.formData.address_line1
+            this.formData.city = parsedAddress.city || this.formData.city
+            this.formData.postal_code = parsedAddress.postal_code || this.formData.postal_code
+            
+            // If address_line2 is empty and we have subpremise info, use it
+            if (!this.formData.address_line2 && parsedAddress.address_line2) {
+              this.formData.address_line2 = parsedAddress.address_line2
+            }
+          },
+          componentRestrictions: { country: 'ca' }, // Canada only
+          types: ['address']
+        }
+      )
+
+      this.autocompleteInstance = { destroy }
+
+      // Initialize autocomplete
+      const result = await initAutocomplete()
+      if (result && result.error) {
+        this.autocompleteError = result.error
+        console.error('Autocomplete initialization error:', result.error)
+      } else {
+        this.autocompleteError = null
+      }
+    },
+    destroyAutocomplete() {
+      if (this.autocompleteInstance) {
+        this.autocompleteInstance.destroy()
+        this.autocompleteInstance = null
+      }
+    },
     loadAddressData() {
       if (this.address) {
         this.formData = {
@@ -207,6 +289,7 @@ export default {
         is_default: false
       }
       this.error = null
+      this.autocompleteError = null
     },
     close() {
       this.$emit('close')
@@ -216,18 +299,42 @@ export default {
       this.error = null
 
       try {
+        // Prepare data: convert empty strings to null for optional fields
+        const payload = {
+          recipient_name: this.formData.recipient_name,
+          phone: this.formData.phone,
+          address_line1: this.formData.address_line1,
+          address_line2: this.formData.address_line2 || null,
+          city: this.formData.city,
+          postal_code: this.formData.postal_code,
+          delivery_instructions: this.formData.delivery_instructions || null,
+          notification_email: this.formData.notification_email || null,
+          is_default: this.formData.is_default || false
+        }
+
+        // Log the payload for debugging
+        console.log('Submitting address data:', payload)
+
         if (this.address) {
           // Update existing address
-          await apiClient.put(`/addresses/${this.address.id}`, this.formData)
+          await apiClient.put(`/addresses/${this.address.id}`, payload)
         } else {
           // Create new address
-          await apiClient.post('/addresses', this.formData)
+          await apiClient.post('/addresses', payload)
         }
 
         this.$emit('saved')
       } catch (error) {
-        this.error = error.response?.data?.message || error.response?.data?.error || '保存失败'
         console.error('Save address error:', error)
+        console.error('Error response:', error.response)
+        console.error('Error data:', error.response?.data)
+        
+        // Show detailed error message
+        const errorMessage = error.response?.data?.message || 
+                           error.response?.data?.error || 
+                           (error.response?.data?.messages ? error.response.data.messages.join(', ') : null) ||
+                           '保存失败'
+        this.error = errorMessage
       } finally {
         this.submitting = false
       }
@@ -370,27 +477,32 @@ export default {
 }
 
 .checkbox-label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--md-spacing-sm);
   cursor: pointer;
   font-weight: normal;
   padding: var(--md-spacing-sm) 0;
   user-select: none;
+  width: 100%;
 }
 
 .checkbox-label span {
+  display: inline-block;
   line-height: 1.5;
-  padding-top: 1px; /* Fine-tune vertical alignment */
+  vertical-align: middle;
 }
 
 .checkbox-input {
   width: 20px;
   height: 20px;
+  min-width: 20px;
   cursor: pointer;
   flex-shrink: 0;
-  margin: 0;
+  margin: 0 5px 0 0;
+  padding: 0;
   accent-color: var(--md-primary);
+  vertical-align: middle;
+  display: inline-block;
 }
 
 .error-message {
@@ -400,6 +512,14 @@ export default {
   border-radius: var(--md-radius-md);
   font-size: var(--md-label-size);
   margin-bottom: var(--md-spacing-md);
+}
+
+.autocomplete-error {
+  padding: var(--md-spacing-xs);
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-label-size);
+  margin-top: var(--md-spacing-xs);
+  font-style: italic;
 }
 
 .form-actions {

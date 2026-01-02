@@ -40,6 +40,16 @@
                 </svg>
                 <span class="value">{{ order.user?.nickname || order.user?.phone || 'N/A' }}</span>
                 <span v-if="order.user?.wechat" class="wechat-badge">微信: {{ order.user.wechat }}</span>
+                <button 
+                  v-if="order.user && !order.user.is_admin" 
+                  @click.stop="impersonateUser(order.user.id)" 
+                  class="impersonate-btn-small"
+                  title="代登录此用户">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  代登录
+                </button>
               </div>
               <div class="info-item-price">
                 <span class="value price">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
@@ -159,9 +169,13 @@
                     v-for="product in availableProducts" 
                     :key="product.id"
                     @click="addProductToOrder(product)"
-                    class="product-item">
+                    class="product-item"
+                    :class="{ 'out-of-stock': isOutOfStock(product) }">
                     <div class="product-name">{{ product.name }}</div>
-                    <div class="product-price">${{ parseFloat(product.deal_price || product.price || 0).toFixed(2) }}</div>
+                    <div class="product-info">
+                      <div class="product-price">${{ parseFloat(product.deal_price || product.price || 0).toFixed(2) }}</div>
+                      <div v-if="isOutOfStock(product)" class="out-of-stock-badge">缺货</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -198,9 +212,14 @@
 
 <script>
 import apiClient from '../api/client'
+import { useModal } from '../composables/useModal'
 
 export default {
   name: 'OrderDetailModal',
+  setup() {
+    const { confirm, success, error } = useModal()
+    return { confirm, success, error }
+  },
   props: {
     show: {
       type: Boolean,
@@ -449,6 +468,16 @@ export default {
       
       this.$emit('status-change', this.order.id, this.localOrderStatus)
     },
+    isOutOfStock(product) {
+      // Check deal_stock_limit (deal-specific inventory) first, then stock_limit (product-level inventory)
+      // null or undefined means unlimited stock, only 0 means out of stock
+      // Admin can still add out-of-stock products, this is just for visual indication
+      const inventory = (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null)
+        ? product.deal_stock_limit
+        : (product.stock_limit !== undefined && product.stock_limit !== null ? product.stock_limit : null)
+      
+      return inventory === 0
+    },
     handlePaymentMethodChange() {
       if (this.localPaymentMethod === 'cash' && this.order && this.order.payment_status === 'unpaid') {
         this.$emit('payment-method-change', 'cash')
@@ -460,6 +489,26 @@ export default {
         'paid': '已付款'
       }
       return paymentMap[paymentStatus] || paymentStatus
+    },
+    async impersonateUser(userId) {
+      const confirmed = await this.confirm('确定要以该用户身份登录吗？您将被重定向到用户端应用，可以直接修改订单。', {
+        type: 'warning',
+        title: '代登录确认'
+      })
+      if (!confirmed) {
+        return
+      }
+
+      try {
+        const response = await apiClient.post(`/admin/users/${userId}/impersonate`)
+        const { redirect_url } = response.data
+        
+        // Redirect to app frontend with token
+        window.location.href = redirect_url
+      } catch (error) {
+        await this.error(error.response?.data?.message || error.response?.data?.error || '代登录失败')
+        console.error('Impersonate user error:', error)
+      }
     }
   }
 }
@@ -767,14 +816,34 @@ export default {
   transform: translateX(4px);
 }
 
+.product-item.out-of-stock {
+  border-left: 3px solid #FF9800;
+}
+
 .product-name {
   font-weight: 500;
   color: rgba(0, 0, 0, 0.87);
 }
 
+.product-info {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+}
+
 .product-price {
   font-weight: 600;
   color: #E65100;
+}
+
+.out-of-stock-badge {
+  padding: 2px 8px;
+  background: #FF9800;
+  color: white;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .empty-products {
@@ -873,6 +942,34 @@ export default {
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
+}
+
+.impersonate-btn-small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 4px 10px;
+  background: rgba(33, 150, 243, 0.1);
+  color: #2196F3;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.impersonate-btn-small:hover {
+  background: rgba(33, 150, 243, 0.2);
+  border-color: rgba(33, 150, 243, 0.5);
+  transform: translateY(-1px);
+}
+
+.impersonate-btn-small svg {
+  width: 14px;
+  height: 14px;
 }
 
 .info-item-price {

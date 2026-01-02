@@ -50,6 +50,39 @@
       <!-- Products Section -->
       <div class="products-section">
         <h3 class="section-title">可选商品</h3>
+        
+        <!-- Existing Order Items Not in Current Products (Read-only) -->
+        <div v-if="existingOrderItemsNotInProducts.length > 0" class="existing-order-items-section">
+          <h4 class="subsection-title">已订购商品（不可修改）</h4>
+          <div class="products-list">
+            <div
+              v-for="item in existingOrderItemsNotInProducts"
+              :key="`existing-${item.product_id}`"
+              class="product-item read-only-item"
+            >
+              <div class="product-image">
+                <img v-if="item.product?.image || (item.product?.images && item.product.images[0])" :src="item.product?.image || item.product?.images[0]" :alt="item.product?.name || '商品'" />
+                <div v-else class="image-placeholder">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                </div>
+                <div class="sold-out-badge">已售罄</div>
+              </div>
+              <div class="product-details">
+                <div class="product-name-row">
+                  <h4 class="product-name">{{ item.product?.name || '商品' }}</h4>
+                </div>
+                <div class="product-price">
+                  <span class="price-label">数量:</span>
+                  <span class="price-value">{{ item.quantity }} {{ item.product?.pricing_type === 'bundled_weight' ? '份' : '件' }}</span>
+                </div>
+                <div class="read-only-note">此商品已包含在您的订单中，无法修改</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <div v-if="deal.products && deal.products.length === 0" class="empty-products">
           <p>暂无商品</p>
         </div>
@@ -66,6 +99,10 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                 </svg>
               </div>
+              <!-- Sold Out Badge -->
+              <div v-if="isOutOfStock(product)" class="sold-out-badge">
+                已售罄
+              </div>
             </div>
             <div class="product-details">
               <div class="product-name-row">
@@ -81,7 +118,10 @@
               <!-- Price Display -->
               <div class="product-price">
                 <span class="price-label">团购价:</span>
-                <span v-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
+                <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
+                  ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}
+                </span>
+                <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
                   {{ formatPriceRange(product) }}
                 </span>
                 <span v-else class="price-value">${{ formatPrice(product) }}</span>
@@ -97,26 +137,30 @@
               </div> -->
 
               <!-- Stock Info -->
-              <div v-if="product.deal_stock_limit" class="stock-info">
-                库存: {{ product.deal_stock_limit }} 件
+              <div v-if="product.deal_stock_limit !== undefined && product.deal_stock_limit !== null" class="stock-info" :class="{ 'out-of-stock': isOutOfStock(product) }">
+                <span v-if="isOutOfStock(product)">缺货</span>
+                <span v-else>库存: {{ product.deal_stock_limit }} 件</span>
+              </div>
+              <div v-else-if="product.stock_limit !== undefined && product.stock_limit !== null && product.stock_limit === 0" class="stock-info out-of-stock">
+                <span>缺货</span>
               </div>
 
               <!-- Product Selection Controls -->
-              <div class="product-selection">
+              <div class="product-selection" :class="{ 'disabled': isOutOfStock(product) && !isExistingOrderItemOutOfStock(product), 'read-only': isExistingOrderItemOutOfStock(product) }">
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
                   <div class="quantity-control">
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
                       :max="product.deal_stock_limit || 999"
-                      :disabled="!isOrderEditable"
+                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="(product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit) || !isOrderEditable" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="(product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit) || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="item-total">
                     小计: ${{ calculateItemTotal(product) }}
@@ -127,26 +171,23 @@
                 <div v-else-if="product.pricing_type === 'weight_range'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
-                      :disabled="!isOrderEditable"
+                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container">
+                    <div class="tooltip-container" @click.stop="showPriceInfo('价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <div class="tooltip">
-                        价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -155,26 +196,52 @@
                 <div v-else-if="product.pricing_type === 'unit_weight'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
-                      :disabled="!isOrderEditable"
+                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container">
+                    <div class="tooltip-container" @click="showPriceInfo('价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <div class="tooltip">
-                        价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格
-                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Bundled Weight Pricing -->
+                <div v-else-if="product.pricing_type === 'bundled_weight'" class="selection-controls">
+                  <div class="quantity-control">
+                    <label>份数:</label>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
+                    <input
+                      type="number"
+                      :value="getQuantity(product)"
+                      @input="setQuantity(product, $event.target.value)"
+                      min="0"
+                      step="1"
+                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
+                      class="qty-input"
+                    />
+                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
+                  </div>
+                  <div class="package-info-wrapper">
+                    <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }})</span>
+                  </div>
+                  <div class="item-total estimated">
+                    <span>预估小计: {{ calculateBundledItemTotal(product) }}</span>
+                    <div class="tooltip-container" @click="showPriceInfo('价格基于每份重量范围估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
                     </div>
                   </div>
                 </div>
@@ -203,6 +270,19 @@
       :product="selectedProduct"
       @close="closeProductModal"
     />
+
+    <!-- Price Info Modal -->
+    <Modal
+      :show="showPriceInfoModal"
+      type="info"
+      title="价格说明"
+      :message="priceInfoMessage"
+      :showCancel="false"
+      :icon="true"
+      confirmText="知道了"
+      @confirm="closePriceInfoModal"
+      @close="closePriceInfoModal"
+    />
   </div>
 </template>
 
@@ -212,11 +292,13 @@ import { useCheckoutStore } from '../stores/checkout'
 import { formatDateEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
+import Modal from '../components/Modal.vue'
 
 export default {
   name: 'GroupDealDetail',
   components: {
-    ProductDetailModal
+    ProductDetailModal,
+    Modal
   },
   data() {
     return {
@@ -226,8 +308,11 @@ export default {
       selectedItems: {}, // { productId: { quantity } }
       existingOrder: null, // Store existing order if found
       existingOrderData: null, // Store order metadata (payment method, delivery method, etc.)
+      existingOrderItems: [], // Store all order items from existing order (including out-of-stock items)
       showProductModal: false,
-      selectedProduct: null
+      selectedProduct: null,
+      showPriceInfoModal: false,
+      priceInfoMessage: ''
     }
   },
   setup() {
@@ -266,6 +351,15 @@ export default {
       return this.existingOrder && 
              this.existingOrder.status !== 'completed' && 
              this.existingOrder.status !== 'cancelled'
+    },
+    existingOrderItemsNotInProducts() {
+      // Get order items that are not in the current deal.products list
+      if (!this.existingOrderItems || !this.deal?.products) {
+        return []
+      }
+      
+      const productIds = new Set(this.deal.products.map(p => p.id))
+      return this.existingOrderItems.filter(item => !productIds.has(item.product_id))
     }
   },
   methods: {
@@ -302,7 +396,10 @@ export default {
             notes: this.existingOrder.notes || null
           }
           
-          // Load order items into selectedItems
+          // Store all order items (including out-of-stock items)
+          this.existingOrderItems = this.existingOrder.items || []
+          
+          // Load order items into selectedItems (only for products currently in deal)
           if (this.existingOrder.items && this.existingOrder.items.length > 0) {
             this.existingOrder.items.forEach(item => {
               if (this.selectedItems[item.product_id] !== undefined) {
@@ -343,7 +440,10 @@ export default {
             notes: this.existingOrder.notes || null
           }
           
-          // Load order items into selectedItems
+          // Store all order items (including out-of-stock items)
+          this.existingOrderItems = this.existingOrder.items || []
+          
+          // Load order items into selectedItems (only for products currently in deal)
           if (this.existingOrder.items && this.existingOrder.items.length > 0) {
             this.existingOrder.items.forEach(item => {
               if (this.selectedItems[item.product_id] !== undefined) {
@@ -420,6 +520,27 @@ export default {
         
         // Show price per unit
         return `$${parseFloat(pricePerUnit).toFixed(2)}/${unit}`
+      } else if (product.pricing_type === 'bundled_weight') {
+        const pricePerUnit = product.pricing_data?.price_per_unit || 0
+        const minWeight = product.pricing_data?.min_weight || 7
+        const maxWeight = product.pricing_data?.max_weight || 15
+        const unit = product.pricing_data?.unit || 'lb'
+        
+        if (pricePerUnit === 0) {
+          if (product.deal_price) {
+            return `$${parseFloat(product.deal_price).toFixed(2)}/份`
+          }
+          return '价格待定'
+        }
+        
+        const minPrice = pricePerUnit * minWeight
+        const maxPrice = pricePerUnit * maxWeight
+        const unitPriceDisplay = `$${pricePerUnit.toFixed(2)}/${unit}`
+        
+        if (minPrice === maxPrice) {
+          return `$${minPrice.toFixed(2)}/份 (${minWeight}-${maxWeight}${unit}/份) · ${unitPriceDisplay}`
+        }
+        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}/份 (${minWeight}-${maxWeight}${unit}/份) · ${unitPriceDisplay}`
       }
       return '价格待定'
     },
@@ -435,7 +556,29 @@ export default {
     getQuantity(product) {
       return this.selectedItems[product.id]?.quantity || 0
     },
+    isExistingOrderItemOutOfStock(product) {
+      // Check if this product is in existing order and is now out of stock
+      if (!this.existingOrderItems || this.existingOrderItems.length === 0) {
+        return false
+      }
+      const existingItem = this.existingOrderItems.find(item => item.product_id === product.id)
+      if (!existingItem) {
+        return false
+      }
+      // If it exists in order and is now out of stock, it should be read-only
+      return this.isOutOfStock(product)
+    },
     setQuantity(product, value) {
+      // Don't allow changes if product is in existing order and is now out of stock
+      if (this.isExistingOrderItemOutOfStock(product)) {
+        return
+      }
+      
+      // Check if product is out of stock (for new selections)
+      if (this.isOutOfStock(product)) {
+        return
+      }
+      
       const qty = parseInt(value) || 0
       const maxQty = product.deal_stock_limit || 999
       const finalQty = Math.max(0, Math.min(qty, maxQty))
@@ -447,9 +590,35 @@ export default {
       this.selectedItems[product.id].quantity = finalQty
     },
     increaseQuantity(product) {
+      // Don't allow changes if product is in existing order and is now out of stock
+      if (this.isExistingOrderItemOutOfStock(product)) {
+        return
+      }
+      
+      // Check if product is out of stock (for new selections)
+      if (this.isOutOfStock(product)) {
+        return
+      }
+      
       const current = this.getQuantity(product)
       const maxQty = product.deal_stock_limit || 999
       this.setQuantity(product, Math.min(current + 1, maxQty))
+    },
+    isOutOfStock(product) {
+      if (!product) return false
+      
+      // Check deal_stock_limit (deal-specific inventory) first, then stock_limit (product-level inventory)
+      // null or undefined means unlimited stock, only 0 means out of stock
+      // Explicitly check for 0 to handle both deal_stock_limit = 0 and stock_limit = 0
+      if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
+        return product.deal_stock_limit === 0
+      }
+      
+      if (product.stock_limit !== undefined && product.stock_limit !== null) {
+        return product.stock_limit === 0
+      }
+      
+      return false // No stock limit means unlimited stock
     },
     decreaseQuantity(product) {
       const current = this.getQuantity(product)
@@ -476,8 +645,39 @@ export default {
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
         const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
         return (parseFloat(pricePerUnit) * estimatedWeight * quantity).toFixed(2)
+      } else if (product.pricing_type === 'bundled_weight') {
+        // quantity = number of packages
+        // Use mid-weight (average) for estimation
+        const pricePerUnit = product.pricing_data?.price_per_unit || 0
+        const minWeight = product.pricing_data?.min_weight || 7
+        const maxWeight = product.pricing_data?.max_weight || 15
+        const midWeight = (minWeight + maxWeight) / 2
+        
+        if (pricePerUnit === 0) return '0.00'
+        
+        // Return single estimated price using mid-weight
+        return (pricePerUnit * midWeight * quantity).toFixed(2)
       }
       return '0.00'
+    },
+    calculateBundledItemTotal(product) {
+      const quantity = this.getQuantity(product)
+      if (quantity === 0) return '$0.00'
+      
+      // quantity = number of packages
+      const pricePerUnit = product.pricing_data?.price_per_unit || 0
+      const minWeight = product.pricing_data?.min_weight || 7
+      const maxWeight = product.pricing_data?.max_weight || 15
+      
+      if (pricePerUnit === 0) return '$0.00'
+      
+      const minPrice = pricePerUnit * minWeight * quantity
+      const maxPrice = pricePerUnit * maxWeight * quantity
+      
+      if (minPrice === maxPrice) {
+        return `$${minPrice.toFixed(2)}`
+      }
+      return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
     },
     calculateTotal() {
       if (!this.deal || !this.deal.products) return '0.00'
@@ -487,7 +687,7 @@ export default {
       this.deal.products.forEach(product => {
         const itemTotal = parseFloat(this.calculateItemTotal(product))
         total += itemTotal
-        if (itemTotal > 0 && (product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight')) {
+        if (itemTotal > 0 && (product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight')) {
           hasEstimatedItems = true
         }
       })
@@ -522,7 +722,44 @@ export default {
             : true
         }))
       } else {
-        // Build order items from selected products (for new orders or editable orders)
+        // Build order items: include existing order items (including out-of-stock) + current selections
+        const orderItemsMap = new Map()
+        
+        // First, add all existing order items (including out-of-stock items)
+        if (this.existingOrderItems && this.existingOrderItems.length > 0) {
+          this.existingOrderItems.forEach(item => {
+            // Get product info from deal products or from item.product
+            const product = this.deal.products?.find(p => p.id === item.product_id) || item.product
+            if (product) {
+              orderItemsMap.set(item.product_id, {
+                product_id: item.product_id,
+                quantity: item.quantity,
+                pricing_type: product.pricing_type || item.product?.pricing_type || 'per_item',
+                estimated_price: parseFloat(item.total_price || 0).toFixed(2),
+                is_estimated: false,
+                counts_toward_free_shipping: product.counts_toward_free_shipping !== undefined 
+                  ? product.counts_toward_free_shipping 
+                  : (item.product?.counts_toward_free_shipping !== undefined 
+                    ? item.product.counts_toward_free_shipping 
+                    : true)
+              })
+            } else {
+              // Product not found in current deal, but keep it from existing order
+              orderItemsMap.set(item.product_id, {
+                product_id: item.product_id,
+                quantity: item.quantity,
+                pricing_type: item.product?.pricing_type || 'per_item',
+                estimated_price: parseFloat(item.total_price || 0).toFixed(2),
+                is_estimated: false,
+                counts_toward_free_shipping: item.product?.counts_toward_free_shipping !== undefined 
+                  ? item.product.counts_toward_free_shipping 
+                  : true
+              })
+            }
+          })
+        }
+        
+        // Then, update/add with current selections from deal products
         this.deal.products.forEach(product => {
           const selection = this.selectedItems[product.id]
           if (selection && selection.quantity > 0) {
@@ -548,9 +785,19 @@ export default {
               const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
               estimatedPrice = parseFloat(pricePerUnit) * estimatedWeight * quantity
               isEstimated = true
+            } else if (product.pricing_type === 'bundled_weight') {
+              // quantity = number of packages
+              // Use mid-weight (average) for estimation
+              const pricePerUnit = product.pricing_data?.price_per_unit || 0
+              const minWeight = product.pricing_data?.min_weight || 7
+              const maxWeight = product.pricing_data?.max_weight || 15
+              const midWeight = (minWeight + maxWeight) / 2
+              estimatedPrice = parseFloat(pricePerUnit) * midWeight * quantity
+              isEstimated = true
             }
             
-            orderItems.push({
+            // Update or add to map (current selections override existing order items)
+            orderItemsMap.set(product.id, {
               product_id: product.id,
               quantity: selection.quantity,
               pricing_type: product.pricing_type,
@@ -562,6 +809,9 @@ export default {
             })
           }
         })
+        
+        // Convert map to array (includes existing order items + current selections)
+        orderItems = Array.from(orderItemsMap.values())
         
         if (orderItems.length === 0) {
           await this.warning('请至少选择一个商品')
@@ -601,6 +851,14 @@ export default {
     closeProductModal() {
       this.showProductModal = false
       this.selectedProduct = null
+    },
+    showPriceInfo(message) {
+      this.priceInfoMessage = message
+      this.showPriceInfoModal = true
+    },
+    closePriceInfoModal() {
+      this.showPriceInfoModal = false
+      this.priceInfoMessage = ''
     },
     getProductImage(product) {
       // Support both old single image format and new multiple images format
@@ -777,6 +1035,7 @@ export default {
   font-size: var(--md-body-size);
   margin-bottom: var(--md-spacing-lg);
   line-height: 1.5;
+  white-space: pre-line;
 }
 
 .deal-dates {
@@ -872,6 +1131,7 @@ export default {
 }
 
 .product-image {
+  position: relative;
   width: 100px;
   height: 100px;
   flex-shrink: 0;
@@ -959,10 +1219,22 @@ export default {
   line-height: 1.4;
   cursor: pointer;
   transition: color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: pre-line;
 }
 
 .product-description-preview:hover {
   color: var(--md-on-surface);
+}
+
+.package-info-wrapper {
+  width: 100%;
+  margin-top: var(--md-spacing-xs);
+}
+
+.package-info {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  white-space: normal;
 }
 
 .product-price {
@@ -995,6 +1267,92 @@ export default {
 .stock-info {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-xs);
+}
+
+.stock-info.out-of-stock {
+  color: #D32F2F;
+  font-weight: 600;
+}
+
+.sold-out-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: linear-gradient(135deg, #D32F2F 0%, #B71C1C 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.4);
+  z-index: 10;
+  text-transform: uppercase;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+}
+
+
+.product-selection.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.product-selection.disabled .quantity-control {
+  opacity: 0.5;
+}
+
+.product-selection.read-only {
+  opacity: 0.85;
+  position: relative;
+}
+
+.product-selection.read-only .quantity-control {
+  opacity: 0.7;
+}
+
+.product-selection.read-only::after {
+  content: '（已订购，不可修改）';
+  display: block;
+  font-size: 11px;
+  color: #757575;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.existing-order-items-section {
+  margin-bottom: var(--md-spacing-lg);
+  padding-bottom: var(--md-spacing-lg);
+  border-bottom: 2px solid var(--md-surface-variant);
+}
+
+.subsection-title {
+  font-size: var(--md-body-size);
+  font-weight: 600;
+  color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-md);
+}
+
+.read-only-item {
+  opacity: 0.85;
+}
+
+.read-only-note {
+  font-size: 11px;
+  color: #757575;
+  margin-top: 4px;
+  font-style: italic;
 }
 
 .product-selection {
@@ -1011,6 +1369,71 @@ export default {
 @media (max-width: 480px) {
   .selection-controls {
     gap: var(--md-spacing-xs);
+    flex-direction: column;
+  }
+  
+  .quantity-control {
+    flex-wrap: wrap;
+    gap: var(--md-spacing-xs);
+  }
+  
+  .quantity-control label {
+    min-width: auto;
+    width: 100%;
+  }
+  
+  .package-info-wrapper {
+    margin-top: 2px;
+  }
+  
+  .package-info {
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+  
+  .item-total {
+    width: 100%;
+    text-align: left;
+    flex-wrap: wrap;
+  }
+  
+  .item-total.estimated {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--md-spacing-xs);
+  }
+  
+  .price-value.price-range {
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+  
+  .product-item {
+    padding: var(--md-spacing-md);
+  }
+  
+  .product-details {
+    gap: var(--md-spacing-sm);
+  }
+  
+  .product-price {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .price-value {
+    font-size: 1rem;
+  }
+  
+  .tooltip-container {
+    padding: 8px;
+    margin-left: 6px;
+  }
+  
+  .info-icon {
+    width: 18px;
+    height: 18px;
   }
 }
 
@@ -1123,51 +1546,36 @@ export default {
   position: relative;
   display: inline-flex;
   align-items: center;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 4px;
+  border-radius: 50%;
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tooltip-container:hover {
+  background-color: var(--md-surface-variant);
+}
+
+.tooltip-container:active {
+  background-color: var(--md-outline-variant);
 }
 
 .info-icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   color: var(--md-on-surface-variant);
-  cursor: help;
   flex-shrink: 0;
   opacity: 0.7;
-}
-
-.tooltip {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: var(--md-spacing-xs);
-  padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  border-radius: var(--md-radius-md);
-  font-size: var(--md-label-size);
-  opacity: 0;
-  pointer-events: none;
   transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1000;
-  max-width: 250px;
-  white-space: normal;
-  text-align: left;
-  line-height: 1.4;
 }
 
-.tooltip-container:hover .tooltip {
+.tooltip-container:hover .info-icon,
+.tooltip-container:active .info-icon {
   opacity: 1;
 }
 
-.tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: rgba(0, 0, 0, 0.9);
-}
 
 .bottom-bar {
   position: fixed;

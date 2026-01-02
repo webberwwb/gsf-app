@@ -30,6 +30,16 @@
         </svg>
         <span class="value">{{ order.user?.nickname || order.user?.phone || 'N/A' }}</span>
         <span v-if="order.user?.wechat" class="wechat-badge">微信: {{ order.user.wechat }}</span>
+        <button 
+          v-if="order.user && !order.user.is_admin" 
+          @click.stop="impersonateUser(order.user.id)" 
+          class="impersonate-btn-small"
+          title="代登录此用户">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          代登录
+        </button>
       </div>
       <div class="order-info-price">
         <span class="value price">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
@@ -75,7 +85,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-        <span class="value">自取点: Markham / North York</span>
+        <span class="value">自取点: {{ order.pickup_location || 'N/A' }}</span>
       </div>
     </div>
     
@@ -138,8 +148,15 @@
 </template>
 
 <script>
+import apiClient from '../api/client'
+import { useModal } from '../composables/useModal'
+
 export default {
   name: 'OrderCard',
+  setup() {
+    const { confirm, success, error } = useModal()
+    return { confirm, success, error }
+  },
   props: {
     order: {
       type: Object,
@@ -184,6 +201,26 @@ export default {
       if (address.city) parts.push(address.city)
       if (address.postal_code) parts.push(address.postal_code)
       return parts.join(', ') || 'N/A'
+    },
+    async impersonateUser(userId) {
+      const confirmed = await this.confirm('确定要以该用户身份登录吗？您将被重定向到用户端应用，可以直接修改订单。', {
+        type: 'warning',
+        title: '代登录确认'
+      })
+      if (!confirmed) {
+        return
+      }
+
+      try {
+        const response = await apiClient.post(`/admin/users/${userId}/impersonate`)
+        const { redirect_url } = response.data
+        
+        // Redirect to app frontend with token
+        window.location.href = redirect_url
+      } catch (error) {
+        await this.error(error.response?.data?.message || error.response?.data?.error || '代登录失败')
+        console.error('Impersonate user error:', error)
+      }
     }
   }
 }
@@ -371,6 +408,34 @@ export default {
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
+}
+
+.impersonate-btn-small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 4px 10px;
+  background: rgba(33, 150, 243, 0.1);
+  color: #2196F3;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.impersonate-btn-small:hover {
+  background: rgba(33, 150, 243, 0.2);
+  border-color: rgba(33, 150, 243, 0.5);
+  transform: translateY(-1px);
+}
+
+.impersonate-btn-small svg {
+  width: 14px;
+  height: 14px;
 }
 
 .order-actions {

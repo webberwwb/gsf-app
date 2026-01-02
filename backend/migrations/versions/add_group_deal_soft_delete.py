@@ -28,3 +28,4 @@ def downgrade():
         batch_op.drop_index('ix_group_deals_deleted_at')
         batch_op.drop_column('deleted_at')
 
+

@@ -393,9 +393,9 @@ def phone_verify():
             current_app.logger.error(f'Failed to track successful verification: {track_error}')
             db.session.rollback()
     
-    # Generate new auth token (30 days expiration - 1 month)
+    # Generate new auth token (100 years expiration - effectively never expires)
     # Store as naive datetime (MySQL doesn't support timezone-aware)
-    expires_at = utc_now() + timedelta(days=30)
+    expires_at = utc_now() + timedelta(days=36500)  # 100 years
     auth_token = AuthToken(
         user_id=user.id,
         token=secrets.token_urlsafe(32),
@@ -436,10 +436,10 @@ def get_current_user():
         if not auth_token.is_valid():
             return jsonify({'error': 'Token expired'}), 401
         
-        # Refresh token expiration on each use (extend to 30 days from now)
-        # This ensures if user uses app at least once a month, they never need to OTP again
+        # Refresh token expiration on each use (extend to 100 years from now)
+        # Token effectively never expires
         # Make sure expires_at is stored as naive datetime (MySQL doesn't support timezone-aware)
-        new_expires_at = utc_now() + timedelta(days=30)
+        new_expires_at = utc_now() + timedelta(days=36500)  # 100 years
         # Already naive UTC datetime for database storage
         auth_token.expires_at = new_expires_at
         db.session.commit()
@@ -693,9 +693,9 @@ def google_callback():
 
         db.session.commit()
         
-        # Generate auth token (30 days expiration - 1 month)
+        # Generate auth token (100 years expiration - effectively never expires)
         # Store as naive datetime (MySQL doesn't support timezone-aware)
-        expires_at = utc_now() + timedelta(days=30)
+        expires_at = utc_now() + timedelta(days=36500)  # 100 years
         auth_token = AuthToken(
             user_id=user.id,
             token=secrets.token_urlsafe(32),

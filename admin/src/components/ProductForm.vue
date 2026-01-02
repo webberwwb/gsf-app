@@ -82,6 +82,7 @@
             <option value="per_item">按件计价</option>
             <option value="weight_range">按重量区间计价</option>
             <option value="unit_weight">按单位重量计价</option>
+            <option value="bundled_weight">按份计价（可变重量）</option>
           </select>
         </div>
 
@@ -181,6 +182,71 @@
               <option value="kg">千克 (kg)</option>
               <option value="lb">磅 (lb)</option>
             </select>
+          </div>
+        </div>
+
+        <!-- Bundled Weight Pricing -->
+        <div v-if="formData.pricing_type === 'bundled_weight'" class="form-group">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="bundled_price_per_unit">单价 ($) *</label>
+              <input
+                id="bundled_price_per_unit"
+                v-model.number="formData.pricing_data.price_per_unit"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                placeholder="0.00"
+                class="form-input"
+              />
+              <small class="form-hint">每磅价格</small>
+            </div>
+            <div class="form-group">
+              <label for="bundled_unit">单位 *</label>
+              <select
+                id="bundled_unit"
+                v-model="formData.pricing_data.unit"
+                class="form-input"
+                required
+              >
+                <option value="lb">磅 (lb)</option>
+                <option value="kg">千克 (kg)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="min_weight">最小重量 *</label>
+              <input
+                id="min_weight"
+                v-model.number="formData.pricing_data.min_weight"
+                type="number"
+                step="0.1"
+                min="0"
+                required
+                placeholder="7"
+                class="form-input"
+              />
+              <small class="form-hint">每份最小重量</small>
+            </div>
+            <div class="form-group">
+              <label for="max_weight">最大重量 *</label>
+              <input
+                id="max_weight"
+                v-model.number="formData.pricing_data.max_weight"
+                type="number"
+                step="0.1"
+                min="0"
+                required
+                placeholder="15"
+                class="form-input"
+              />
+              <small class="form-hint">每份最大重量</small>
+            </div>
+          </div>
+          <div class="form-hint" style="margin-top: 8px;">
+            用户只能按份购买，每份重量在最小和最大重量之间。结算时显示预估价格范围。
           </div>
         </div>
 
@@ -288,7 +354,9 @@ export default {
           price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
-          unit: 'kg'
+          unit: 'kg',
+          min_weight: null,
+          max_weight: null
         },
         supplier_id: null,
         stock_limit: null,
@@ -333,7 +401,9 @@ export default {
           price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
-          unit: 'kg'
+          unit: 'kg',
+          min_weight: null,
+          max_weight: null
         },
         supplier_id: null,
         stock_limit: null,
@@ -378,10 +448,17 @@ export default {
             price: pricingData.price || null,
             ranges: pricingData.ranges || [{ min: 0, max: null, price: null }],
             price_per_unit: pricingData.price_per_unit || null,
-            unit: pricingData.unit || 'kg'
+            unit: pricingData.unit || 'kg',
+            min_weight: pricingData.min_weight || null,
+            max_weight: pricingData.max_weight || null
           },
           supplier_id: this.product.supplier_id || null,
-          stock_limit: this.product.stock_limit || null,
+          // Handle stock_limit: explicitly preserve 0 value (0 means out of stock, null means unlimited)
+          stock_limit: this.product.stock_limit === 0 || this.product.stock_limit === '0'
+            ? 0
+            : (this.product.stock_limit !== undefined && this.product.stock_limit !== null && this.product.stock_limit !== '')
+              ? (typeof this.product.stock_limit === 'number' ? this.product.stock_limit : parseInt(this.product.stock_limit))
+              : null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true,
           counts_toward_free_shipping: this.product.counts_toward_free_shipping !== undefined ? this.product.counts_toward_free_shipping : true
         }
@@ -402,6 +479,13 @@ export default {
         this.formData.pricing_data = {
           price_per_unit: null,
           unit: 'kg'
+        }
+      } else if (this.formData.pricing_type === 'bundled_weight') {
+        this.formData.pricing_data = {
+          price_per_unit: null,
+          unit: 'lb',
+          min_weight: null,
+          max_weight: null
         }
       }
     },
@@ -518,6 +602,11 @@ export default {
         } else if (this.formData.pricing_type === 'unit_weight') {
           data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit)
           data.pricing_data.unit = this.formData.pricing_data.unit
+        } else if (this.formData.pricing_type === 'bundled_weight') {
+          data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit)
+          data.pricing_data.unit = this.formData.pricing_data.unit
+          data.pricing_data.min_weight = parseFloat(this.formData.pricing_data.min_weight)
+          data.pricing_data.max_weight = parseFloat(this.formData.pricing_data.max_weight)
         }
 
         if (this.formData.images && this.formData.images.length > 0) {
@@ -526,8 +615,15 @@ export default {
         if (this.formData.description) {
           data.description = this.formData.description
         }
-        if (this.formData.stock_limit !== null && this.formData.stock_limit !== '') {
+        // Handle stock_limit: null/undefined/'' means unlimited, 0 means out of stock, any other number is valid
+        // Check for 0 first (since 0 is falsy, we need to check explicitly)
+        if (this.formData.stock_limit === 0 || this.formData.stock_limit === '0') {
+          data.stock_limit = 0
+        } else if (this.formData.stock_limit !== null && this.formData.stock_limit !== '' && this.formData.stock_limit !== undefined) {
           data.stock_limit = parseInt(this.formData.stock_limit)
+        } else {
+          // null, undefined, or empty string means unlimited stock
+          data.stock_limit = null
         }
         if (this.formData.supplier_id !== null && this.formData.supplier_id !== '') {
           data.supplier_id = parseInt(this.formData.supplier_id)

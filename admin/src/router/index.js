@@ -55,6 +55,9 @@ const router = createRouter({
   ]
 })
 
+// Track if we've validated auth on app startup
+let authValidatedOnStartup = false
+
 // Navigation guard to check authentication
 router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('admin_auth_token')
@@ -65,51 +68,51 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // If token exists, try to validate it
+  // If token exists, check if we need to validate it
   if (token) {
-    try {
-      const response = await apiClient.get('/auth/me')
-      // Token is valid, store user info
-      if (response.data.user) {
-        localStorage.setItem('admin_user', JSON.stringify(response.data.user))
-      }
-
-      // If on login page with valid token, redirect to dashboard
-      if (to.path === '/login') {
-        next('/')
-        return
-      }
-
-      // Token is valid, allow navigation
-      next()
-      return
-    } catch (error) {
-      // Only clear token and redirect if it's a 401 (unauthorized)
-      if (error.response && error.response.status === 401) {
-        // Token invalid, clear it
-        localStorage.removeItem('admin_auth_token')
-        localStorage.removeItem('admin_user')
-        localStorage.removeItem('admin_auth_token_expires_at')
-
-        // Redirect to login if route requires auth
-        if (to.meta.requiresAuth) {
-          next('/login')
-          return
+    // Only validate token on app startup (first navigation)
+    // This prevents constant API calls on every navigation
+    if (!authValidatedOnStartup) {
+      authValidatedOnStartup = true
+      
+      // Validate token - but don't block navigation on network errors
+      try {
+        const response = await apiClient.get('/auth/me')
+        // Token is valid, store user info
+        if (response.data.user) {
+          localStorage.setItem('admin_user', JSON.stringify(response.data.user))
         }
-      } else {
-        // Network error or other issue - token might still be valid
-        console.warn('Token validation failed (non-401 error), allowing access with cached token:', error.message)
-
-        // If on login page with token (even if can't validate), redirect to dashboard
-        if (to.path === '/login') {
-          next('/')
-          return
+      } catch (error) {
+        // Only clear token on 401 - network errors shouldn't log users out
+        if (error.response && error.response.status === 401) {
+          localStorage.removeItem('admin_auth_token')
+          localStorage.removeItem('admin_user')
+          localStorage.removeItem('admin_auth_token_expires_at')
+          
+          // If we're on a protected route, redirect to login
+          if (to.meta.requiresAuth) {
+            next('/login')
+            return
+          }
+        } else {
+          // For other errors, keep the token and allow navigation
+          console.warn('Token validation failed (non-401 error), keeping cached token:', error.message)
         }
       }
     }
+    
+    // If on login page with token, redirect to dashboard
+    if (to.path === '/login') {
+      next('/')
+      return
+    }
+    
+    // Token exists, allow navigation
+    next()
+    return
   }
 
-  // No token or validation passed, continue navigation
+  // No token, continue navigation (will be handled by requiresAuth check above)
   next()
 })
 

@@ -29,6 +29,10 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>
           </div>
+          <!-- Sold Out Badge -->
+          <div v-if="isOutOfStock(product)" class="sold-out-badge">
+            已售罄
+          </div>
           <div class="image-mask"></div>
           <div v-if="product.description" class="image-description-overlay">
             {{ truncateDescription(product.description) }}
@@ -56,6 +60,10 @@
             <template v-else-if="product.pricing_type === 'unit_weight'">
               <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price || '0.00' }}</span>
               <span class="price-type-badge">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+            </template>
+            <template v-else-if="product.pricing_type === 'bundled_weight'">
+              <span class="sale-price">{{ formatBundledPrice(product) }}</span>
+              <span class="price-type-badge">/ 份</span>
             </template>
             <template v-else>
               <span class="sale-price">${{ product.price || product.pricing_data?.price || '0.00' }}</span>
@@ -175,10 +183,36 @@ export default {
       }
       return `$${product.price || product.pricing_data?.price || '0.00'}`
     },
+    formatBundledPrice(product) {
+      if (product.pricing_type === 'bundled_weight') {
+        const pricePerUnit = product.pricing_data?.price_per_unit || 0
+        const minWeight = product.pricing_data?.min_weight || 7
+        const maxWeight = product.pricing_data?.max_weight || 15
+        
+        if (pricePerUnit === 0) {
+          return product.price || '0.00'
+        }
+        
+        const minPrice = pricePerUnit * minWeight
+        const maxPrice = pricePerUnit * maxWeight
+        
+        if (minPrice === maxPrice) {
+          return `$${minPrice.toFixed(2)}`
+        }
+        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
+      }
+      return product.price || '0.00'
+    },
     truncateDescription(description) {
       if (!description) return ''
       if (description.length <= 30) return description
       return description.substring(0, 30) + '...'
+    },
+    isOutOfStock(product) {
+      // Check stock_limit (product-level inventory)
+      // null or undefined means unlimited stock, only 0 means out of stock
+      const inventory = product.stock_limit !== undefined && product.stock_limit !== null ? product.stock_limit : null
+      return inventory === 0
     }
   }
 }
@@ -315,6 +349,7 @@ export default {
   align-items: flex-end;
   z-index: 1;
   box-sizing: border-box;
+  white-space: pre-line;
 }
 
 .image-placeholder {
@@ -330,6 +365,34 @@ export default {
 .image-placeholder svg {
   width: 32px;
   height: 32px;
+}
+
+.sold-out-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: linear-gradient(135deg, #D32F2F 0%, #B71C1C 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.4);
+  z-index: 10;
+  text-transform: uppercase;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
 }
 
 .product-info {
@@ -479,6 +542,21 @@ export default {
   font-size: var(--md-label-size);
   color: var(--md-outline);
   text-decoration: line-through;
+}
+
+.bundled-price-admin {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.unit-price-badge {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-variant);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .price-type-badge {

@@ -22,6 +22,10 @@
                   @click="openFullScreen"
                   class="carousel-main-image"
                 />
+                <!-- Sold Out Badge -->
+                <div v-if="isOutOfStock(product)" class="sold-out-badge">
+                  已售罄
+                </div>
                 <button 
                   v-if="productImages.length > 1"
                   @click.stop="previousImage" 
@@ -87,6 +91,19 @@
                 <template v-else-if="product.pricing_type === 'unit_weight'">
                   <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price }}</span>
                   <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+                </template>
+                <template v-else-if="product.pricing_type === 'bundled_weight'">
+                  <div class="bundled-price-display">
+                    <div class="package-price">
+                      <span class="sale-price">{{ formatBundledPrice(product) }}</span>
+                      <span class="price-note">/ 份 ({{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}/份)</span>
+                    </div>
+                    <div class="unit-price">
+                      <span class="unit-price-label">单价:</span>
+                      <span class="unit-price-value">${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}</span>
+                      <span class="unit-price-unit">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+                    </div>
+                  </div>
                 </template>
                 <template v-else>
                   <span class="sale-price">${{ formatPrice(product) }}</span>
@@ -211,6 +228,22 @@ export default {
     document.body.style.overflow = ''
   },
   methods: {
+    isOutOfStock(product) {
+      if (!product) return false
+      
+      // Check deal_stock_limit (deal-specific inventory) first, then stock_limit (product-level inventory)
+      // null or undefined means unlimited stock, only 0 means out of stock
+      // Explicitly check for 0 to handle both deal_stock_limit = 0 and stock_limit = 0
+      if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
+        return product.deal_stock_limit === 0
+      }
+      
+      if (product.stock_limit !== undefined && product.stock_limit !== null) {
+        return product.stock_limit === 0
+      }
+      
+      return false // No stock limit means unlimited stock
+    },
     handleClose() {
       this.$emit('close')
     },
@@ -280,6 +313,49 @@ export default {
         }
         
         return `$${parseFloat(pricePerUnit).toFixed(2)}/${unit}`
+      } else if (product.pricing_type === 'bundled_weight') {
+        const pricePerUnit = product.pricing_data?.price_per_unit || 0
+        const minWeight = product.pricing_data?.min_weight || 7
+        const maxWeight = product.pricing_data?.max_weight || 15
+        const unit = product.pricing_data?.unit || 'lb'
+        
+        if (pricePerUnit === 0) {
+          if (product.deal_price) {
+            return `$${parseFloat(product.deal_price).toFixed(2)}`
+          }
+          return '价格待定'
+        }
+        
+        const minPrice = pricePerUnit * minWeight
+        const maxPrice = pricePerUnit * maxWeight
+        
+        if (minPrice === maxPrice) {
+          return `$${minPrice.toFixed(2)}/份`
+        }
+        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}/份`
+      }
+      return '价格待定'
+    },
+    formatBundledPrice(product) {
+      if (product.pricing_type === 'bundled_weight') {
+        const pricePerUnit = product.pricing_data?.price_per_unit || 0
+        const minWeight = product.pricing_data?.min_weight || 7
+        const maxWeight = product.pricing_data?.max_weight || 15
+        
+        if (pricePerUnit === 0) {
+          if (product.deal_price) {
+            return `$${parseFloat(product.deal_price).toFixed(2)}`
+          }
+          return '价格待定'
+        }
+        
+        const minPrice = pricePerUnit * minWeight
+        const maxPrice = pricePerUnit * maxWeight
+        
+        if (minPrice === maxPrice) {
+          return `$${minPrice.toFixed(2)}/份`
+        }
+        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}/份`
       }
       return '价格待定'
     },
@@ -425,6 +501,34 @@ export default {
 
 .carousel-main-image:hover {
   transform: scale(1.02);
+}
+
+.sold-out-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: linear-gradient(135deg, #D32F2F 0%, #B71C1C 100%);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.4);
+  z-index: 20;
+  text-transform: uppercase;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
 }
 
 .carousel-btn {
@@ -607,6 +711,60 @@ export default {
 .price-note {
   font-size: 14px;
   color: #6b7280;
+}
+
+.bundled-price-display {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.package-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.unit-price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.unit-price-label {
+  font-weight: 500;
+}
+
+.unit-price-value {
+  font-weight: 600;
+  color: #374151;
+}
+
+.unit-price-unit {
+  color: #6b7280;
+}
+
+@media (max-width: 480px) {
+  .bundled-price-display {
+    gap: 6px;
+  }
+  
+  .package-price {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .sale-price {
+    font-size: 24px;
+  }
+  
+  .unit-price {
+    font-size: 12px;
+  }
 }
 
 .product-description-section,

@@ -6,6 +6,7 @@ import apiClient from '../api/client'
 
 /**
  * Check if admin is authenticated
+ * Only clears auth on 401 errors - network errors won't log users out
  * @returns {Promise<boolean>}
  */
 export async function checkAuth() {
@@ -22,9 +23,17 @@ export async function checkAuth() {
     }
     return false
   } catch (error) {
-    // Token invalid, clear it
-    clearAuth()
-    return false
+    // Only clear auth on 401 (unauthorized) - token is actually invalid
+    // Network errors, timeouts, etc. shouldn't log users out
+    if (error.response && error.response.status === 401) {
+      clearAuth()
+      return false
+    }
+    
+    // For other errors, assume token is still valid (might be network issue)
+    // Return true to allow access with cached token
+    console.warn('Auth check failed (non-401 error), keeping cached token:', error.message)
+    return true
   }
 }
 

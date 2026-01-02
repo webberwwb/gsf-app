@@ -126,18 +126,8 @@ if ('serviceWorker' in navigator) {
             }
           })
           
-          // Handle updates
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing
-            
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New service worker is installed but waiting to activate
-                // Show update notification to user
-                showUpdateNotification(registration)
-              }
-            })
-          })
+          // Handle updates - UpdatePrompt.vue component will handle showing the notification
+          // No need to duplicate the update notification logic here
         })
         .catch((error) => {
           console.error('Service Worker registration failed:', error)
@@ -146,56 +136,6 @@ if ('serviceWorker' in navigator) {
   }
 }
 
-// Show update notification
-function showUpdateNotification(registration) {
-  // Create a simple update banner
-  const banner = document.createElement('div')
-  banner.id = 'update-banner'
-  banner.innerHTML = `
-    <div style="
-      position: fixed;
-      bottom: 70px;
-      left: 0;
-      right: 0;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 16px;
-      text-align: center;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-    ">
-      <span>🔄 新版本可用</span>
-      <button onclick="window.updateApp()" style="
-        background: white;
-        color: #667eea;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-weight: 600;
-        cursor: pointer;
-      ">立即更新</button>
-      <button onclick="document.getElementById('update-banner').remove()" style="
-        background: transparent;
-        color: white;
-        border: 1px solid white;
-        padding: 8px 16px;
-        border-radius: 4px;
-        cursor: pointer;
-      ">稍后</button>
-    </div>
-  `
-  document.body.appendChild(banner)
-  
-  // Global update function
-  window.updateApp = () => {
-    if (registration.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-    }
-    window.location.reload()
-  }
-}
+// Update notification is handled by UpdatePrompt.vue component
+// No need for duplicate notification logic here
 

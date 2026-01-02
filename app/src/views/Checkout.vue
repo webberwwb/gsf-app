@@ -27,9 +27,16 @@
           <div v-for="item in orderItems" :key="item.product_id" class="order-item-summary">
             <div class="item-info">
               <span class="item-name">{{ getProductName(item.product_id) }}</span>
-              <span class="item-quantity">x{{ item.quantity }}</span>
+              <span class="item-quantity">x{{ item.quantity }}{{ item.pricing_type === 'bundled_weight' ? ' 份' : '' }}</span>
             </div>
-            <span class="item-price">${{ item.estimated_price || '0.00' }}</span>
+            <span class="item-price" :class="{ 'price-range': item.pricing_type === 'bundled_weight' && item.price_range }">
+              <template v-if="item.pricing_type === 'bundled_weight' && item.price_range">
+                {{ item.price_range }}
+              </template>
+              <template v-else>
+                ${{ item.estimated_price || '0.00' }}
+              </template>
+            </span>
           </div>
           </div>
         </div>
@@ -888,6 +895,16 @@ export default {
   font-size: var(--md-body-size);
   font-weight: 600;
   color: var(--md-primary);
+}
+
+.item-price.price-range {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+}
+
+.item-price.price-range {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
 }
 
 .order-breakdown {

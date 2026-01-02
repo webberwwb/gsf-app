@@ -67,3 +67,4 @@ tail -10 /tmp/cloud_sql_proxy.log 2>/dev/null || echo "No log file"
 kill $PROXY_PID 2>/dev/null || true
 exit 1
 
+

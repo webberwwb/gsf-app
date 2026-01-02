@@ -259,7 +259,7 @@ export default {
             name: product.name,
             price: product.price,
             deal_price: product.deal_price || product.price,
-            deal_stock_limit: product.deal_stock_limit || null
+            deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null
           }))
         }
       }
@@ -307,7 +307,7 @@ export default {
           products: this.selectedProducts.map(p => ({
             product_id: p.id,
             deal_price: p.deal_price || null,
-            deal_stock_limit: p.deal_stock_limit || null
+            deal_stock_limit: p.deal_stock_limit !== undefined && p.deal_stock_limit !== null ? p.deal_stock_limit : null
           }))
         }
 

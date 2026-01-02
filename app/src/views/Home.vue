@@ -132,6 +132,10 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                 </svg>
               </div>
+              <!-- Sold Out Badge -->
+              <div v-if="isOutOfStock(product)" class="sold-out-badge">
+                已售罄
+              </div>
             </div>
             <div class="product-info">
               <h3 class="product-name">{{ product.name }}</h3>
@@ -149,6 +153,13 @@
                 <template v-else-if="product.pricing_type === 'unit_weight'">
                   <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price }}</span>
                   <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+                </template>
+                <template v-else-if="product.pricing_type === 'bundled_weight'">
+                  <div class="bundled-price-compact">
+                    <span class="sale-price">{{ formatBundledPrice(product) }}</span>
+                    <span class="price-note">/ 份</span>
+                    <span class="unit-price-note">(${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }})</span>
+                  </div>
                 </template>
                 <template v-else>
                   <span class="sale-price">${{ product.price }}</span>
@@ -237,10 +248,46 @@ export default {
     formatDate(dateString) {
       return formatDateEST_CN(dateString)
     },
+    isOutOfStock(product) {
+      if (!product) return false
+      
+      // Check deal_stock_limit (deal-specific inventory) first, then stock_limit (product-level inventory)
+      // null or undefined means unlimited stock, only 0 means out of stock
+      // Explicitly check for 0 to handle both deal_stock_limit = 0 and stock_limit = 0
+      if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
+        return product.deal_stock_limit === 0
+      }
+      
+      if (product.stock_limit !== undefined && product.stock_limit !== null) {
+        return product.stock_limit === 0
+      }
+      
+      return false // No stock limit means unlimited stock
+    },
     formatWeightRangePrice(product) {
       if (product.pricing_data && product.pricing_data.ranges && product.pricing_data.ranges.length > 0) {
         const firstRange = product.pricing_data.ranges[0]
         return firstRange.price || '0.00'
+      }
+      return product.price || '0.00'
+    },
+    formatBundledPrice(product) {
+      if (product.pricing_type === 'bundled_weight') {
+        const pricePerUnit = product.pricing_data?.price_per_unit || 0
+        const minWeight = product.pricing_data?.min_weight || 7
+        const maxWeight = product.pricing_data?.max_weight || 15
+        
+        if (pricePerUnit === 0) {
+          return product.price || '0.00'
+        }
+        
+        const minPrice = pricePerUnit * minWeight
+        const maxPrice = pricePerUnit * maxWeight
+        
+        if (minPrice === maxPrice) {
+          return `$${minPrice.toFixed(2)}`
+        }
+        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
       }
       return product.price || '0.00'
     },
@@ -553,6 +600,7 @@ export default {
   font-size: var(--md-body-size);
   margin-bottom: var(--md-spacing-md);
   line-height: 1.5;
+  white-space: pre-line;
 }
 
 .deal-dates {
@@ -688,6 +736,34 @@ export default {
   height: 32px;
 }
 
+.sold-out-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: linear-gradient(135deg, #D32F2F 0%, #B71C1C 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.4);
+  z-index: 10;
+  text-transform: uppercase;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+}
+
 .product-info {
   padding: var(--md-spacing-md);
 }
@@ -741,6 +817,30 @@ export default {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
   margin-left: var(--md-spacing-xs);
+}
+
+.bundled-price-compact {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.unit-price-note {
+  font-size: 0.75rem;
+  color: #999;
+}
+
+@media (max-width: 480px) {
+  .bundled-price-compact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  
+  .unit-price-note {
+    font-size: 0.7rem;
+  }
 }
 
 .browse-only-badge {

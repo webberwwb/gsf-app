@@ -25,12 +25,20 @@ class PricingDataUnitWeightSchema(Schema):
     unit = fields.String(missing='kg')
 
 
+class PricingDataBundledWeightSchema(Schema):
+    """Schema for bundled_weight pricing_data"""
+    price_per_unit = fields.Float(required=True, validate=validate.Range(min=0))
+    unit = fields.String(missing='lb')
+    min_weight = fields.Float(required=True, validate=validate.Range(min=0))
+    max_weight = fields.Float(required=True, validate=validate.Range(min=0))
+
+
 class CreateProductSchema(Schema):
     """Schema for creating a product"""
     name = fields.String(required=True, validate=validate.Length(min=1, max=255))
     image = fields.String(allow_none=True, validate=validate.Length(max=512))  # Deprecated, use images
     images = fields.List(fields.String(validate=validate.Length(max=512)), allow_none=True)  # Array of image URLs
-    pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight']))
+    pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']))
     pricing_data = fields.Dict(required=True)
     description = fields.String(allow_none=True)
     stock_limit = fields.Integer(allow_none=True, validate=validate.Range(min=0))
@@ -65,6 +73,21 @@ class CreateProductSchema(Schema):
                 raise ValidationError('pricing_data.price_per_unit is required for unit_weight pricing')
             if not isinstance(pricing_data['price_per_unit'], (int, float)) or pricing_data['price_per_unit'] < 0:
                 raise ValidationError('pricing_data.price_per_unit must be a non-negative number')
+        elif pricing_type == 'bundled_weight':
+            if 'price_per_unit' not in pricing_data:
+                raise ValidationError('pricing_data.price_per_unit is required for bundled_weight pricing')
+            if not isinstance(pricing_data['price_per_unit'], (int, float)) or pricing_data['price_per_unit'] < 0:
+                raise ValidationError('pricing_data.price_per_unit must be a non-negative number')
+            if 'min_weight' not in pricing_data:
+                raise ValidationError('pricing_data.min_weight is required for bundled_weight pricing')
+            if not isinstance(pricing_data['min_weight'], (int, float)) or pricing_data['min_weight'] < 0:
+                raise ValidationError('pricing_data.min_weight must be a non-negative number')
+            if 'max_weight' not in pricing_data:
+                raise ValidationError('pricing_data.max_weight is required for bundled_weight pricing')
+            if not isinstance(pricing_data['max_weight'], (int, float)) or pricing_data['max_weight'] < 0:
+                raise ValidationError('pricing_data.max_weight must be a non-negative number')
+            if pricing_data['max_weight'] < pricing_data['min_weight']:
+                raise ValidationError('pricing_data.max_weight must be greater than or equal to min_weight')
         
         return data
     
@@ -77,7 +100,7 @@ class UpdateProductSchema(Schema):
     name = fields.String(allow_none=True, validate=validate.Length(min=1, max=255))
     image = fields.String(allow_none=True, validate=validate.Length(max=512))  # Deprecated, use images
     images = fields.List(fields.String(validate=validate.Length(max=512)), allow_none=True)  # Array of image URLs
-    pricing_type = fields.String(allow_none=True, validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight']))
+    pricing_type = fields.String(allow_none=True, validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']))
     pricing_data = fields.Dict(allow_none=True)
     description = fields.String(allow_none=True)
     stock_limit = fields.Integer(allow_none=True, validate=validate.Range(min=0))
@@ -107,6 +130,15 @@ class UpdateProductSchema(Schema):
         elif pricing_type == 'unit_weight':
             if 'price_per_unit' not in pricing_data:
                 raise ValidationError('pricing_data.price_per_unit is required for unit_weight pricing')
+        elif pricing_type == 'bundled_weight':
+            if 'price_per_unit' not in pricing_data:
+                raise ValidationError('pricing_data.price_per_unit is required for bundled_weight pricing')
+            if 'min_weight' not in pricing_data:
+                raise ValidationError('pricing_data.min_weight is required for bundled_weight pricing')
+            if 'max_weight' not in pricing_data:
+                raise ValidationError('pricing_data.max_weight is required for bundled_weight pricing')
+            if pricing_data.get('max_weight', 0) < pricing_data.get('min_weight', 0):
+                raise ValidationError('pricing_data.max_weight must be greater than or equal to min_weight')
         
         return data
     

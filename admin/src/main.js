@@ -92,17 +92,8 @@ if ('serviceWorker' in navigator) {
             }
           })
           
-          // Handle updates
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing
-            
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // Force reload to get the new version
-                window.location.reload()
-              }
-            })
-          })
+          // Handle updates - UpdatePrompt.vue component will handle showing the notification
+          // No need to duplicate the update notification logic here
         })
         .catch((error) => {
           console.error('Service Worker registration failed:', error)

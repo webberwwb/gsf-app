@@ -22,18 +22,53 @@ export function formatDateEST_CN(dateString) {
 
 /**
  * Format datetime in Chinese locale
- * @param {string} dateString - ISO date string
+ * @param {string} dateString - ISO date string (naive datetime from backend, treated as EST)
  * @returns {string} Formatted datetime string
  */
 export function formatDateTimeEST_CN(dateString) {
   if (!dateString) return ''
+  
+  // Backend sends naive datetimes (e.g., "2024-01-15T23:59:59") which are stored in EST
+  // Parse the date components manually to avoid timezone conversion issues
+  // Match format: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DDTHH:MM:SS.ffffff
+  const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/)
+  if (match) {
+    const [, year, month, day, hour, minute, second] = match
+    const yearNum = parseInt(year)
+    const monthNum = parseInt(month) - 1 // JavaScript months are 0-indexed
+    const dayNum = parseInt(day)
+    const hourNum = parseInt(hour)
+    const minuteNum = parseInt(minute)
+    
+    // Create date object using local time (EST) - parse components directly
+    // This ensures the time is displayed exactly as stored, without timezone conversion
+    const date = new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, parseInt(second || 0))
+    
+    // Format the date components directly to avoid any timezone issues
+    // Use padStart to ensure 2-digit formatting
+    const formattedYear = yearNum.toString()
+    const formattedMonth = String(monthNum + 1).padStart(2, '0')
+    const formattedDay = String(dayNum).padStart(2, '0')
+    const formattedHour = String(hourNum).padStart(2, '0')
+    const formattedMinute = String(minuteNum).padStart(2, '0')
+    
+    // Return in format: YYYY-MM-DD HH:MM
+    return `${formattedYear}-${formattedMonth}-${formattedDay} ${formattedHour}:${formattedMinute}`
+  }
+  
+  // Fallback to normal parsing if format doesn't match
   const date = new Date(dateString)
+  if (isNaN(date.getTime())) {
+    return dateString // Return original string if parsing fails
+  }
+  
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: false
   })
 }
 

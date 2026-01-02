@@ -7,7 +7,7 @@ class OrderItemSchema(Schema):
     """Schema for order item in request"""
     product_id = fields.Integer(required=True, validate=validate.Range(min=1))
     quantity = fields.Integer(required=True, validate=validate.Range(min=1))
-    pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight']))
+    pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']))
     final_weight = fields.Float(allow_none=True, validate=validate.Range(min=0))
     
     class Meta:

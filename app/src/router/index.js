@@ -79,6 +79,9 @@ const router = createRouter({
   ]
 })
 
+// Track if we've validated auth on app startup
+let authValidatedOnStartup = false
+
 // Navigation guard to check authentication
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
@@ -94,60 +97,44 @@ router.beforeEach(async (to, from, next) => {
     return
   }
   
-  // If token exists, try to validate it
+  // If token exists, check if we need to validate it
   if (authStore.token) {
-    try {
-      // Check auth and update user data
-      const isValid = await authStore.checkAuth()
+    // Only validate token on app startup (first navigation)
+    // This prevents constant API calls on every navigation
+    if (!authValidatedOnStartup) {
+      authValidatedOnStartup = true
       
-      if (!isValid) {
-        // Token is invalid, redirect to login if route requires auth
-        if (to.meta.requiresAuth) {
+      // Validate token - but don't block navigation on network errors
+      try {
+        const isValid = await authStore.checkAuth()
+        // If token is invalid (401), checkAuth already cleared it
+        if (!isValid && to.meta.requiresAuth) {
           next('/login')
           return
         }
-      }
-      
-      // If authenticated and user doesn't have wechat, allow navigation
-      // but the wechat modal will block the UI (handled in App.vue)
-      // This ensures the modal appears even after successful login
-      
-      // If on login page with valid token and has wechat, redirect to home
-      if (to.path === '/login' && isValid && authStore.hasWechat) {
-        next('/')
-        return
-      }
-      
-      // Token is valid, allow navigation
-      next()
-      return
-    } catch (error) {
-      // Only clear token and redirect if it's a 401 (unauthorized)
-      // Other errors (network, 500, etc.) might be temporary - allow access with cached token
-      if (error.response && error.response.status === 401) {
-        // Token invalid, clear it
-        authStore.clearAuth()
-        
-        // Redirect to login if route requires auth
-        if (to.meta.requiresAuth) {
+      } catch (error) {
+        // checkAuth handles errors internally and only clears on 401
+        // For other errors, it returns true, so we allow navigation
+        // If it was a 401, checkAuth cleared the token, so check again
+        if (!authStore.token && to.meta.requiresAuth) {
           next('/login')
-          return
-        }
-      } else {
-        // Network error or other issue - token might still be valid
-        // Allow navigation but log the error
-        console.warn('Token validation failed (non-401 error), allowing access with cached token:', error.message)
-        
-        // If on login page with token (even if can't validate), redirect to home
-        if (to.path === '/login') {
-          next('/')
           return
         }
       }
     }
+    
+    // If on login page with token, redirect to home
+    if (to.path === '/login') {
+      next('/')
+      return
+    }
+    
+    // Token exists, allow navigation
+    next()
+    return
   }
   
-  // No token or validation passed, continue navigation
+  // No token, continue navigation (will be handled by requiresAuth check above)
   next()
 })
 

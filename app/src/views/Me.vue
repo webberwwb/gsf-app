@@ -52,7 +52,7 @@
             <span class="version-value" :class="{ 'version-new': hasUpdate }">{{ latestVersion || '加载中...' }}</span>
           </div>
         </div>
-        <button @click="handleUpdate" class="update-button" :disabled="isUpdating || !hasUpdate">
+        <button @click="handleUpdate" class="update-button" :disabled="isUpdating || isVersionMatch">
           {{ getUpdateButtonText() }}
         </button>
       </div>
@@ -111,6 +111,13 @@ export default {
     },
     isVersionMatch() {
       return this.currentVersion && this.latestVersion && this.currentVersion === this.latestVersion
+    },
+    isStandalone() {
+      return window.matchMedia('(display-mode: standalone)').matches || 
+             window.navigator.standalone === true
+    },
+    isIOS() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
     }
   },
   mounted() {
@@ -152,6 +159,16 @@ export default {
       // Reload versions when section is opened
       if (this.showVersionSection) {
         this.loadVersions()
+        // In standalone mode, also force service worker update check
+        if (this.isStandalone && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((registration) => {
+            registration.update()
+            // Also send check update message to service worker
+            if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'CHECK_UPDATE' })
+            }
+          })
+        }
       }
     },
     async getCurrentVersion() {
@@ -286,28 +303,73 @@ export default {
       return '立即更新'
     },
     async handleUpdate() {
-      if (this.isUpdating) return
+      if (this.isUpdating) {
+        console.log('Update already in progress')
+        return
+      }
+      
+      // Detect if we're in PWA standalone mode
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                           window.navigator.standalone === true
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
+      
+      console.log('Update button clicked, current version:', this.currentVersion, 'latest version:', this.latestVersion)
+      console.log('PWA standalone mode:', isStandalone, 'iOS:', isIOS)
       
       const confirmed = await this.confirm('确定要更新应用吗？这将清除所有缓存并重新加载。')
-      if (!confirmed) return
+      if (!confirmed) {
+        console.log('Update cancelled by user')
+        return
+      }
       
+      console.log('Starting update process...')
       this.isUpdating = true
       
       try {
+        // First, tell any waiting service worker to skip waiting
+        if ('serviceWorker' in navigator) {
+          console.log('Checking for service workers...')
+          const registrations = await navigator.serviceWorker.getRegistrations()
+          console.log('Found', registrations.length, 'service worker registrations')
+          
+          for (const registration of registrations) {
+            if (registration.waiting) {
+              console.log('Sending SKIP_WAITING to waiting service worker')
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+            }
+            if (registration.installing) {
+              console.log('Sending SKIP_WAITING to installing service worker')
+              registration.installing.postMessage({ type: 'SKIP_WAITING' })
+            }
+            if (navigator.serviceWorker.controller) {
+              console.log('Sending SKIP_WAITING to active service worker')
+              navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' })
+            }
+          }
+          
+          // Wait a bit for the message to be processed
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        
         // Clear all caches
         if ('caches' in window) {
+          console.log('Clearing all caches...')
           const cacheNames = await caches.keys()
+          console.log('Found', cacheNames.length, 'caches to clear')
           await Promise.all(
             cacheNames.map(cacheName => caches.delete(cacheName))
           )
+          console.log('All caches cleared')
         }
         
         // Unregister all service workers
         if ('serviceWorker' in navigator) {
+          console.log('Unregistering service workers...')
           const registrations = await navigator.serviceWorker.getRegistrations()
           await Promise.all(
             registrations.map(registration => registration.unregister())
           )
+          console.log('All service workers unregistered')
         }
         
         // Clear localStorage and sessionStorage (optional, but helps ensure clean state)
@@ -318,15 +380,46 @@ export default {
           localStorage.setItem('auth_token', authToken)
         }
         sessionStorage.clear()
+        console.log('Storage cleared (auth token preserved)')
         
-        // Force reload with cache bypass
-        // Use location.reload(true) for older browsers, or fetch with cache: 'no-store'
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' })
+        // Force hard reload with cache bypass
+        // For PWA standalone mode, especially iOS, we need more aggressive cache bypass
+        const url = new URL(window.location.href)
+        // Remove existing cache-busting parameters if any
+        url.searchParams.delete('_update')
+        url.searchParams.delete('_nocache')
+        url.searchParams.delete('_sw')
+        // Add new cache-busting parameters
+        const timestamp = Date.now()
+        url.searchParams.set('_update', timestamp.toString())
+        url.searchParams.set('_nocache', '1')
+        url.searchParams.set('_sw', timestamp.toString())
+        const reloadUrl = url.toString()
+        
+        console.log('Reloading page with cache bypass:', reloadUrl)
+        console.log('Standalone mode:', isStandalone, 'iOS:', isIOS)
+        
+        // For iOS standalone mode, use a more aggressive approach
+        if (isIOS && isStandalone) {
+          // iOS Safari standalone has very aggressive caching
+          // Use window.location.href assignment (not replace) to ensure navigation happens
+          // The href assignment forces a full page navigation which bypasses more cache layers
+          setTimeout(() => {
+            window.location.href = reloadUrl
+          }, 200)
+        } else if (isStandalone) {
+          // For other standalone browsers (Android Chrome, etc.)
+          // Use replace to avoid adding to history, but still force reload
+          setTimeout(() => {
+            window.location.replace(reloadUrl)
+          }, 100)
+        } else {
+          // For regular browser mode
+          // Use replace to avoid adding to history
+          setTimeout(() => {
+            window.location.replace(reloadUrl)
+          }, 100)
         }
-        
-        // Reload the page
-        window.location.reload()
       } catch (error) {
         console.error('Update error:', error)
         this.isUpdating = false

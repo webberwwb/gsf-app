@@ -3,9 +3,12 @@ FROM node:20-alpine as build
 
 WORKDIR /app
 
-# Build argument for API base URL
+# Build arguments for Vite environment variables
 ARG VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+ARG VITE_GOOGLE_MAPS_API_KEY
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 
 # Copy package files
 COPY package*.json ./

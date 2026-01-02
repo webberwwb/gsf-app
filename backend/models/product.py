@@ -18,6 +18,7 @@ class Product(BaseModel):
     # - per_item: {"price": 10.00}
     # - weight_range: {"ranges": [{"min": 0, "max": 2, "price": 10.00}, ...]}
     # - unit_weight: {"price_per_unit": 5.00, "unit": "kg"}
+    # - bundled_weight: {"price_per_unit": 5.00, "unit": "lb", "min_weight": 7, "max_weight": 15}
     pricing_data = db.Column(JSON, nullable=True)
     
     description = db.Column(db.Text, nullable=True)
@@ -66,6 +67,15 @@ class Product(BaseModel):
             if self.pricing_data and 'price_per_unit' in self.pricing_data:
                 return float(self.pricing_data['price_per_unit'])
             return None
+        elif self.pricing_type == 'bundled_weight':
+            if self.pricing_data and 'price_per_unit' in self.pricing_data:
+                # Return average price for display (using mid-point weight)
+                price_per_unit = float(self.pricing_data['price_per_unit'])
+                min_weight = float(self.pricing_data.get('min_weight', 7))
+                max_weight = float(self.pricing_data.get('max_weight', 15))
+                avg_weight = (min_weight + max_weight) / 2
+                return price_per_unit * avg_weight
+            return None
         return None
     
     def calculate_price(self, quantity=1, weight=None):
@@ -88,6 +98,16 @@ class Product(BaseModel):
                 return None
             price_per_unit = float(self.pricing_data['price_per_unit'])
             return price_per_unit * weight * quantity
+        elif self.pricing_type == 'bundled_weight':
+            # quantity = number of packages
+            # Each package has variable weight between min_weight and max_weight
+            if not self.pricing_data or 'price_per_unit' not in self.pricing_data:
+                return None
+            price_per_unit = float(self.pricing_data['price_per_unit'])
+            # If weight is provided, use it; otherwise return None (needs weight)
+            if weight:
+                return price_per_unit * weight * quantity
+            return None
         return None
     
     def to_dict(self):

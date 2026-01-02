@@ -326,6 +326,15 @@ def create_order():
                 price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
                 estimated_weight = 1  # Minimum 1 unit for estimation
                 unit_price = price_per_unit * estimated_weight
+            elif pricing_type == 'bundled_weight':
+                # Bundled weight: quantity = number of packages
+                # Use mid-weight (average) for estimation
+                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
+                min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
+                max_weight = float(product.pricing_data.get('max_weight', 15) if product.pricing_data else 15)
+                mid_weight = (min_weight + max_weight) / 2
+                # unit_price is price per package (using mid weight for estimation)
+                unit_price = price_per_unit * mid_weight
             else:
                 unit_price = product.get_display_price() or 0
             
@@ -368,6 +377,7 @@ def create_order():
             user_id=user_id,
             group_deal_id=group_deal_id,
             address_id=address_id,
+            delivery_method=delivery_method,
             pickup_location=pickup_location if delivery_method == DeliveryMethod.PICKUP.value else None,
             order_number=order_number,
             subtotal=subtotal,
@@ -649,6 +659,15 @@ def update_order(order_id):
                 price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
                 estimated_weight = 1  # Minimum 1 unit for estimation
                 unit_price = price_per_unit * estimated_weight
+            elif pricing_type == 'bundled_weight':
+                # Bundled weight: quantity = number of packages
+                # Use mid-weight (average) for estimation
+                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
+                min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
+                max_weight = float(product.pricing_data.get('max_weight', 15) if product.pricing_data else 15)
+                mid_weight = (min_weight + max_weight) / 2
+                # unit_price is price per package (using mid weight for estimation)
+                unit_price = price_per_unit * mid_weight
             else:
                 unit_price = product.get_display_price() or 0
             

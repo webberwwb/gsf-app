@@ -89,9 +89,19 @@ def create_address():
         return error_response, status_code
     
     try:
+        # Log request details for debugging
+        current_app.logger.info(f'Create address request - Method: {request.method}, Content-Type: {request.content_type}, Has Data: {request.is_json}, User ID: {user_id}')
+        current_app.logger.info(f'Request headers: {dict(request.headers)}')
+        
+        # Get raw request data for logging
+        raw_data = request.get_data(as_text=True)
+        if raw_data:
+            current_app.logger.info(f'Raw request body: {raw_data[:500]}')  # Log first 500 chars
+        
         # Validate request data using schema
         validated_data, error_response, status_code = validate_request(CreateAddressSchema)
         if error_response:
+            current_app.logger.error(f'Validation failed - Status: {status_code}, Response: {error_response.get_json() if hasattr(error_response, "get_json") else str(error_response)}')
             return error_response, status_code
         
         # If this is set as default, unset other default addresses
