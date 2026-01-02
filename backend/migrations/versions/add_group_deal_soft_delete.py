@@ -29,3 +29,4 @@ def downgrade():
         batch_op.drop_column('deleted_at')
 
 
+

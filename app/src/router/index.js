@@ -3,12 +3,21 @@ import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, from, savedPosition) {
+    // Always scroll to top when navigating to a new route
+    // This ensures content is not cut off on mobile devices
+    if (savedPosition) {
+      return savedPosition
+    } else {
+      return { top: 0, behavior: 'instant' }
+    }
+  },
   routes: [
     {
       path: '/',
       name: 'Home',
       component: () => import('../views/Home.vue'),
-      meta: { requiresAuth: true, showBottomNav: true }
+      meta: { requiresAuth: false, showBottomNav: true }
     },
     {
       path: '/favorites',
@@ -20,31 +29,31 @@ const router = createRouter({
       path: '/cart',
       name: 'Cart',
       component: () => import('../views/Cart.vue'),
-      meta: { requiresAuth: true, showBottomNav: true }
+      meta: { requiresAuth: false, showBottomNav: true }
     },
     {
       path: '/me',
       name: 'Me',
       component: () => import('../views/Me.vue'),
-      meta: { requiresAuth: true, showBottomNav: true }
+      meta: { requiresAuth: false, showBottomNav: true }
     },
     {
       path: '/group-deals',
       name: 'GroupDeals',
       component: () => import('../views/GroupDeals.vue'),
-      meta: { requiresAuth: true, showBottomNav: true }
+      meta: { requiresAuth: false, showBottomNav: true }
     },
     {
       path: '/group-deals/:id',
       name: 'GroupDealDetail',
       component: () => import('../views/GroupDealDetail.vue'),
-      meta: { requiresAuth: true, showBottomNav: true }
+      meta: { requiresAuth: false, showBottomNav: true }
     },
     {
       path: '/checkout',
       name: 'Checkout',
       component: () => import('../views/Checkout.vue'),
-      meta: { requiresAuth: true, showBottomNav: false }
+      meta: { requiresAuth: false, showBottomNav: false } // Will check auth in component
     },
     {
       path: '/order-result',
@@ -56,6 +65,12 @@ const router = createRouter({
       path: '/orders',
       name: 'Orders',
       component: () => import('../views/Orders.vue'),
+      meta: { requiresAuth: false, showBottomNav: true } // Will show "未登录" message if not authenticated
+    },
+    {
+      path: '/orders/:id',
+      name: 'OrderDetail',
+      component: () => import('../views/OrderDetail.vue'),
       meta: { requiresAuth: true, showBottomNav: true }
     },
     {
@@ -91,7 +106,8 @@ router.beforeEach(async (to, from, next) => {
     authStore.loadFromStorage()
   }
   
-  // If route requires auth and no token, redirect to login
+  // Only redirect to login for routes that explicitly require auth
+  // Guest browsing is allowed for most routes
   if (to.meta.requiresAuth && !authStore.token) {
     next('/login')
     return
@@ -136,6 +152,21 @@ router.beforeEach(async (to, from, next) => {
   
   // No token, continue navigation (will be handled by requiresAuth check above)
   next()
+})
+
+// Ensure scroll to top after navigation completes (especially important for mobile)
+router.afterEach((to, from) => {
+  // Use nextTick to ensure DOM is updated before scrolling
+  setTimeout(() => {
+    window.scrollTo(0, 0)
+    // Also try scrolling the document element for better mobile compatibility
+    if (document.documentElement) {
+      document.documentElement.scrollTop = 0
+    }
+    if (document.body) {
+      document.body.scrollTop = 0
+    }
+  }, 0)
 })
 
 export default router

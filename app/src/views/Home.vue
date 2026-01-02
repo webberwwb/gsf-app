@@ -402,6 +402,7 @@ export default {
 .shop-header {
   background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
   padding: var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
   box-shadow: var(--md-elevation-2);
   position: sticky;
   top: 0;

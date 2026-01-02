@@ -8,8 +8,6 @@
       </div>
 
       <div class="login-options">
-        <h2>登录选项</h2>
-
         <!-- Phone/SMS Login (Primary Method) -->
         <div class="phone-section">
           <input
@@ -34,7 +32,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="icon">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
-            <span>发送验证码</span>
+            <span>手机验证登陆</span>
           </button>
 
           <div v-if="otpSent" class="otp-section">
@@ -54,6 +52,25 @@
               验证码登录
             </button>
           </div>
+        </div>
+
+        <!-- Guest Browsing Option -->
+        <div class="guest-section">
+          <div class="divider">
+            <span>或</span>
+          </div>
+          <button 
+            @click="visitAsGuest" 
+            class="guest-btn"
+            :disabled="loading"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="icon">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <span>随便逛逛</span>
+          </button>
+          <p class="guest-hint">跳过登录浏览商品和团购，下单时再登录</p>
         </div>
 
       </div>
@@ -217,6 +234,10 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    visitAsGuest() {
+      // Navigate to home page as guest
+      this.$router.push('/')
     }
   }
 }
@@ -372,6 +393,31 @@ export default {
   color: #1565C0;
 }
 
+.phone-input:hover,
+.otp-input:hover {
+  border-color: var(--md-outline);
+}
+
+.phone-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  padding: var(--md-spacing-sm);
+  background: #E3F2FD;
+  border-radius: var(--md-radius-sm);
+  margin-bottom: var(--md-spacing-md);
+  font-size: 12px;
+  color: #1565C0;
+  line-height: 1.4;
+}
+
+.phone-hint svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #1565C0;
+}
+
 .phone-input:focus,
 .otp-input:focus {
   outline: none;
@@ -406,6 +452,90 @@ export default {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+}
+
+.guest-section {
+  margin-top: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin-top: var(--md-spacing-xs);
+  margin-bottom: var(--md-spacing-lg);
+  position: relative;
+}
+
+.divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.divider span {
+  padding: 0 var(--md-spacing-md);
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-label-size);
+  background: var(--md-surface);
+  position: relative;
+  z-index: 1;
+  margin: 0 auto;
+}
+
+.guest-btn {
+  width: 100%;
+  padding: 0.875rem;
+  border: 1px solid var(--md-primary);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--md-primary);
+  color: white;
+  text-transform: uppercase;
+}
+
+.guest-btn:hover:not(:disabled) {
+  border-color: var(--md-primary);
+  background: #FF7F00;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
+}
+
+.guest-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-1);
+}
+
+.guest-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.guest-btn .icon {
+  width: 18px;
+  height: 18px;
+  color: white;
+}
+
+.guest-hint {
+  margin-top: var(--md-spacing-sm);
+  text-align: center;
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  line-height: 1.5;
 }
 </style>
 

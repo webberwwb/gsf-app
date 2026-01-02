@@ -4,7 +4,19 @@
       <h1>我的订单</h1>
     </header>
 
-    <div v-if="loading" class="loading">加载中...</div>
+    <!-- Not Authenticated State -->
+    <div v-if="!isAuthenticated" class="not-authenticated-state">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      </div>
+      <h2>未登录</h2>
+      <p>请先登录以查看您的订单</p>
+      <button @click="goToLogin" class="signup-btn">立即登录</button>
+    </div>
+    
+    <div v-else-if="loading" class="loading">加载中...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else-if="orders.length === 0" class="empty-state">
       <div class="empty-icon">
@@ -309,6 +321,9 @@ export default {
     }
   },
   computed: {
+    isAuthenticated() {
+      return this.authStore.isAuthenticated
+    },
     user() {
       return this.authStore.currentUser
     },
@@ -323,9 +338,17 @@ export default {
     }
   },
   mounted() {
-    this.loadOrdersWithModalShown()
-    this.loadOrders()
-    this.loadUser()
+    // Load auth from storage if not already loaded
+    if (!this.authStore.token) {
+      this.authStore.loadFromStorage()
+    }
+    
+    // Only load orders if authenticated
+    if (this.authStore.isAuthenticated) {
+      this.loadOrdersWithModalShown()
+      this.loadOrders()
+      this.loadUser()
+    }
   },
   updated() {
     // Generate QR codes after orders are loaded/updated
@@ -423,14 +446,8 @@ export default {
       return classes[status] || 'pending'
     },
     viewOrderDetail(order) {
-      // Don't redirect if order is completed
-      if (order.status === 'completed') {
-        return
-      }
-      // Navigate to group deal detail page for editable orders
-      if (order.group_deal && order.group_deal.id) {
-        this.$router.push(`/group-deals/${order.group_deal.id}`)
-      }
+      // Navigate to order detail page
+      this.$router.push(`/orders/${order.id}`)
     },
     formatPickupLocation(location) {
       const locationMap = {
@@ -554,6 +571,9 @@ export default {
         console.error('Failed to save orders with modal shown:', error)
       }
     },
+    goToLogin() {
+      this.$router.push('/login')
+    },
     async copyToClipboard(text) {
       try {
         await navigator.clipboard.writeText(text)
@@ -653,6 +673,66 @@ export default {
 .empty-state p {
   font-size: var(--md-body-size);
   color: var(--md-on-surface-variant);
+}
+
+.not-authenticated-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--md-spacing-xl);
+  text-align: center;
+  min-height: 50vh;
+}
+
+.not-authenticated-state .empty-icon {
+  width: 80px;
+  height: 80px;
+  color: var(--md-on-surface-variant);
+  opacity: 0.5;
+  margin-bottom: var(--md-spacing-md);
+}
+
+.not-authenticated-state .empty-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.not-authenticated-state h2 {
+  font-size: var(--md-title-size);
+  color: var(--md-on-surface);
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.not-authenticated-state p {
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-xl);
+}
+
+.signup-btn {
+  padding: var(--md-spacing-md) var(--md-spacing-xl);
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: white;
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--md-elevation-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.signup-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--md-elevation-4);
+}
+
+.signup-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-2);
 }
 
 .filter-tabs {

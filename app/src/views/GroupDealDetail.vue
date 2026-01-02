@@ -51,38 +51,6 @@
       <div class="products-section">
         <h3 class="section-title">可选商品</h3>
         
-        <!-- Existing Order Items Not in Current Products (Read-only) -->
-        <div v-if="existingOrderItemsNotInProducts.length > 0" class="existing-order-items-section">
-          <h4 class="subsection-title">已订购商品（不可修改）</h4>
-          <div class="products-list">
-            <div
-              v-for="item in existingOrderItemsNotInProducts"
-              :key="`existing-${item.product_id}`"
-              class="product-item read-only-item"
-            >
-              <div class="product-image">
-                <img v-if="item.product?.image || (item.product?.images && item.product.images[0])" :src="item.product?.image || item.product?.images[0]" :alt="item.product?.name || '商品'" />
-                <div v-else class="image-placeholder">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                  </svg>
-                </div>
-                <div class="sold-out-badge">已售罄</div>
-              </div>
-              <div class="product-details">
-                <div class="product-name-row">
-                  <h4 class="product-name">{{ item.product?.name || '商品' }}</h4>
-                </div>
-                <div class="product-price">
-                  <span class="price-label">数量:</span>
-                  <span class="price-value">{{ item.quantity }} {{ item.product?.pricing_type === 'bundled_weight' ? '份' : '件' }}</span>
-                </div>
-                <div class="read-only-note">此商品已包含在您的订单中，无法修改</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
         <div v-if="deal.products && deal.products.length === 0" class="empty-products">
           <p>暂无商品</p>
         </div>
@@ -146,21 +114,21 @@
               </div>
 
               <!-- Product Selection Controls -->
-              <div class="product-selection" :class="{ 'disabled': isOutOfStock(product) && !isExistingOrderItemOutOfStock(product), 'read-only': isExistingOrderItemOutOfStock(product) }">
+              <div class="product-selection" :class="{ 'disabled': isOutOfStock(product) }">
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
                   <div class="quantity-control">
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
                       :max="product.deal_stock_limit || 999"
-                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
+                      :disabled="!isOrderEditable || isOutOfStock(product)"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="(product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit) || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="(product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit) || !isOrderEditable || isOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="item-total">
                     小计: ${{ calculateItemTotal(product) }}
@@ -171,16 +139,16 @@
                 <div v-else-if="product.pricing_type === 'weight_range'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
-                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
+                      :disabled="!isOrderEditable || isOutOfStock(product)"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
@@ -196,16 +164,16 @@
                 <div v-else-if="product.pricing_type === 'unit_weight'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
-                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
+                      :disabled="!isOrderEditable || isOutOfStock(product)"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
@@ -221,17 +189,17 @@
                 <div v-else-if="product.pricing_type === 'bundled_weight'" class="selection-controls">
                   <div class="quantity-control">
                     <label>份数:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
                       step="1"
-                      :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)"
+                      :disabled="!isOrderEditable || isOutOfStock(product)"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product) || isExistingOrderItemOutOfStock(product)" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="package-info-wrapper">
                     <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }})</span>
@@ -259,8 +227,8 @@
         <span class="total-amount">${{ calculateTotal().total }}</span>
         <span v-if="hasEstimatedTotal() && !isOrderCompleted" class="estimated-note">(估算)</span>
       </div>
-      <button @click="confirmOrder" class="confirm-order-btn" :disabled="isOrderCompleted">
-        {{ isOrderCompleted ? '订单已完成' : (isOrderConfirmed || isDealClosed ? '更新取货方式' : '确认订单') }}
+      <button @click="confirmOrder" class="confirm-order-btn" :disabled="isDealClosed">
+        {{ isDealClosed ? '已截单' : '确认订单' }}
       </button>
     </div>
 
@@ -289,6 +257,7 @@
 <script>
 import apiClient from '../api/client'
 import { useCheckoutStore } from '../stores/checkout'
+import { useAuthStore } from '../stores/auth'
 import { formatDateEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
@@ -306,9 +275,6 @@ export default {
       error: null,
       deal: null,
       selectedItems: {}, // { productId: { quantity } }
-      existingOrder: null, // Store existing order if found
-      existingOrderData: null, // Store order metadata (payment method, delivery method, etc.)
-      existingOrderItems: [], // Store all order items from existing order (including out-of-stock items)
       showProductModal: false,
       selectedProduct: null,
       showPriceInfoModal: false,
@@ -317,49 +283,34 @@ export default {
   },
   setup() {
     const checkoutStore = useCheckoutStore()
+    const authStore = useAuthStore()
     const { warning, error: showError } = useModal()
-    return { checkoutStore, warning, showError }
+    return { checkoutStore, authStore, warning, showError }
+  },
+  computed: {
+    isAuthenticated() {
+      return this.authStore.isAuthenticated
+    }
   },
   async mounted() {
+    // Load auth from storage if not already loaded
+    // This allows guest browsing - no forced authentication
+    if (!this.authStore.token) {
+      this.authStore.loadFromStorage()
+    }
+    
+    // Debug: Log auth status
+    console.log('GroupDealDetail mounted - isAuthenticated:', this.isAuthenticated, 'token:', !!this.authStore.token)
+    
     await this.loadDeal()
   },
   computed: {
     isDealClosed() {
       return this.deal && this.deal.status === 'closed'
     },
-    isOrderCompleted() {
-      return this.existingOrder && this.existingOrder.status === 'completed'
-    },
-    isOrderConfirmed() {
-      return this.existingOrder && this.existingOrder.status === 'confirmed'
-    },
     isOrderEditable() {
-      // Product list is editable if:
-      // 1. No existing order (new order) AND deal is not closed
-      // 2. OR existing order is submitted (not completed/confirmed)
-      if (!this.existingOrder) {
-        // No order yet - allow editing if deal is active
-        return !this.isDealClosed
-      }
-      // Has existing order - only editable if status is 'submitted'
-      return !this.isOrderCompleted && 
-             this.existingOrder.status === 'submitted'
-    },
-    canEditPickupPayment() {
-      // Can edit pickup/payment method if order is not completed/cancelled
-      // This includes confirmed orders (when group deal is closed)
-      return this.existingOrder && 
-             this.existingOrder.status !== 'completed' && 
-             this.existingOrder.status !== 'cancelled'
-    },
-    existingOrderItemsNotInProducts() {
-      // Get order items that are not in the current deal.products list
-      if (!this.existingOrderItems || !this.deal?.products) {
-        return []
-      }
-      
-      const productIds = new Set(this.deal.products.map(p => p.id))
-      return this.existingOrderItems.filter(item => !productIds.has(item.product_id))
+      // Always allow editing if deal is not closed
+      return !this.isDealClosed
     }
   },
   methods: {
@@ -371,90 +322,19 @@ export default {
         const response = await apiClient.get(`/group-deals/${dealId}`)
         this.deal = response.data.deal
         
-        // Initialize selected items
+        // Initialize selected items - always start clean
         if (this.deal.products) {
           this.deal.products.forEach(product => {
-            if (!this.selectedItems[product.id]) {
-              this.selectedItems[product.id] = {
-                quantity: 0
-              }
+            this.selectedItems[product.id] = {
+              quantity: 0
             }
           })
-        }
-        
-        // Check if order is included in the response
-        if (response.data.order) {
-          this.existingOrder = response.data.order
-          
-          // Store order metadata for checkout
-          this.existingOrderData = {
-            orderId: this.existingOrder.id,
-            paymentMethod: this.existingOrder.payment_method || 'cash',
-            deliveryMethod: this.existingOrder.delivery_method || 'pickup',
-            addressId: this.existingOrder.address_id || null,
-            pickupLocation: this.existingOrder.pickup_location || null,
-            notes: this.existingOrder.notes || null
-          }
-          
-          // Store all order items (including out-of-stock items)
-          this.existingOrderItems = this.existingOrder.items || []
-          
-          // Load order items into selectedItems (only for products currently in deal)
-          if (this.existingOrder.items && this.existingOrder.items.length > 0) {
-            this.existingOrder.items.forEach(item => {
-              if (this.selectedItems[item.product_id] !== undefined) {
-                this.selectedItems[item.product_id].quantity = item.quantity
-              }
-            })
-          }
-        } else {
-          // Fallback: try to load existing order separately (for backwards compatibility)
-          await this.loadExistingOrder()
         }
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '加载团购详情失败'
         console.error('Failed to load deal:', error)
       } finally {
         this.loading = false
-      }
-    },
-    async loadExistingOrder() {
-      if (!this.deal) return
-      
-      try {
-        // Check if user has an existing order for this group deal
-        const response = await apiClient.get(`/orders?group_deal_id=${this.deal.id}`)
-        const orders = response.data.orders || []
-        
-        if (orders.length > 0) {
-          // Get the first (and should be only) order for this group deal
-          this.existingOrder = orders[0]
-          
-          // Store order metadata for checkout
-          this.existingOrderData = {
-            orderId: this.existingOrder.id,
-            paymentMethod: this.existingOrder.payment_method || 'cash',
-            deliveryMethod: this.existingOrder.delivery_method || 'pickup',
-            addressId: this.existingOrder.address_id || null,
-            pickupLocation: this.existingOrder.pickup_location || null,
-            notes: this.existingOrder.notes || null
-          }
-          
-          // Store all order items (including out-of-stock items)
-          this.existingOrderItems = this.existingOrder.items || []
-          
-          // Load order items into selectedItems (only for products currently in deal)
-          if (this.existingOrder.items && this.existingOrder.items.length > 0) {
-            this.existingOrder.items.forEach(item => {
-              if (this.selectedItems[item.product_id] !== undefined) {
-                this.selectedItems[item.product_id].quantity = item.quantity
-              }
-            })
-          }
-        }
-      } catch (error) {
-        // Silently fail - if we can't load existing order, user can still view
-        console.warn('Failed to load existing order:', error)
       }
     },
     formatDate(dateString) {
@@ -556,25 +436,8 @@ export default {
     getQuantity(product) {
       return this.selectedItems[product.id]?.quantity || 0
     },
-    isExistingOrderItemOutOfStock(product) {
-      // Check if this product is in existing order and is now out of stock
-      if (!this.existingOrderItems || this.existingOrderItems.length === 0) {
-        return false
-      }
-      const existingItem = this.existingOrderItems.find(item => item.product_id === product.id)
-      if (!existingItem) {
-        return false
-      }
-      // If it exists in order and is now out of stock, it should be read-only
-      return this.isOutOfStock(product)
-    },
     setQuantity(product, value) {
-      // Don't allow changes if product is in existing order and is now out of stock
-      if (this.isExistingOrderItemOutOfStock(product)) {
-        return
-      }
-      
-      // Check if product is out of stock (for new selections)
+      // Check if product is out of stock
       if (this.isOutOfStock(product)) {
         return
       }
@@ -590,12 +453,7 @@ export default {
       this.selectedItems[product.id].quantity = finalQty
     },
     increaseQuantity(product) {
-      // Don't allow changes if product is in existing order and is now out of stock
-      if (this.isExistingOrderItemOutOfStock(product)) {
-        return
-      }
-      
-      // Check if product is out of stock (for new selections)
+      // Check if product is out of stock
       if (this.isOutOfStock(product)) {
         return
       }
@@ -701,145 +559,69 @@ export default {
       return result.hasEstimated
     },
     async confirmOrder() {
-      // Prevent editing if order is completed
-      if (this.isOrderCompleted) {
-        await this.warning('订单已完成，无法修改')
-        return
-      }
+      // Build order items from current selections
+      const orderItems = []
       
-      // For confirmed orders (when deal is closed), use existing order items (cannot change products)
-      let orderItems = []
-      if (this.isOrderConfirmed && this.existingOrder && this.existingOrder.items) {
-        // Use existing order items for confirmed orders
-        orderItems = this.existingOrder.items.map(item => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-          pricing_type: item.product?.pricing_type || 'per_item',
-          estimated_price: parseFloat(item.total_price || 0).toFixed(2),
-          is_estimated: false,
-          counts_toward_free_shipping: item.product?.counts_toward_free_shipping !== undefined 
-            ? item.product.counts_toward_free_shipping 
-            : true
-        }))
-      } else {
-        // Build order items: include existing order items (including out-of-stock) + current selections
-        const orderItemsMap = new Map()
-        
-        // First, add all existing order items (including out-of-stock items)
-        if (this.existingOrderItems && this.existingOrderItems.length > 0) {
-          this.existingOrderItems.forEach(item => {
-            // Get product info from deal products or from item.product
-            const product = this.deal.products?.find(p => p.id === item.product_id) || item.product
-            if (product) {
-              orderItemsMap.set(item.product_id, {
-                product_id: item.product_id,
-                quantity: item.quantity,
-                pricing_type: product.pricing_type || item.product?.pricing_type || 'per_item',
-                estimated_price: parseFloat(item.total_price || 0).toFixed(2),
-                is_estimated: false,
-                counts_toward_free_shipping: product.counts_toward_free_shipping !== undefined 
-                  ? product.counts_toward_free_shipping 
-                  : (item.product?.counts_toward_free_shipping !== undefined 
-                    ? item.product.counts_toward_free_shipping 
-                    : true)
-              })
-            } else {
-              // Product not found in current deal, but keep it from existing order
-              orderItemsMap.set(item.product_id, {
-                product_id: item.product_id,
-                quantity: item.quantity,
-                pricing_type: item.product?.pricing_type || 'per_item',
-                estimated_price: parseFloat(item.total_price || 0).toFixed(2),
-                is_estimated: false,
-                counts_toward_free_shipping: item.product?.counts_toward_free_shipping !== undefined 
-                  ? item.product.counts_toward_free_shipping 
-                  : true
-              })
+      this.deal.products.forEach(product => {
+        const selection = this.selectedItems[product.id]
+        if (selection && selection.quantity > 0) {
+          // Calculate estimated price for this item
+          const quantity = selection.quantity
+          let estimatedPrice = 0
+          let isEstimated = false
+          
+          if (product.pricing_type === 'per_item') {
+            const price = product.deal_price || product.display_price || product.sale_price || 0
+            estimatedPrice = parseFloat(price) * quantity
+          } else if (product.pricing_type === 'weight_range') {
+            // Use LOWEST price for estimation (conservative estimate)
+            const ranges = product.pricing_data?.ranges || []
+            if (ranges.length > 0) {
+              const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
+              estimatedPrice = minPrice * quantity
+              isEstimated = true
             }
+          } else if (product.pricing_type === 'unit_weight') {
+            // Use a default estimated weight (1 unit) for estimation
+            const pricePerUnit = product.pricing_data?.price_per_unit || 0
+            const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
+            estimatedPrice = parseFloat(pricePerUnit) * estimatedWeight * quantity
+            isEstimated = true
+          } else if (product.pricing_type === 'bundled_weight') {
+            // quantity = number of packages
+            // Use mid-weight (average) for estimation
+            const pricePerUnit = product.pricing_data?.price_per_unit || 0
+            const minWeight = product.pricing_data?.min_weight || 7
+            const maxWeight = product.pricing_data?.max_weight || 15
+            const midWeight = (minWeight + maxWeight) / 2
+            estimatedPrice = parseFloat(pricePerUnit) * midWeight * quantity
+            isEstimated = true
+          }
+          
+          orderItems.push({
+            product_id: product.id,
+            quantity: selection.quantity,
+            pricing_type: product.pricing_type,
+            estimated_price: estimatedPrice.toFixed(2),
+            is_estimated: isEstimated,
+            counts_toward_free_shipping: product.counts_toward_free_shipping !== undefined 
+              ? product.counts_toward_free_shipping 
+              : true
           })
         }
-        
-        // Then, update/add with current selections from deal products
-        this.deal.products.forEach(product => {
-          const selection = this.selectedItems[product.id]
-          if (selection && selection.quantity > 0) {
-            // Calculate estimated price for this item
-            const quantity = selection.quantity
-            let estimatedPrice = 0
-            let isEstimated = false
-            
-            if (product.pricing_type === 'per_item') {
-              const price = product.deal_price || product.display_price || product.sale_price || 0
-              estimatedPrice = parseFloat(price) * quantity
-            } else if (product.pricing_type === 'weight_range') {
-              // Use LOWEST price for estimation (conservative estimate)
-              const ranges = product.pricing_data?.ranges || []
-              if (ranges.length > 0) {
-                const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
-                estimatedPrice = minPrice * quantity
-                isEstimated = true
-              }
-            } else if (product.pricing_type === 'unit_weight') {
-              // Use a default estimated weight (1 unit) for estimation
-              const pricePerUnit = product.pricing_data?.price_per_unit || 0
-              const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
-              estimatedPrice = parseFloat(pricePerUnit) * estimatedWeight * quantity
-              isEstimated = true
-            } else if (product.pricing_type === 'bundled_weight') {
-              // quantity = number of packages
-              // Use mid-weight (average) for estimation
-              const pricePerUnit = product.pricing_data?.price_per_unit || 0
-              const minWeight = product.pricing_data?.min_weight || 7
-              const maxWeight = product.pricing_data?.max_weight || 15
-              const midWeight = (minWeight + maxWeight) / 2
-              estimatedPrice = parseFloat(pricePerUnit) * midWeight * quantity
-              isEstimated = true
-            }
-            
-            // Update or add to map (current selections override existing order items)
-            orderItemsMap.set(product.id, {
-              product_id: product.id,
-              quantity: selection.quantity,
-              pricing_type: product.pricing_type,
-              estimated_price: estimatedPrice.toFixed(2),
-              is_estimated: isEstimated,
-              counts_toward_free_shipping: product.counts_toward_free_shipping !== undefined 
-                ? product.counts_toward_free_shipping 
-                : true
-            })
-          }
-        })
-        
-        // Convert map to array (includes existing order items + current selections)
-        orderItems = Array.from(orderItemsMap.values())
-        
-        if (orderItems.length === 0) {
-          await this.warning('请至少选择一个商品')
-          return
-        }
+      })
+      
+      if (orderItems.length === 0) {
+        await this.warning('请至少选择一个商品')
+        return
       }
       
       // Store data in Pinia store for checkout page
       this.checkoutStore.setDeal(this.deal)
       this.checkoutStore.setOrderItems(orderItems)
       
-      // If there's existing order data, store it
-      if (this.existingOrderData) {
-        this.checkoutStore.setExistingOrder(
-          this.existingOrderData.orderId,
-          {
-            paymentMethod: this.existingOrderData.paymentMethod,
-            deliveryMethod: this.existingOrderData.deliveryMethod,
-            pickupLocation: this.existingOrderData.pickupLocation,
-            addressId: this.existingOrderData.addressId,
-            notes: this.existingOrderData.notes
-          },
-          this.existingOrder?.status || null
-        )
-      } else {
-        // Clear existing order data
-        this.checkoutStore.setExistingOrder(null, null, null)
-      }
+      // Clear existing order data - always create new order
+      this.checkoutStore.setExistingOrder(null, null, null)
       
       // Navigate to checkout page - it will use the store data
       this.$router.push('/checkout')
@@ -884,6 +666,7 @@ export default {
 .page-header {
   background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
   padding: var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
   box-shadow: var(--md-elevation-2);
   position: sticky;
   top: 0;
@@ -1311,48 +1094,6 @@ export default {
 
 .product-selection.disabled .quantity-control {
   opacity: 0.5;
-}
-
-.product-selection.read-only {
-  opacity: 0.85;
-  position: relative;
-}
-
-.product-selection.read-only .quantity-control {
-  opacity: 0.7;
-}
-
-.product-selection.read-only::after {
-  content: '（已订购，不可修改）';
-  display: block;
-  font-size: 11px;
-  color: #757575;
-  margin-top: 4px;
-  font-style: italic;
-}
-
-.existing-order-items-section {
-  margin-bottom: var(--md-spacing-lg);
-  padding-bottom: var(--md-spacing-lg);
-  border-bottom: 2px solid var(--md-surface-variant);
-}
-
-.subsection-title {
-  font-size: var(--md-body-size);
-  font-weight: 600;
-  color: var(--md-on-surface-variant);
-  margin-bottom: var(--md-spacing-md);
-}
-
-.read-only-item {
-  opacity: 0.85;
-}
-
-.read-only-note {
-  font-size: 11px;
-  color: #757575;
-  margin-top: 4px;
-  font-style: italic;
 }
 
 .product-selection {

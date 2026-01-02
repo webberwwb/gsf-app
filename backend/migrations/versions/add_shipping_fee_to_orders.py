@@ -27,3 +27,4 @@ def downgrade():
     op.drop_column('orders', 'shipping_fee')
 
 
+

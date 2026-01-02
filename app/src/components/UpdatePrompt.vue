@@ -14,11 +14,6 @@
         <button @click="updateApp" class="update-btn">
           刷新
         </button>
-        <button @click="dismissPrompt" class="dismiss-btn">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
       </div>
     </div>
   </transition>
@@ -79,9 +74,6 @@ export default {
         // Force reload to get latest version
         window.location.reload(true)
       }
-    },
-    dismissPrompt() {
-      this.showPrompt = false
     }
   }
 }
@@ -177,33 +169,6 @@ export default {
   transform: scale(0.95);
 }
 
-.dismiss-btn {
-  position: absolute;
-  top: var(--md-spacing-xs);
-  right: var(--md-spacing-xs);
-  width: 28px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 0;
-}
-
-.dismiss-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.dismiss-btn svg {
-  width: 16px;
-  height: 16px;
-  color: white;
-}
-
 /* Slide up animation */
 .slide-up-enter-active,
 .slide-up-leave-active {
@@ -243,6 +208,7 @@ export default {
   }
 }
 </style>
+
 
 
 

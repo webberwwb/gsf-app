@@ -3,7 +3,6 @@ from models import db
 from models.product import Product
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.product_sales_stats import ProductSalesStats
-from models.order import Order
 from datetime import datetime, timezone, date, timedelta
 from models.base import utc_now
 from sqlalchemy import func, desc
@@ -175,7 +174,7 @@ def get_group_deals():
 
 @products_bp.route('/group-deals/<int:deal_id>', methods=['GET'])
 def get_group_deal(deal_id):
-    """Get a single group deal by ID with products and user's order (if authenticated)"""
+    """Get a single group deal by ID with products. Orders are accessed via /orders endpoint."""
     try:
         deal = GroupDeal.query.filter(
             GroupDeal.id == deal_id,
@@ -198,44 +197,12 @@ def get_group_deal(deal_id):
         
         deal_dict['products'] = products_data
         
-        # Try to get user's order for this group deal (if authenticated)
-        user_order = None
-        user_id = get_user_id_optional()
-        if user_id:
-            # User is authenticated, check for existing order
-            order = Order.query.filter_by(
-                user_id=user_id,
-                group_deal_id=deal_id
-            ).filter(Order.deleted_at.is_(None)).order_by(Order.created_at.desc()).first()
-            
-            if order:
-                # Include order with full details
-                order_dict = order.to_dict()
-                
-                # Get order items with product details
-                items_data = []
-                for item in order.items:
-                    item_dict = item.to_dict()
-                    product = Product.query.get(item.product_id)
-                    if product:
-                        item_dict['product'] = {
-                            'id': product.id,
-                            'name': product.name,
-                            'image': product.image,
-                            'pricing_type': product.pricing_type
-                        }
-                    items_data.append(item_dict)
-                
-                order_dict['items'] = items_data
-                user_order = order_dict
+        # Don't return order data - allow users to place multiple orders per group deal
+        # Orders should be accessed via the /orders endpoint
         
         response_data = {
             'deal': deal_dict
         }
-        
-        # Include user's order if found
-        if user_order:
-            response_data['order'] = user_order
         
         return jsonify(response_data), 200
     except Exception as e:

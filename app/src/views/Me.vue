@@ -4,19 +4,33 @@
       <h1>账号管理</h1>
     </header>
     <main class="page-content">
-      <div class="profile-section">
-        <div class="profile-card">
-          <div class="avatar">{{ userInitial }}</div>
-          <div class="profile-info">
-            <h2>{{ userNickname || '用户' }}</h2>
-            <p class="phone">{{ userPhone || '未设置手机号' }}</p>
-            <p v-if="userWechat" class="wechat">微信号: {{ userWechat }}</p>
-            <p class="points">积分: {{ userPoints || 0 }}</p>
+      <!-- Not Authenticated State -->
+      <div v-if="!isAuthenticated" class="not-authenticated-state">
+        <div class="empty-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <h2>未登录</h2>
+        <p>请先登录以查看您的账号信息</p>
+        <button @click="goToLogin" class="signup-btn">立即登录</button>
+      </div>
+      
+      <!-- Authenticated Content -->
+      <template v-else>
+        <div class="profile-section">
+          <div class="profile-card">
+            <div class="avatar">{{ userInitial }}</div>
+            <div class="profile-info">
+              <h2>{{ userNickname || '用户' }}</h2>
+              <p class="phone">{{ userPhone || '未设置手机号' }}</p>
+              <p v-if="userWechat" class="wechat">微信号: {{ userWechat }}</p>
+              <p class="points">积分: {{ userPoints || 0 }}</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="menu-section">
+        <div class="menu-section">
         <div class="menu-item" @click="$router.push('/addresses')">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -57,9 +71,10 @@
         </button>
       </div>
 
-      <div class="logout-section">
-        <button @click="handleLogout" class="logout-btn">退出登录</button>
-      </div>
+        <div class="logout-section">
+          <button @click="handleLogout" class="logout-btn">退出登录</button>
+        </div>
+      </template>
     </main>
   </div>
 </template>
@@ -85,6 +100,9 @@ export default {
     }
   },
   computed: {
+    isAuthenticated() {
+      return this.authStore.isAuthenticated
+    },
     user() {
       return this.authStore.currentUser
     },
@@ -121,8 +139,16 @@ export default {
     }
   },
   mounted() {
-    this.loadUser()
-    this.loadVersions()
+    // Load auth from storage if not already loaded
+    if (!this.authStore.token) {
+      this.authStore.loadFromStorage()
+    }
+    
+    // Only load user data if authenticated
+    if (this.authStore.isAuthenticated) {
+      this.loadUser()
+      this.loadVersions()
+    }
   },
   methods: {
     loadUser() {
@@ -140,6 +166,9 @@ export default {
       } catch (error) {
         console.error('Failed to fetch user:', error)
       }
+    },
+    goToLogin() {
+      this.$router.push('/login')
     },
     async handleLogout() {
       const confirmed = await this.confirm('确定要退出登录吗？')
@@ -721,6 +750,66 @@ export default {
 .logout-btn:active {
   transform: translateY(0);
   box-shadow: var(--md-elevation-1);
+}
+
+.not-authenticated-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--md-spacing-xl);
+  text-align: center;
+  min-height: 50vh;
+}
+
+.not-authenticated-state .empty-icon {
+  width: 80px;
+  height: 80px;
+  color: var(--md-on-surface-variant);
+  opacity: 0.5;
+  margin-bottom: var(--md-spacing-md);
+}
+
+.not-authenticated-state .empty-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.not-authenticated-state h2 {
+  font-size: var(--md-title-size);
+  color: var(--md-on-surface);
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.not-authenticated-state p {
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-xl);
+}
+
+.signup-btn {
+  padding: var(--md-spacing-md) var(--md-spacing-xl);
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: white;
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--md-elevation-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.signup-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--md-elevation-4);
+}
+
+.signup-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-2);
 }
 </style>
 

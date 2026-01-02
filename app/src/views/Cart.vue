@@ -32,7 +32,7 @@
             <span>总计：</span>
             <span class="total-price">${{ totalPrice }}</span>
           </div>
-          <button class="checkout-btn">去结算</button>
+          <button @click="goToCheckout" class="checkout-btn">去结算</button>
         </div>
       </div>
     </main>
@@ -66,6 +66,10 @@ export default {
     },
     decreaseQuantity(item) {
       this.cartStore.decreaseQuantity(item.id)
+    },
+    goToCheckout() {
+      // Navigate to checkout - authentication will be handled there
+      this.$router.push('/checkout')
     }
   }
 }
@@ -81,6 +85,7 @@ export default {
 .page-header {
   background: var(--md-surface);
   padding: var(--md-spacing-md);
+  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
   border-bottom: none;
   box-shadow: var(--md-elevation-1);
   position: sticky;

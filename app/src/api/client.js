@@ -34,11 +34,9 @@ apiClient.interceptors.response.use(
         const authStore = useAuthStore()
         authStore.clearAuth()
         
-        // Only redirect if not already on login page and not in router guard
-        // (router guard will handle the redirect)
-        if (window.location.pathname !== '/login' && !error.config?.skipRedirect) {
-          window.location.href = '/login'
-        }
+        // Don't redirect guests to login - allow guest browsing
+        // Only clear auth, don't redirect
+        // Pages will handle showing "未登录" message if needed
       })
     }
     

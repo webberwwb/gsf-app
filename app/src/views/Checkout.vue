@@ -13,7 +13,99 @@
     </header>
 
     <div v-if="loading" class="loading">加载中...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-else-if="error && !needsPhoneValidation && !needsWechatInfo" class="error">{{ error }}</div>
+    
+    <!-- Authentication Required Section -->
+    <div v-else-if="needsPhoneValidation || needsWechatInfo" class="auth-required-section">
+      <div class="auth-card">
+        <h2 class="auth-title">完善个人信息</h2>
+        <p v-if="needsPhoneValidation" class="auth-subtitle">为了完成订单，请先用手机号验证登录</p>
+        <p v-else-if="needsWechatInfo" class="auth-subtitle">请完善个人信息，便于订单联系和通知</p>
+        
+        <!-- Phone Validation Form -->
+        <div v-if="needsPhoneValidation" class="auth-form">
+          <div class="form-group">
+            <label class="form-label">手机号码</label>
+            <input
+              v-model="phone"
+              type="tel"
+              placeholder="例如: 4161234567"
+              class="form-input"
+              :disabled="otpSent || verifyingOTP"
+              @input="formatPhoneInput"
+            />
+            <p class="form-hint">输入10位号码即可，自动添加 +1 区号</p>
+          </div>
+          
+          <button 
+            v-if="!otpSent"
+            @click="sendOTP" 
+            class="auth-btn primary"
+            :disabled="!isPhoneValid || verifyingOTP"
+          >
+            发送验证码
+          </button>
+          
+          <div v-if="otpSent" class="otp-form">
+            <div class="form-group">
+              <label class="form-label">验证码</label>
+              <input
+                v-model="otp"
+                type="text"
+                placeholder="请输入6位验证码"
+                class="form-input"
+                maxlength="6"
+                :disabled="verifyingOTP"
+              />
+            </div>
+            <button 
+              @click="verifyOTP" 
+              class="auth-btn primary"
+              :disabled="!otp || otp.length !== 6 || verifyingOTP"
+            >
+              {{ verifyingOTP ? '验证中...' : '验证并继续' }}
+            </button>
+          </div>
+        </div>
+        
+        <!-- WeChat Info Form -->
+        <div v-else-if="needsWechatInfo" class="auth-form">
+          <div class="form-group">
+            <label class="form-label">姓名/昵称</label>
+            <input
+              v-model="nickname"
+              type="text"
+              placeholder="请输入您的姓名或昵称"
+              class="form-input"
+              :disabled="updatingWechat"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">微信号</label>
+            <input
+              v-model="wechat"
+              type="text"
+              placeholder="请输入您的微信号"
+              class="form-input"
+              :disabled="updatingWechat"
+            />
+          </div>
+          
+          <button 
+            @click="updateWechat" 
+            class="auth-btn primary"
+            :disabled="!nickname || !nickname.trim() || !wechat || !wechat.trim() || updatingWechat"
+          >
+            {{ updatingWechat ? '保存中...' : '保存并继续' }}
+          </button>
+        </div>
+        
+        <div v-if="error" class="auth-error">{{ error }}</div>
+      </div>
+    </div>
+    
+    <!-- Checkout Content -->
     <div v-else class="checkout-content">
       <!-- Order Summary -->
       <div class="order-summary-section">
@@ -268,13 +360,22 @@
       </div>
 
       <!-- Confirm Order Button -->
-      <div class="confirm-order-section">
+      <div v-if="deal && orderItems.length > 0" class="confirm-order-section">
         <button 
+          v-if="isAuthenticated"
           @click="confirmOrder" 
           :disabled="!canConfirm"
           class="confirm-order-btn"
         >
           <span class="btn-text">确认订单</span>
+          <span class="btn-amount">{{ isOrderCompleted ? '' : (hasEstimatedTotal ? '预估' : '') }}${{ calculateTotal() }}</span>
+        </button>
+        <button 
+          v-else
+          @click="goToLogin"
+          class="confirm-order-btn login-btn"
+        >
+          <span class="btn-text">登陆下单</span>
           <span class="btn-amount">{{ isOrderCompleted ? '' : (hasEstimatedTotal ? '预估' : '') }}${{ calculateTotal() }}</span>
         </button>
       </div>
@@ -352,6 +453,7 @@
 import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
 import { useCheckoutStore } from '../stores/checkout'
+import { useAuthStore } from '../stores/auth'
 import { formatDateEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 
@@ -362,8 +464,9 @@ export default {
   },
   setup() {
     const checkoutStore = useCheckoutStore()
+    const authStore = useAuthStore()
     const { success, error: showError } = useModal()
-    return { checkoutStore, success, showError }
+    return { checkoutStore, authStore, success, showError }
   },
   data() {
     return {
@@ -373,10 +476,35 @@ export default {
       addressesLoading: false,
       showAddressModal: false,
       showAddressForm: false,
-      editingAddress: null
+      editingAddress: null,
+      // Auth flow data
+      phone: '',
+      otp: '',
+      otpSent: false,
+      verifyingOTP: false,
+      nickname: '',
+      wechat: '',
+      updatingWechat: false
     }
   },
   computed: {
+    isAuthenticated() {
+      return this.authStore.isAuthenticated
+    },
+    currentUser() {
+      return this.authStore.currentUser
+    },
+    needsPhoneValidation() {
+      return !this.isAuthenticated || !this.currentUser?.phone
+    },
+    needsWechatInfo() {
+      return this.isAuthenticated && this.currentUser && (!this.currentUser.wechat || !this.currentUser.nickname)
+    },
+    isPhoneValid() {
+      if (!this.phone) return false
+      const digits = this.phone.replace(/\D/g, '')
+      return digits.length === 10 || (digits.length >= 11 && digits.startsWith('1'))
+    },
     deal() {
       return this.checkoutStore.deal
     },
@@ -455,7 +583,36 @@ export default {
     }
   },
   async mounted() {
-    await this.loadCheckoutData()
+    // Load auth from storage if not already loaded
+    if (!this.authStore.token) {
+      this.authStore.loadFromStorage()
+    }
+    
+    // Check authentication first
+    if (!this.isAuthenticated) {
+      // Try to load from storage
+      await this.checkAuth()
+    }
+    
+    // If authenticated, check if we need wechat/nickname
+    if (this.isAuthenticated) {
+      if (this.needsWechatInfo) {
+        // Pre-fill nickname if user already has one
+        if (this.currentUser?.nickname) {
+          this.nickname = this.currentUser.nickname
+        }
+        // Pre-fill wechat if user already has one
+        if (this.currentUser?.wechat) {
+          this.wechat = this.currentUser.wechat
+        }
+        this.loading = false
+      } else {
+        await this.loadCheckoutData()
+      }
+    } else {
+      // Show auth form
+      this.loading = false
+    }
   },
   watch: {
     deliveryMethod(newVal) {
@@ -466,6 +623,101 @@ export default {
     }
   },
   methods: {
+    async checkAuth() {
+      if (this.authStore.token) {
+        const isValid = await this.authStore.checkAuth()
+        return isValid
+      }
+      return false
+    },
+    async sendOTP() {
+      this.error = null
+      if (!this.isPhoneValid) {
+        this.error = '请输入有效的手机号码'
+        return
+      }
+      
+      try {
+        const response = await apiClient.post('/auth/phone/send-otp', {
+          phone: this.phone,
+          channel: 'sms'
+        })
+        
+        this.otpSent = true
+        if (response.data.otp) {
+          await this.success(`验证码: ${response.data.otp}\n\n(开发模式)`)
+        }
+      } catch (error) {
+        this.error = error.response?.data?.message || error.response?.data?.error || '发送验证码失败'
+        console.error('OTP send error:', error)
+      }
+    },
+    async verifyOTP() {
+      if (!this.otp || this.otp.length !== 6) {
+        this.error = '请输入6位验证码'
+        return
+      }
+      
+      this.verifyingOTP = true
+      this.error = null
+      
+      try {
+        await this.authStore.login(this.phone, this.otp)
+        // After successful login, check if wechat/nickname is needed
+        if (this.needsWechatInfo) {
+          // Pre-fill nickname if user already has one
+          if (this.currentUser?.nickname) {
+            this.nickname = this.currentUser.nickname
+          }
+          // Pre-fill wechat if user already has one
+          if (this.currentUser?.wechat) {
+            this.wechat = this.currentUser.wechat
+          }
+          // Will show wechat/nickname form
+        } else {
+          // Proceed with checkout
+          await this.loadCheckoutData()
+        }
+      } catch (error) {
+        this.error = error.response?.data?.message || error.response?.data?.error || '验证码错误'
+        console.error('OTP verification error:', error)
+      } finally {
+        this.verifyingOTP = false
+      }
+    },
+    async updateWechat() {
+      if (!this.nickname || !this.nickname.trim()) {
+        this.error = '请输入姓名/昵称'
+        return
+      }
+      
+      if (!this.wechat || !this.wechat.trim()) {
+        this.error = '请输入微信号'
+        return
+      }
+      
+      this.updatingWechat = true
+      this.error = null
+      
+      try {
+        // Update both nickname and wechat
+        const response = await apiClient.put('/auth/me/wechat', {
+          wechat: this.wechat.trim(),
+          nickname: this.nickname.trim()
+        })
+        
+        if (response.data.user) {
+          this.authStore.setUser(response.data.user)
+          // After updating, proceed with checkout
+          await this.loadCheckoutData()
+        }
+      } catch (error) {
+        this.error = error.response?.data?.message || error.response?.data?.error || '更新信息失败'
+        console.error('Update wechat/nickname error:', error)
+      } finally {
+        this.updatingWechat = false
+      }
+    },
     async loadCheckoutData() {
       this.loading = true
       this.error = null
@@ -546,10 +798,15 @@ export default {
       return product ? product.name : '商品'
     },
     calculateSubtotal() {
-      return this.checkoutStore.subtotal.toFixed(2)
+      const subtotal = this.checkoutStore.subtotal || 0
+      return subtotal.toFixed(2)
     },
     calculateTotal() {
-      return this.checkoutStore.total.toFixed(2)
+      const total = this.checkoutStore.total || 0
+      return total.toFixed(2)
+    },
+    formatPhoneInput() {
+      this.phone = this.phone.trim()
     },
     formatDate(dateString) {
       return formatDateEST_CN(dateString)
@@ -557,8 +814,28 @@ export default {
     goToAddresses() {
       this.$router.push('/addresses')
     },
+    goToLogin() {
+      this.$router.push('/login')
+    },
     async confirmOrder() {
       if (!this.canConfirm) {
+        return
+      }
+
+      // Ensure user is authenticated
+      if (!this.isAuthenticated) {
+        this.error = '请先完成手机验证'
+        return
+      }
+
+      // Ensure we have deal and order items
+      if (!this.deal || !this.deal.id) {
+        this.error = '订单信息不完整，请重新选择商品'
+        return
+      }
+
+      if (!this.orderItems || this.orderItems.length === 0) {
+        this.error = '请至少选择一个商品'
         return
       }
 
@@ -1832,6 +2109,147 @@ export default {
   .btn-amount {
     font-size: var(--md-title-size);
   }
+}
+
+/* Auth Required Section Styles */
+.auth-required-section {
+  padding: var(--md-spacing-xl) var(--md-spacing-md);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: calc(100vh - 200px);
+}
+
+.auth-card {
+  background: var(--md-surface);
+  border-radius: var(--md-radius-lg);
+  padding: var(--md-spacing-xl);
+  max-width: 500px;
+  width: 100%;
+  box-shadow: var(--md-elevation-3);
+}
+
+.auth-title {
+  font-size: var(--md-headline-size);
+  color: var(--md-on-surface);
+  margin-bottom: var(--md-spacing-sm);
+  font-weight: 500;
+  text-align: center;
+}
+
+.auth-subtitle {
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-xl);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-lg);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-xs);
+}
+
+.form-label {
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface);
+  font-weight: 500;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.875rem;
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  margin-bottom: var(--md-spacing-sm);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-family: var(--md-font-family);
+}
+
+.form-input:hover {
+  border-color: var(--md-outline);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  border-width: 2px;
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+}
+
+.form-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #F5F5F5;
+}
+
+.form-hint {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-top: var(--md-spacing-xs);
+}
+
+.otp-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid var(--md-surface-variant);
+}
+
+.auth-btn {
+  width: 100%;
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.auth-btn.primary {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: white;
+  box-shadow: var(--md-elevation-2);
+}
+
+.auth-btn.primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--md-elevation-4);
+}
+
+.auth-btn.primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-2);
+}
+
+.auth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-error {
+  background: #FFEBEE;
+  color: #C62828;
+  padding: var(--md-spacing-md);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  margin-top: var(--md-spacing-md);
+  border-left: 4px solid #C62828;
 }
 </style>
 

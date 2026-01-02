@@ -30,6 +30,28 @@ app.config.errorHandler = (err, instance, info) => {
 
 try {
   app.mount('#app')
+  
+  // Ensure page starts at top on initial load (important for mobile)
+  window.addEventListener('load', () => {
+    window.scrollTo(0, 0)
+    if (document.documentElement) {
+      document.documentElement.scrollTop = 0
+    }
+    if (document.body) {
+      document.body.scrollTop = 0
+    }
+  })
+  
+  // Also scroll to top immediately after mount
+  setTimeout(() => {
+    window.scrollTo(0, 0)
+    if (document.documentElement) {
+      document.documentElement.scrollTop = 0
+    }
+    if (document.body) {
+      document.body.scrollTop = 0
+    }
+  }, 100)
 } catch (error) {
   console.error('Failed to mount app:', error)
   document.getElementById('app').innerHTML = `

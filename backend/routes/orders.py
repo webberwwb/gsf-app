@@ -6,7 +6,7 @@ from models.product import Product
 from models.user import User, AuthToken
 from datetime import datetime, timezone
 from models.base import utc_now
-from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, PaymentMethod
+from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, PaymentMethod, GroupDealStatus
 from schemas.order import CreateOrderSchema, UpdateOrderSchema
 from schemas.utils import validate_request
 from decimal import Decimal
@@ -264,19 +264,7 @@ def create_order():
         if group_deal.order_end_date and group_deal.order_end_date < now:
             return jsonify({'error': 'This group deal is no longer accepting orders'}), 400
         
-        # Check if user already has an order for this group deal
-        existing_order = Order.query.filter_by(
-            user_id=user_id,
-            group_deal_id=group_deal_id
-        ).filter(Order.deleted_at.is_(None)).first()
-        
-        # If order exists, return error - user should use PATCH to update
-        if existing_order:
-            return jsonify({
-                'error': 'Order already exists for this group deal',
-                'order_id': existing_order.id,
-                'message': 'Use PATCH /orders/<order_id> to update existing order'
-            }), 409
+        # Allow multiple orders per group deal - users can place multiple orders
         
         # Verify address belongs to user if delivery method is selected
         if delivery_method == DeliveryMethod.DELIVERY.value:
@@ -539,6 +527,96 @@ def cancel_order(order_id):
         current_app.logger.error(f'Error cancelling order: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to cancel order',
+            'message': str(e)
+        }), 500
+
+@orders_bp.route('/orders/<int:order_id>/reactivate', methods=['POST'])
+def reactivate_order(order_id):
+    """Reactivate a cancelled order (change status back to submitted)"""
+    user_id, error_response, status_code = require_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get the order
+        order = Order.query.filter(Order.id == order_id).filter(Order.deleted_at.is_(None)).first()
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+        
+        # Check if user can access this order
+        if not can_access_order(user_id, order):
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Check if order is cancelled
+        if order.status != OrderStatus.CANCELLED.value:
+            return jsonify({'error': '只能重新激活已取消的订单'}), 400
+        
+        # Get group deal for validation (excluding soft-deleted)
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
+        if not group_deal:
+            return jsonify({'error': 'Group deal not found'}), 404
+        
+        # Check if group deal is still accepting orders
+        now = utc_now()
+        if group_deal.order_end_date and group_deal.order_end_date < now:
+            return jsonify({'error': '团购已截单，无法提交订单'}), 400
+        
+        if group_deal.status == GroupDealStatus.CLOSED.value:
+            return jsonify({'error': '团购已截单，无法提交订单'}), 400
+        
+        # Reactivate the order
+        order.status = OrderStatus.SUBMITTED.value
+        order.updated_at = utc_now()
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Order {order_id} reactivated by user {user_id}')
+        
+        # Return updated order
+        order_dict = order.to_dict()
+        
+        # Get group deal info
+        order_dict['group_deal'] = {
+            'id': group_deal.id,
+            'title': group_deal.title,
+            'description': group_deal.description,
+            'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
+            'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
+            'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
+            'status': group_deal.status
+        }
+        order_dict['is_editable'] = True  # Reactivated orders are editable
+        
+        # Get order items with product details
+        items_data = []
+        for item in order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = {
+                    'id': product.id,
+                    'name': product.name,
+                    'image': product.image,
+                    'pricing_type': product.pricing_type
+                }
+            items_data.append(item_dict)
+        
+        order_dict['items'] = items_data
+        
+        return jsonify({
+            'order': order_dict,
+            'message': '订单已重新激活'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error reactivating order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to reactivate order',
             'message': str(e)
         }), 500
 
