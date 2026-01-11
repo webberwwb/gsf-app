@@ -34,18 +34,20 @@
           {{ deal.description }}
         </div>
         
-        <div class="deal-dates">
-          <div class="date-item">
-            <span class="date-label">下单时间:</span>
-            <span class="date-value">
-              {{ formatDateTime(deal.order_start_date) }} - {{ formatDateTime(deal.order_end_date) }}
-            </span>
-          </div>
-          <div class="date-item">
-            <span class="date-label">取货时间:</span>
-            <span class="date-value">{{ formatDateTime(deal.pickup_date) }}</span>
-          </div>
-        </div>
+            <div class="deal-dates">
+              <div class="date-item">
+                <span class="date-label">开团时间:</span>
+                <span class="date-value">{{ formatDateTime(deal.order_start_date) }}</span>
+              </div>
+              <div class="date-item">
+                <span class="date-label">截单时间:</span>
+                <span class="date-value">{{ formatDateTime(deal.order_end_date) }}</span>
+              </div>
+              <div class="date-item">
+                <span class="date-label">取货时间:</span>
+                <span class="date-value">{{ formatPickupDate(deal.pickup_date) }}</span>
+              </div>
+            </div>
         
         <div v-if="deal.products && deal.products.length > 0" class="deal-products">
           <div class="products-header">
@@ -89,7 +91,7 @@
 <script>
 import apiClient from '../api/client'
 import GroupDealForm from '../components/GroupDealForm.vue'
-import { formatDateTimeEST_CN } from '../utils/date'
+import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 
 export default {
@@ -171,6 +173,9 @@ export default {
     },
     formatDateTime(dateString) {
       return formatDateTimeEST_CN(dateString) || 'N/A'
+    },
+    formatPickupDate(dateString) {
+      return formatPickupDateTime_CN(dateString) || 'N/A'
     },
     viewDealDetail(dealId) {
       this.$router.push(`/group-deals/${dealId}`)

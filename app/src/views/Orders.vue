@@ -65,7 +65,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
-                取货日期: {{ formatDate(order.group_deal.pickup_date) }}
+                取货日期: {{ formatPickupDate(order.group_deal.pickup_date) }}
               </span>
             </div>
           </div>
@@ -181,52 +181,16 @@
                 <span v-if="order.status === 'completed'" class="completed-badge">订单已完成</span>
                 <span v-else-if="!order.is_editable" class="deadline-badge">已截单</span>
                 <template v-else-if="order.is_editable && order.status !== 'cancelled'">
-                  <button @click.stop="confirmCancelOrder(order)" class="cancel-btn">
+                  <button @click.stop="viewOrderDetail(order)" class="edit-order-btn">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
-                    取消订单
+                    修改订单
                   </button>
                 </template>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Cancel Order Confirmation Modal -->
-    <div v-if="showCancelModal" class="modal-overlay" @click="closeCancelModal">
-      <div class="modal-content cancel-modal" @click.stop>
-        <div class="modal-header">
-          <h2>取消订单</h2>
-          <button @click="closeCancelModal" class="close-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div class="modal-body">
-          <div v-if="cancellingOrder" class="cancel-warning">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div class="warning-content">
-              <h3>确认取消订单？</h3>
-              <p>订单号: {{ cancellingOrder.order_number }}</p>
-              <p class="warning-text">取消后将无法恢复此订单</p>
-            </div>
-          </div>
-
-          <div v-if="cancelError" class="error-message">{{ cancelError }}</div>
-        </div>
-
-        <div class="modal-footer">
-          <button @click="closeCancelModal" class="cancel-btn-secondary">返回</button>
-          <button @click="cancelOrder" class="confirm-cancel-btn" :disabled="cancelling">
-            {{ cancelling ? '取消中...' : '确认取消' }}
-          </button>
         </div>
       </div>
     </div>
@@ -287,7 +251,7 @@
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
 import QRCode from 'qrcode'
-import { formatDateEST_CN } from '../utils/date'
+import { formatDateEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useAuthStore } from '../stores/auth'
 
 export default {
@@ -310,10 +274,6 @@ export default {
         { key: 'completed', label: '已完成' },
         { key: 'cancelled', label: '已取消' }
       ],
-      showCancelModal: false,
-      cancellingOrder: null,
-      cancelling: false,
-      cancelError: null,
       qrRefs: {},
       showEMTModal: false,
       emtModalOrder: null,
@@ -393,6 +353,9 @@ export default {
     formatDate(dateString) {
       return formatDateEST_CN(dateString)
     },
+    formatPickupDate(dateString) {
+      return formatPickupDateTime_CN(dateString)
+    },
     getStatusLabel(status) {
       const labels = {
         'submitted': '已提交订单',
@@ -457,43 +420,6 @@ export default {
         'downtown': '市中心'
       }
       return locationMap[location] || location
-    },
-    confirmCancelOrder(order) {
-      this.cancellingOrder = order
-      this.showCancelModal = true
-      this.cancelError = null
-    },
-    closeCancelModal() {
-      this.showCancelModal = false
-      this.cancellingOrder = null
-      this.cancelError = null
-    },
-    async cancelOrder() {
-      if (!this.cancellingOrder) return
-      
-      this.cancelling = true
-      this.cancelError = null
-      
-      try {
-        const response = await apiClient.post(`/orders/${this.cancellingOrder.id}/cancel`)
-        
-        // Update the order in the list
-        const index = this.orders.findIndex(o => o.id === this.cancellingOrder.id)
-        if (index !== -1) {
-          this.orders[index] = response.data.order
-        }
-        
-        // Close modal and show success
-        this.closeCancelModal()
-        
-        // Show success message
-        await this.success('订单已取消')
-      } catch (error) {
-        this.cancelError = error.response?.data?.message || error.response?.data?.error || '取消订单失败'
-        console.error('Failed to cancel order:', error)
-      } finally {
-        this.cancelling = false
-      }
     },
     setQRRef(orderId, el) {
       if (el) {
@@ -984,6 +910,38 @@ export default {
   align-items: center;
   gap: var(--md-spacing-sm);
   height: 100%;
+}
+
+.edit-order-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border: none;
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: white;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  line-height: 1.5;
+  height: 36px;
+  box-shadow: 0 2px 4px rgba(255, 165, 0, 0.2);
+}
+
+.edit-order-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.edit-order-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(255, 165, 0, 0.3);
+}
+
+.edit-order-btn:active {
+  transform: translateY(0);
 }
 
 .cancel-btn {

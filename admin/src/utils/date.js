@@ -89,3 +89,34 @@ export function parseDateEST(dateString) {
   if (!dateString) return null
   return new Date(dateString)
 }
+
+/**
+ * Format pickup date/time - shows "时间待定" (TBD) for time if it's midnight (00:00:00)
+ * @param {string} dateString - ISO date string
+ * @returns {string} Formatted pickup date string
+ */
+export function formatPickupDateTime_CN(dateString) {
+  if (!dateString) return ''
+  
+  // Parse the date components manually to avoid timezone conversion issues
+  const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/)
+  if (match) {
+    const [, year, month, day, hour, minute] = match
+    const hourNum = parseInt(hour)
+    const minuteNum = parseInt(minute)
+    
+    // Check if time is midnight (00:00:00)
+    if (hourNum === 0 && minuteNum === 0) {
+      // Only show date, time is TBD
+      return `${year}-${month}-${day} 时间待定`
+    }
+    
+    // Show full datetime
+    const formattedHour = String(hourNum).padStart(2, '0')
+    const formattedMinute = String(minuteNum).padStart(2, '0')
+    return `${year}-${month}-${day} ${formattedHour}:${formattedMinute}`
+  }
+  
+  // Fallback to formatDateTimeEST_CN
+  return formatDateTimeEST_CN(dateString)
+}

@@ -350,8 +350,8 @@ def create_order():
         tax = Decimal('0')
         total = Decimal(str(subtotal)) + tax + shipping_fee
         
-        # Calculate points (1 point per dollar)
-        points_earned = int(total)
+        # Calculate points (1 point per dollar, excluding shipping fee)
+        points_earned = int(Decimal(str(subtotal)) + tax)
         
         # Generate unique order number
         order_number = generate_order_number()
@@ -773,8 +773,8 @@ def update_order(order_id):
         tax = Decimal('0')
         total = Decimal(str(subtotal)) + tax + shipping_fee
         
-        # Calculate points (1 point per dollar)
-        points_earned = int(total)
+        # Calculate points (1 point per dollar, excluding shipping fee)
+        points_earned = int(Decimal(str(subtotal)) + tax)
         
         # Delete old order items
         OrderItem.query.filter_by(order_id=order.id).delete()

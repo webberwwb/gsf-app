@@ -1604,8 +1604,9 @@ def update_order_payment(order_id):
         
         # If changing from unpaid to paid, calculate points and complete order
         if old_payment_status == PaymentStatus.UNPAID.value and payment_status == PaymentStatus.PAID.value:
-            # Calculate points: 1 point per cent ($0.01)
-            total_cents = int(float(order.total) * 100)
+            # Calculate points: 1 point per cent ($0.01), excluding shipping fee
+            subtotal_and_tax = float(order.subtotal) + float(order.tax or 0)
+            total_cents = int(subtotal_and_tax * 100)
             order.points_earned = total_cents
             order.payment_date = utc_now()
             
@@ -1754,8 +1755,11 @@ def update_order_weights(order_id):
         
         # Recalculate order totals
         tax = 0
-        total = subtotal + tax
-        points_earned = int(total * 100)  # 1 point per cent
+        # Include shipping fee in total if it exists
+        shipping_fee = order.shipping_fee or 0
+        total = subtotal + tax + shipping_fee
+        # Calculate points excluding shipping fee: 1 point per cent
+        points_earned = int((subtotal + tax) * 100)
         
         order.subtotal = subtotal
         order.tax = tax
@@ -1891,8 +1895,11 @@ def update_admin_order(order_id):
         
         # Recalculate order totals
         tax = 0
-        total = subtotal + tax
-        points_earned = int(total * 100)  # 1 point per cent
+        # Include shipping fee in total if it exists
+        shipping_fee = order.shipping_fee or 0
+        total = subtotal + tax + shipping_fee
+        # Calculate points excluding shipping fee: 1 point per cent
+        points_earned = int((subtotal + tax) * 100)
         
         order.subtotal = subtotal
         order.tax = tax
@@ -2456,4 +2463,3 @@ def export_group_deal_delivery_csv(deal_id):
             'error': 'Failed to export delivery CSV',
             'message': str(e)
         }), 500
-

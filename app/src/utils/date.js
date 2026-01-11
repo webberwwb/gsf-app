@@ -38,6 +38,35 @@ export function formatDateTimeEST_CN(dateString) {
 }
 
 /**
+ * Format pickup date/time - shows "TBD" for time if it's midnight (00:00:00)
+ * @param {string} dateString - ISO date string
+ * @returns {string} Formatted pickup date string
+ */
+export function formatPickupDateTime_CN(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  
+  // Check if time is midnight (00:00:00)
+  if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0) {
+    // Only show date, time is TBD
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }) + ' 时间待定'
+  }
+  
+  // Show full datetime
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+/**
  * Get current date/time
  * @returns {Date} Current date
  */

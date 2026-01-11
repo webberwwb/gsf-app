@@ -54,6 +54,12 @@
           <option value="pickup">自取</option>
           <option value="delivery">配送</option>
         </select>
+        
+        <select v-model="pickupLocationFilter" v-if="deliveryMethodFilter === 'pickup'" class="filter-select">
+          <option value="">全部自取点</option>
+          <option value="markham">Markham</option>
+          <option value="northyork">North York</option>
+        </select>
       </div>
     </div>
 
@@ -164,6 +170,7 @@ export default {
       paymentFilter: '',
       paymentMethodFilter: '',
       deliveryMethodFilter: '',
+      pickupLocationFilter: '',
       currentPage: 1,
       showQRScanner: false,
       qrScanner: null,
@@ -194,6 +201,14 @@ export default {
       this.fetchOrders()
     },
     deliveryMethodFilter() {
+      this.currentPage = 1
+      // Reset pickup location filter when delivery method changes
+      if (this.deliveryMethodFilter !== 'pickup') {
+        this.pickupLocationFilter = ''
+      }
+      this.fetchOrders()
+    },
+    pickupLocationFilter() {
       this.currentPage = 1
       this.fetchOrders()
     }
@@ -247,6 +262,9 @@ export default {
         }
         if (this.deliveryMethodFilter) {
           params.delivery_method = this.deliveryMethodFilter
+        }
+        if (this.pickupLocationFilter) {
+          params.pickup_location = this.pickupLocationFilter
         }
         
         const response = await apiClient.get('/admin/orders', { params })

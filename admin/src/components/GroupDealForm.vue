@@ -39,26 +39,26 @@
         <!-- Dates -->
         <div class="form-row">
           <div class="form-group">
-            <label for="order_start_date">下单日期 *</label>
+            <label for="order_start_date">开团时间 *</label>
             <input
               id="order_start_date"
               v-model="formData.order_start_date"
-              type="date"
+              type="datetime-local"
               required
               class="form-input"
             />
-            <small class="form-hint">开始时间: 00:00:00</small>
+            <small class="form-hint">团购开始时间</small>
           </div>
           <div class="form-group">
-            <label for="order_end_date">下单结束日期 *</label>
+            <label for="order_end_date">截单时间 *</label>
             <input
               id="order_end_date"
               v-model="formData.order_end_date"
-              type="date"
+              type="datetime-local"
               required
               class="form-input"
             />
-            <small class="form-hint">结束时间: 23:59:59</small>
+            <small class="form-hint">团购截止时间</small>
           </div>
         </div>
 
@@ -71,7 +71,7 @@
             required
             class="form-input"
           />
-          <small class="form-hint">取货时间: 00:00:00</small>
+          <small class="form-hint">取货日期（时间待定）</small>
         </div>
 
         <!-- Status -->
@@ -248,7 +248,7 @@ export default {
           description: this.deal.description || '',
           order_start_date: this.formatDateTimeLocal(this.deal.order_start_date),
           order_end_date: this.formatDateTimeLocal(this.deal.order_end_date),
-          pickup_date: this.formatDateTimeLocal(this.deal.pickup_date),
+          pickup_date: this.formatDateOnly(this.deal.pickup_date),
           status: this.deal.status || 'upcoming'
         }
         
@@ -266,9 +266,24 @@ export default {
     },
     formatDateTimeLocal(dateString) {
       if (!dateString) return ''
-      // Extract date part from ISO string (YYYY-MM-DD)
-      // This avoids timezone conversion issues
-      return dateString.split('T')[0]
+      // Convert ISO string to datetime-local format (YYYY-MM-DDTHH:mm)
+      // Remove seconds and timezone info
+      const date = new Date(dateString)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      return `${year}-${month}-${day}T${hours}:${minutes}`
+    },
+    formatDateOnly(dateString) {
+      if (!dateString) return ''
+      // Convert ISO string to date format (YYYY-MM-DD)
+      const date = new Date(dateString)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
     },
     toggleProduct(product) {
       const index = this.selectedProducts.findIndex(p => p.id === product.id)
@@ -296,13 +311,14 @@ export default {
 
       try {
         // Prepare data
-        // Send date strings only (YYYY-MM-DD) and let backend handle EST normalization
+        // For order start/end dates: send datetime in EST with HH:mm:ss format
+        // For pickup date: send date only (YYYY-MM-DD), backend will set time as TBD (00:00:00)
         const data = {
           title: this.formData.title,
           description: this.formData.description,
-          order_start_date: this.formData.order_start_date, // Backend will normalize to 00:00:00 EST
-          order_end_date: this.formData.order_end_date,     // Backend will normalize to 23:59:59 EST
-          pickup_date: this.formData.pickup_date,           // Backend will normalize to 00:00:00 EST
+          order_start_date: this.formData.order_start_date ? this.formData.order_start_date + ':00' : null,
+          order_end_date: this.formData.order_end_date ? this.formData.order_end_date + ':00' : null,
+          pickup_date: this.formData.pickup_date || null,
           status: this.formData.status,
           products: this.selectedProducts.map(p => ({
             product_id: p.id,

@@ -89,6 +89,36 @@
       </div>
     </div>
     
+    <!-- Order Notes -->
+    <div class="order-info-row" v-if="order.notes">
+      <div class="order-notes">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+        </svg>
+        <span class="value notes-text">备注: {{ order.notes }}</span>
+      </div>
+    </div>
+    
+    <!-- Order Items/Products -->
+    <div class="order-items-section" v-if="order.items && order.items.length > 0">
+      <div class="items-header">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+        </svg>
+        <span>商品明细</span>
+      </div>
+      <div class="items-list">
+        <div 
+          v-for="item in order.items" 
+          :key="item.id"
+          class="item-row">
+          <span class="item-name">{{ item.product?.name || 'Unknown' }}</span>
+          <span class="item-quantity">x{{ item.quantity }}</span>
+          <span class="item-price">${{ parseFloat(item.price || 0).toFixed(2) }}</span>
+        </div>
+      </div>
+    </div>
+    
     <div class="order-actions" @click.stop v-if="showActions">
       <!-- Payment Status Toggle -->
       <button 
@@ -363,7 +393,8 @@ export default {
 .order-info-user,
 .order-info-group,
 .order-info-delivery,
-.order-info-address {
+.order-info-address,
+.order-notes {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -372,7 +403,8 @@ export default {
 .order-info-user svg,
 .order-info-group svg,
 .order-info-delivery svg,
-.order-info-address svg {
+.order-info-address svg,
+.order-notes svg {
   width: 18px;
   height: 18px;
   color: rgba(0, 0, 0, 0.6);
@@ -382,6 +414,19 @@ export default {
 .order-info-address .value {
   flex: 1;
   word-break: break-word;
+}
+
+.order-notes {
+  align-items: flex-start;
+}
+
+.order-notes .notes-text {
+  font-style: italic;
+  background: #FFF9C4;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border-left: 3px solid #FFC107;
+  line-height: 1.4;
 }
 
 .order-info-price {
@@ -568,6 +613,64 @@ export default {
 .cancel-btn:hover {
   background: #FFCDD2;
   border-color: rgba(198, 40, 40, 0.4);
+}
+
+.order-items-section {
+  margin-top: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.items-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--md-spacing-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.items-header svg {
+  width: 16px;
+  height: 16px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.item-name {
+  flex: 1;
+  color: rgba(0, 0, 0, 0.87);
+  font-weight: 500;
+}
+
+.item-quantity {
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 500;
+  min-width: 40px;
+  text-align: right;
+}
+
+.item-price {
+  color: var(--md-primary);
+  font-weight: 600;
+  min-width: 60px;
+  text-align: right;
 }
 </style>
 

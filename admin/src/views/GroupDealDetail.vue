@@ -9,17 +9,11 @@
       </button>
       
       <div class="header-actions">
-        <button @click="exportSupplierOrder" class="export-btn" :disabled="loading || !groupDeal">
+        <button @click="exportOrders" class="export-btn" :disabled="loading || !groupDeal">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          导出供货单
-        </button>
-        <button @click="exportDeliveryOrder" class="export-btn" :disabled="loading || !groupDeal">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          导出配送单
+          导出订单
         </button>
       </div>
     </div>
@@ -65,7 +59,7 @@
           </div>
           <div class="date-item">
             <span class="date-label">取货时间:</span>
-            <span class="date-value">{{ formatDateTime(groupDeal.pickup_date) }}</span>
+            <span class="date-value">{{ formatPickupDate(groupDeal.pickup_date) }}</span>
           </div>
         </div>
       </div>
@@ -130,14 +124,33 @@
 
         <!-- Product Statistics -->
         <div v-if="statistics.productCounts.length > 0" class="product-stats-section">
-          <h4>商品统计</h4>
+          <div class="product-stats-header">
+            <h4>商品统计</h4>
+            <button 
+              v-if="selectedProductFilters.length > 0" 
+              @click="clearProductFilters" 
+              class="clear-filters-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              清除筛选 ({{ selectedProductFilters.length }})
+            </button>
+          </div>
           <div class="product-stats-list">
             <div 
               v-for="productStat in statistics.productCounts" 
               :key="productStat.productId"
-              class="product-stat-item">
-              <div class="product-stat-name">{{ productStat.productName }}</div>
-              <div class="product-stat-value">{{ productStat.totalQuantity }} {{ productStat.unit || '件' }}</div>
+              :class="['product-stat-item', { 'active': isProductFilterActive(productStat.productId) }]"
+              @click="toggleProductFilter(productStat.productId)">
+              <div class="product-stat-content">
+                <div class="product-stat-name">{{ productStat.productName }}</div>
+                <div class="product-stat-value">{{ productStat.totalQuantity }}</div>
+              </div>
+              <div v-if="isProductFilterActive(productStat.productId)" class="product-stat-check">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
             </div>
           </div>
         </div>
@@ -145,20 +158,81 @@
 
       <!-- Orders List -->
       <div class="orders-section">
-        <h3>订单列表 ({{ orders.length }})</h3>
+        <h3>订单列表 ({{ filteredOrders.length }}{{ selectedProductFilters.length > 0 ? ' - 已筛选' : '' }})</h3>
         
         <div v-if="orders.length === 0" class="empty-state">
           <p>暂无订单</p>
         </div>
-        <div v-else class="orders-list">
-          <OrderCard
-            v-for="order in orders"
-            :key="order.id"
-            :order="order"
-            :show-delete="false"
-            :show-actions="false"
-            @click="viewOrderDetail(order)"
-          />
+        <div v-else>
+          <!-- Order Tabs -->
+          <div class="order-tabs">
+            <button 
+              :class="['tab-btn', { active: activeOrderTab === 'all' }]"
+              @click="activeOrderTab = 'all'">
+              全部订单 ({{ filteredAllOrders.length }})
+            </button>
+            <button 
+              v-if="deliveryOrders.length > 0"
+              :class="['tab-btn', 'delivery-tab', { active: activeOrderTab === 'delivery' }]"
+              @click="activeOrderTab = 'delivery'">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              </svg>
+              送货订单 ({{ filteredDeliveryOrders.length }})
+            </button>
+            <button 
+              v-if="markhamPickupOrders.length > 0"
+              :class="['tab-btn', 'markham-tab', { active: activeOrderTab === 'markham' }]"
+              @click="activeOrderTab = 'markham'">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              万锦取货 ({{ filteredMarkhamPickupOrders.length }})
+            </button>
+            <button 
+              v-if="northyorkPickupOrders.length > 0"
+              :class="['tab-btn', 'northyork-tab', { active: activeOrderTab === 'northyork' }]"
+              @click="activeOrderTab = 'northyork'">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              北约克取货 ({{ filteredNorthyorkPickupOrders.length }})
+            </button>
+            <button 
+              v-if="scarboroughPickupOrders.length > 0"
+              :class="['tab-btn', 'scarborough-tab', { active: activeOrderTab === 'scarborough' }]"
+              @click="activeOrderTab = 'scarborough'">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              士嘉堡取货 ({{ filteredScarboroughPickupOrders.length }})
+            </button>
+            <button 
+              v-if="downtownPickupOrders.length > 0"
+              :class="['tab-btn', 'downtown-tab', { active: activeOrderTab === 'downtown' }]"
+              @click="activeOrderTab = 'downtown'">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              市中心取货 ({{ filteredDowntownPickupOrders.length }})
+            </button>
+          </div>
+
+          <!-- Orders List -->
+          <div class="orders-list">
+            <OrderCard
+              v-for="order in filteredOrders"
+              :key="order.id"
+              :order="order"
+              :show-delete="false"
+              :show-actions="false"
+              @click="viewOrderDetail(order)"
+            />
+          </div>
         </div>
       </div>
       
@@ -185,7 +259,7 @@
 
 <script>
 import apiClient from '../api/client'
-import { formatDateTimeEST_CN } from '../utils/date'
+import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import OrderCard from '../components/OrderCard.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
@@ -212,10 +286,96 @@ export default {
       updatingOrder: false,
       updateError: null,
       markingComplete: false,
-      updatingGroupDealStatus: false
+      updatingGroupDealStatus: false,
+      activeOrderTab: 'all',
+      selectedProductFilters: []
     }
   },
   computed: {
+    filteredOrders() {
+      let orders = []
+      
+      // First filter by tab
+      switch (this.activeOrderTab) {
+        case 'all':
+          orders = this.orders
+          break
+        case 'delivery':
+          orders = this.deliveryOrders
+          break
+        case 'markham':
+          orders = this.markhamPickupOrders
+          break
+        case 'northyork':
+          orders = this.northyorkPickupOrders
+          break
+        case 'scarborough':
+          orders = this.scarboroughPickupOrders
+          break
+        case 'downtown':
+          orders = this.downtownPickupOrders
+          break
+        default:
+          orders = this.orders
+      }
+      
+      // Then filter by selected products (if any)
+      if (this.selectedProductFilters.length > 0) {
+        orders = orders.filter(order => {
+          if (!order.items || !Array.isArray(order.items)) {
+            return false
+          }
+          // Check if order contains ANY of the selected products
+          return order.items.some(item => {
+            const productId = item.product?.id || item.product_id
+            return this.selectedProductFilters.includes(productId)
+          })
+        })
+      }
+      
+      return orders
+    },
+    filteredAllOrders() {
+      return this.applyProductFilter(this.orders)
+    },
+    filteredDeliveryOrders() {
+      return this.applyProductFilter(this.deliveryOrders)
+    },
+    filteredMarkhamPickupOrders() {
+      return this.applyProductFilter(this.markhamPickupOrders)
+    },
+    filteredNorthyorkPickupOrders() {
+      return this.applyProductFilter(this.northyorkPickupOrders)
+    },
+    filteredScarboroughPickupOrders() {
+      return this.applyProductFilter(this.scarboroughPickupOrders)
+    },
+    filteredDowntownPickupOrders() {
+      return this.applyProductFilter(this.downtownPickupOrders)
+    },
+    deliveryOrders() {
+      return this.orders.filter(order => order.delivery_method === 'delivery')
+    },
+    markhamPickupOrders() {
+      return this.orders.filter(order => 
+        order.delivery_method === 'pickup' && order.pickup_location === 'markham'
+      )
+    },
+    northyorkPickupOrders() {
+      return this.orders.filter(order => 
+        order.delivery_method === 'pickup' && order.pickup_location === 'northyork'
+      )
+    },
+    scarboroughPickupOrders() {
+      return this.orders.filter(order => 
+        order.delivery_method === 'pickup' && order.pickup_location === 'scarborough'
+      )
+    },
+    downtownPickupOrders() {
+      return this.orders.filter(order => 
+        order.delivery_method === 'pickup' && order.pickup_location === 'downtown'
+      )
+    },
     statistics() {
       if (!this.orders || this.orders.length === 0) {
         return {
@@ -336,6 +496,38 @@ export default {
     this.fetchGroupDealDetail()
   },
   methods: {
+    applyProductFilter(orders) {
+      if (this.selectedProductFilters.length === 0) {
+        return orders
+      }
+      
+      return orders.filter(order => {
+        if (!order.items || !Array.isArray(order.items)) {
+          return false
+        }
+        // Check if order contains ANY of the selected products
+        return order.items.some(item => {
+          const productId = item.product?.id || item.product_id
+          return this.selectedProductFilters.includes(productId)
+        })
+      })
+    },
+    toggleProductFilter(productId) {
+      const index = this.selectedProductFilters.indexOf(productId)
+      if (index >= 0) {
+        // Remove filter
+        this.selectedProductFilters.splice(index, 1)
+      } else {
+        // Add filter
+        this.selectedProductFilters.push(productId)
+      }
+    },
+    isProductFilterActive(productId) {
+      return this.selectedProductFilters.includes(productId)
+    },
+    clearProductFilters() {
+      this.selectedProductFilters = []
+    },
     async fetchGroupDealDetail() {
       try {
         this.loading = true
@@ -399,64 +591,136 @@ export default {
     goBack() {
       this.$router.push('/group-deals')
     },
-    async exportSupplierOrder() {
+    exportOrders() {
       try {
-        const dealId = this.$route.params.id
-        const token = localStorage.getItem('admin_auth_token')
-        
-        const response = await fetch(`${apiClient.defaults.baseURL}/admin/group-deals/${dealId}/export-orders-csv`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
+        if (!this.groupDeal || !this.orders || this.orders.length === 0) {
+          this.showError('没有订单可导出')
+          return
+        }
+
+        // Get all unique products across all orders
+        const allProducts = new Set()
+        this.orders.forEach(order => {
+          if (order.items && order.items.length > 0) {
+            order.items.forEach(item => {
+              const productName = item.product?.name || 'Unknown'
+              allProducts.add(productName)
+            })
           }
         })
-        
-        if (!response.ok) {
-          throw new Error('Export failed')
-        }
-        
-        const blob = await response.blob()
+        const productColumns = Array.from(allProducts).sort()
+
+        // Build CSV header
+        const headers = [
+          '订单号',
+          '用户姓名',
+          '电话',
+          '微信',
+          '配送方式',
+          '地址/取货点',
+          ...productColumns,
+          '备注',
+          '总计',
+          '付款状态',
+          '付款方式'
+        ]
+
+        // Build CSV rows
+        const rows = this.orders.map(order => {
+          // Get product quantities
+          const productQuantities = {}
+          if (order.items && order.items.length > 0) {
+            order.items.forEach(item => {
+              const productName = item.product?.name || 'Unknown'
+              productQuantities[productName] = item.quantity || 0
+            })
+          }
+
+          // Delivery method and location
+          const deliveryMethod = order.delivery_method === 'delivery' ? '配送' : '自取'
+          let location = ''
+          if (order.delivery_method === 'delivery' && order.address) {
+            const parts = []
+            if (order.address.address_line1) parts.push(order.address.address_line1)
+            if (order.address.address_line2) parts.push(order.address.address_line2)
+            if (order.address.city) parts.push(order.address.city)
+            if (order.address.postal_code) parts.push(order.address.postal_code)
+            location = parts.join(', ')
+          } else if (order.delivery_method === 'pickup') {
+            const locationMap = {
+              'markham': '万锦',
+              'northyork': '北约克',
+              'scarborough': '士嘉堡',
+              'downtown': '市中心'
+            }
+            location = locationMap[order.pickup_location] || order.pickup_location || ''
+          }
+
+          // Payment status and method
+          const paymentStatusMap = {
+            'unpaid': '未付款',
+            'paid': '已付款',
+            'failed': '支付失败',
+            'refunded': '已退款'
+          }
+          const paymentMethodMap = {
+            'cash': '现金',
+            'emt': 'EMT',
+            'wechat': '微信支付',
+            'alipay': '支付宝'
+          }
+
+          const row = [
+            order.order_number || '',
+            order.user?.nickname || order.user?.phone || '',
+            order.user?.phone || '',
+            order.user?.wechat || '',
+            deliveryMethod,
+            location,
+            ...productColumns.map(product => productQuantities[product] || ''),
+            order.notes || '',
+            `$${parseFloat(order.total || 0).toFixed(2)}`,
+            paymentStatusMap[order.payment_status] || order.payment_status || '',
+            paymentMethodMap[order.payment_method] || order.payment_method || ''
+          ]
+
+          return row
+        })
+
+        // Convert to CSV string with proper escaping
+        const csvContent = [headers, ...rows]
+          .map(row => 
+            row.map(cell => {
+              // Convert to string and escape quotes
+              const cellStr = String(cell || '')
+              // If cell contains comma, quote, or newline, wrap in quotes and escape quotes
+              if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                return `"${cellStr.replace(/"/g, '""')}"`
+              }
+              return cellStr
+            }).join(',')
+          )
+          .join('\n')
+
+        // Add BOM for proper UTF-8 encoding in Excel
+        const BOM = '\uFEFF'
+        const csvWithBOM = BOM + csvContent
+
+        // Create and download file
+        const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' })
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `group_deal_${dealId}_supplier_order.csv`
+        a.download = `${this.groupDeal.title}_订单_${new Date().toISOString().split('T')[0]}.csv`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
+
+        this.success('订单导出成功')
       } catch (error) {
-        await this.showError('导出供货单失败: ' + (error.message || 'Unknown error'))
-        console.error('Export supplier order error:', error)
-      }
-    },
-    async exportDeliveryOrder() {
-      try {
-        const dealId = this.$route.params.id
-        const token = localStorage.getItem('admin_auth_token')
-        
-        const response = await fetch(`${apiClient.defaults.baseURL}/admin/group-deals/${dealId}/export-delivery-csv`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        
-        if (!response.ok) {
-          throw new Error('Export failed')
-        }
-        
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `group_deal_${dealId}_delivery_order.csv`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-      } catch (error) {
-        await this.showError('导出配送单失败: ' + (error.message || 'Unknown error'))
-        console.error('Export delivery order error:', error)
+        this.showError('导出订单失败: ' + (error.message || 'Unknown error'))
+        console.error('Export orders error:', error)
       }
     },
     async handleGroupDealStatusChange() {
@@ -543,6 +807,9 @@ export default {
     },
     formatDateTime(dateString) {
       return formatDateTimeEST_CN(dateString) || 'N/A'
+    },
+    formatPickupDate(dateString) {
+      return formatPickupDateTime_CN(dateString) || 'N/A'
     },
     formatAddress(address) {
       if (!address) return ''
@@ -1040,11 +1307,44 @@ export default {
   border-top: 1px solid rgba(0, 0, 0, 0.12);
 }
 
+.product-stats-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--md-spacing-md);
+}
+
 .product-stats-section h4 {
   font-size: var(--md-title-size);
   color: var(--md-on-surface);
-  margin-bottom: var(--md-spacing-md);
+  margin: 0;
   font-weight: 500;
+}
+
+.clear-filters-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  background: #F44336;
+  color: white;
+  border: none;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.clear-filters-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.clear-filters-btn:hover {
+  background: #D32F2F;
+  transform: translateY(-1px);
+  box-shadow: 0px 2px 4px rgba(244, 67, 54, 0.3);
 }
 
 .product-stats-list {
@@ -1060,25 +1360,65 @@ export default {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   background: rgba(0, 0, 0, 0.02);
   border-radius: var(--md-radius-sm);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.product-stat-item:hover {
+  background: rgba(255, 140, 0, 0.08);
+  border-color: var(--md-primary);
+  transform: translateY(-2px);
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.product-stat-item.active {
+  background: rgba(255, 140, 0, 0.15);
+  border-color: var(--md-primary);
+  box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.3);
+}
+
+.product-stat-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
 }
 
 .product-stat-name {
-  font-size: var(--md-body-size);
+  font-size: 0.8125rem;
   color: var(--md-on-surface);
   flex: 1;
   min-width: 0;
-  margin-right: var(--md-spacing-md);
+  margin-right: var(--md-spacing-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .product-stat-value {
-  font-size: var(--md-body-size);
+  font-size: 0.875rem;
   color: var(--md-primary);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.product-stat-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: var(--md-spacing-sm);
+  background: var(--md-primary);
+  border-radius: 50%;
+  color: white;
+}
+
+.product-stat-check svg {
+  width: 16px;
+  height: 16px;
 }
 
 .orders-section {
@@ -1089,6 +1429,74 @@ export default {
   font-size: var(--md-title-size);
   color: var(--md-on-surface);
   margin-bottom: var(--md-spacing-md);
+}
+
+.order-tabs {
+  display: flex;
+  gap: var(--md-spacing-sm);
+  margin-bottom: var(--md-spacing-lg);
+  flex-wrap: wrap;
+  background: #FFFFFF;
+  padding: var(--md-spacing-md);
+  border-radius: var(--md-radius-lg);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface);
+  border: 2px solid transparent;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.tab-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tab-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.tab-btn.active {
+  background: #FFFFFF;
+  font-weight: 600;
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tab-btn.delivery-tab.active {
+  border-color: #4CAF50;
+  color: #4CAF50;
+}
+
+.tab-btn.markham-tab.active {
+  border-color: #FF8C00;
+  color: #FF8C00;
+}
+
+.tab-btn.northyork-tab.active {
+  border-color: #2196F3;
+  color: #2196F3;
+}
+
+.tab-btn.scarborough-tab.active {
+  border-color: #9C27B0;
+  color: #9C27B0;
+}
+
+.tab-btn.downtown-tab.active {
+  border-color: #F44336;
+  color: #F44336;
 }
 
 .orders-list {

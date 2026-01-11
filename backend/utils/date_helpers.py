@@ -1,6 +1,6 @@
 """
 Date/Time helper utilities for EST timezone handling
-All dates are normalized to EST timezone with proper start/end times
+All dates are normalized to EST timezone, preserving time information when provided
 """
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
@@ -11,13 +11,13 @@ EST = ZoneInfo('America/New_York')
 
 def normalize_date_start(date_input):
     """
-    Normalize a date to 00:00:00 EST
+    Normalize a date/datetime to EST timezone, preserving the time if provided
     
     Args:
         date_input: datetime, date, or date string (YYYY-MM-DD or ISO format)
     
     Returns:
-        Naive datetime at 00:00:00 EST
+        Naive datetime in EST timezone
     """
     if isinstance(date_input, str):
         # Check if it's a simple date string (YYYY-MM-DD)
@@ -29,20 +29,21 @@ def normalize_date_start(date_input):
             # Parse ISO string with time/timezone
             dt = datetime.fromisoformat(date_input.replace('Z', '+00:00'))
             if dt.tzinfo is None:
+                # Treat as EST if no timezone specified
                 dt = dt.replace(tzinfo=EST)
-            # Convert to EST
-            dt = dt.astimezone(EST)
-            # Set to midnight
-            dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                # Convert to EST
+                dt = dt.astimezone(EST)
+            # PRESERVE the time - don't override it
     elif isinstance(date_input, datetime):
         dt = date_input
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=EST)
         else:
             dt = dt.astimezone(EST)
-        dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        # PRESERVE the time - don't override it
     else:
-        # date object
+        # date object (no time specified)
         dt = datetime.combine(date_input, time.min, tzinfo=EST)
     
     # Return as naive datetime (for MySQL)
@@ -51,13 +52,13 @@ def normalize_date_start(date_input):
 
 def normalize_date_end(date_input):
     """
-    Normalize a date to 23:59:59 EST
+    Normalize a date/datetime to EST timezone, preserving the time if provided
     
     Args:
         date_input: datetime, date, or date string (YYYY-MM-DD or ISO format)
     
     Returns:
-        Naive datetime at 23:59:59 EST
+        Naive datetime in EST timezone
     """
     if isinstance(date_input, str):
         # Check if it's a simple date string (YYYY-MM-DD)
@@ -69,20 +70,21 @@ def normalize_date_end(date_input):
             # Parse ISO string with time/timezone
             dt = datetime.fromisoformat(date_input.replace('Z', '+00:00'))
             if dt.tzinfo is None:
+                # Treat as EST if no timezone specified
                 dt = dt.replace(tzinfo=EST)
             else:
+                # Convert to EST
                 dt = dt.astimezone(EST)
-            # Set to end of day
-            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+            # PRESERVE the time - don't override it
     elif isinstance(date_input, datetime):
         dt = date_input
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=EST)
         else:
             dt = dt.astimezone(EST)
-        dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        # PRESERVE the time - don't override it
     else:
-        # date object
+        # date object (no time specified)
         dt = datetime.combine(date_input, time.max, tzinfo=EST)
     
     # Return as naive datetime (for MySQL)

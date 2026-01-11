@@ -43,13 +43,13 @@
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                下单截止: {{ formatDate(deal.order_end_date) }}
+                截单时间: {{ formatDateTime(deal.order_end_date) }}
               </span>
               <span class="date-item">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
-                取货日期: {{ formatDate(deal.pickup_date) }}
+                取货时间: {{ formatPickupDate(deal.pickup_date) }}
               </span>
             </div>
             <div class="deal-products-preview">
@@ -93,7 +93,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                开始时间: {{ formatDate(deal.order_start_date) }}
+                开始时间: {{ formatDateTime(deal.order_start_date) }}
               </span>
             </div>
           </div>
@@ -186,7 +186,7 @@
 
 <script>
 import apiClient from '../api/client'
-import { formatDateEST_CN, parseDateEST, getNowEST } from '../utils/date'
+import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN, parseDateEST, getNowEST } from '../utils/date'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 
 export default {
@@ -209,6 +209,9 @@ export default {
     await this.loadData()
   },
   methods: {
+    formatPickupDate(date) {
+      return formatPickupDateTime_CN(date)
+    },
     async loadData() {
       this.loading = true
       try {
@@ -247,6 +250,9 @@ export default {
     },
     formatDate(dateString) {
       return formatDateEST_CN(dateString)
+    },
+    formatDateTime(dateString) {
+      return formatDateTimeEST_CN(dateString)
     },
     isOutOfStock(product) {
       if (!product) return false
