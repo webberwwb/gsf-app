@@ -636,7 +636,6 @@ def google_callback():
             }), 400
         
         # Check email allowlist
-        from urllib.parse import quote
         admin_allowed_emails = Config.ADMIN_ALLOWED_EMAILS
         admin_domains = Config.ADMIN_ALLOWED_DOMAINS
         

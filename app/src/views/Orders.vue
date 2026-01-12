@@ -187,6 +187,12 @@
                     </svg>
                     修改订单
                   </button>
+                  <button @click.stop="confirmCancelOrder(order)" class="cancel-order-btn-small">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    取消订单
+                  </button>
                 </template>
               </div>
             </div>
@@ -244,6 +250,43 @@
       </div>
     </div>
 
+    <!-- Cancel Order Modal -->
+    <div v-if="showCancelModal" class="modal-overlay" @click="closeCancelModal">
+      <div class="modal-content cancel-modal" @click.stop>
+        <div class="modal-header">
+          <h2>取消订单</h2>
+          <button @click="closeCancelModal" class="close-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div class="modal-body">
+          <div class="cancel-warning">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div class="warning-content">
+              <h3>确认取消订单？</h3>
+              <p>您确定要取消此订单吗？</p>
+              <p class="warning-text">订单取消后，您可以在截单前重新激活订单。</p>
+            </div>
+          </div>
+          <div v-if="cancelError" class="error-message">
+            {{ cancelError }}
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button @click="closeCancelModal" class="cancel-btn-secondary">返回</button>
+          <button @click="cancelOrder" class="confirm-cancel-btn" :disabled="cancelling">
+            {{ cancelling ? '取消中...' : '确认取消' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -277,7 +320,11 @@ export default {
       qrRefs: {},
       showEMTModal: false,
       emtModalOrder: null,
-      ordersWithModalShown: new Set()
+      ordersWithModalShown: new Set(),
+      showCancelModal: false,
+      orderToCancel: null,
+      cancelling: false,
+      cancelError: null
     }
   },
   computed: {
@@ -520,6 +567,45 @@ export default {
           await this.error('复制失败，请手动复制')
         }
         document.body.removeChild(textArea)
+      }
+    },
+    confirmCancelOrder(order) {
+      this.orderToCancel = order
+      this.showCancelModal = true
+      this.cancelError = null
+    },
+    closeCancelModal() {
+      this.showCancelModal = false
+      this.orderToCancel = null
+      this.cancelError = null
+    },
+    async cancelOrder() {
+      if (!this.orderToCancel) return
+      
+      this.cancelling = true
+      this.cancelError = null
+      
+      try {
+        const response = await apiClient.post(`/orders/${this.orderToCancel.id}/cancel`)
+        
+        // Update the order in the list
+        const orderIndex = this.orders.findIndex(o => o.id === this.orderToCancel.id)
+        if (orderIndex !== -1) {
+          this.orders[orderIndex] = response.data.order
+        }
+        
+        // Close modal and show success
+        this.closeCancelModal()
+        
+        await this.success('订单已取消')
+        
+        // Reload orders to get fresh data
+        await this.loadOrders()
+      } catch (error) {
+        this.cancelError = error.response?.data?.message || error.response?.data?.error || '取消订单失败'
+        console.error('Failed to cancel order:', error)
+      } finally {
+        this.cancelling = false
       }
     }
   }
@@ -917,8 +1003,8 @@ export default {
   align-items: center;
   gap: var(--md-spacing-xs);
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  border: none;
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  border: 2px solid transparent;
+  background: #FFA500;
   color: white;
   border-radius: var(--md-radius-md);
   font-size: var(--md-label-size);
@@ -936,12 +1022,48 @@ export default {
 }
 
 .edit-order-btn:hover {
+  background: #FF8C00;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(255, 165, 0, 0.3);
 }
 
 .edit-order-btn:active {
   transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(255, 165, 0, 0.2);
+}
+
+.cancel-order-btn-small {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border: 2px solid transparent;
+  background: #C62828;
+  color: white;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  line-height: 1.5;
+  height: 36px;
+  box-shadow: 0 2px 4px rgba(198, 40, 40, 0.2);
+}
+
+.cancel-order-btn-small svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cancel-order-btn-small:hover {
+  background: #B71C1C;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(198, 40, 40, 0.3);
+}
+
+.cancel-order-btn-small:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(198, 40, 40, 0.2);
 }
 
 .cancel-btn {

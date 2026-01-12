@@ -3,6 +3,7 @@ from models import db
 from models.product import Product
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.product_sales_stats import ProductSalesStats
+from models.user import AuthToken, User
 from datetime import datetime, timezone, date, timedelta
 from models.base import utc_now
 from sqlalchemy import func, desc
@@ -18,7 +19,6 @@ def get_user_id_optional():
     if not token:
         return None  # Not authenticated, but that's OK for this endpoint
     
-    from models.user import AuthToken, User
     auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
     if not auth_token or not auth_token.is_valid():
         return None  # Invalid/expired token, but that's OK for this endpoint

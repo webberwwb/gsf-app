@@ -6,42 +6,46 @@ from models.groupdeal import GroupDeal, GroupDealProduct
 from models.otp_attempt import OTPAttempt
 from models.supplier import Supplier
 from models.order import Order, OrderItem
+from models.address import Address
 from models.product_sales_stats import ProductSalesStats
+from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
+from utils.date_helpers import normalize_date_start, normalize_date_end
 from datetime import datetime, timedelta, timezone, date
-from models.base import utc_now
 from config import Config
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod
 from schemas.product import CreateProductSchema, UpdateProductSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
-from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema
+from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema
 from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
 from schemas.utils import validate_request
+from urllib.parse import quote
 import os
 import uuid
 import secrets
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
 from decimal import Decimal
+from utils.shipping import calculate_shipping_fee
 import csv
 import io
 
 # Optional imports for image upload
 try:
     from google.cloud import storage
+    from google.oauth2 import service_account
     GCS_AVAILABLE = True
 except ImportError:
     GCS_AVAILABLE = False
     storage = None
+    service_account = None
 
 try:
     from PIL import Image
-    import io
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
     Image = None
-    io = None
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -89,7 +93,6 @@ def get_gcs_client():
         # Use service account credentials if available
         creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
         if creds_path and os.path.exists(creds_path):
-            from google.oauth2 import service_account
             credentials = service_account.Credentials.from_service_account_file(creds_path)
             return storage.Client(credentials=credentials, project=Config.GCS_PROJECT_ID)
         else:
@@ -762,9 +765,6 @@ def create_group_deal():
         return error_response, status_code
     
     try:
-        # Import date helpers
-        from utils.date_helpers import normalize_date_start, normalize_date_end
-        
         # Parse and normalize dates
         # order_start_date: 00:00:00 EST
         # order_end_date: 23:59:59 EST
@@ -863,10 +863,6 @@ def update_group_deal(deal_id):
         return error_response, status_code
     
     try:
-        # Import date helpers
-        from utils.date_helpers import normalize_date_start, normalize_date_end
-        from models.base import est_now
-        
         dates_updated = False
         
         if 'title' in validated_data:
@@ -1423,7 +1419,6 @@ def get_admin_orders():
             
             # Get address info if delivery order
             if order.address_id:
-                from models.address import Address
                 address = Address.query.get(order.address_id)
                 if address:
                     order_dict['address'] = address.to_dict()
@@ -1986,6 +1981,303 @@ def delete_order(order_id):
             'message': str(e)
         }), 500
 
+@admin_bp.route('/orders/duplicates', methods=['GET'])
+def find_duplicate_orders():
+    """Find duplicate orders placed by same users in the same group deal (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        group_deal_id = request.args.get('group_deal_id', type=int)
+        
+        # Build base query - find users with multiple orders in the same group deal
+        query = db.session.query(
+            Order.user_id,
+            Order.group_deal_id,
+            func.count(Order.id).label('order_count')
+        ).filter(
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value
+        ).group_by(
+            Order.user_id,
+            Order.group_deal_id
+        ).having(
+            func.count(Order.id) > 1
+        )
+        
+        # Filter by group deal if specified
+        if group_deal_id:
+            query = query.filter(Order.group_deal_id == group_deal_id)
+        
+        duplicates = query.all()
+        
+        # Get full order details for each duplicate set
+        duplicate_sets = []
+        for dup in duplicates:
+            orders = Order.query.filter(
+                Order.user_id == dup.user_id,
+                Order.group_deal_id == dup.group_deal_id,
+                Order.deleted_at.is_(None),
+                Order.status != OrderStatus.CANCELLED.value
+            ).order_by(Order.created_at.asc()).all()
+            
+            # Get user info
+            user = User.query.get(dup.user_id)
+            group_deal = GroupDeal.query.filter(
+                GroupDeal.id == dup.group_deal_id,
+                GroupDeal.deleted_at.is_(None)
+            ).first()
+            
+            orders_data = []
+            for order in orders:
+                order_dict = order.to_dict()
+                
+                # Get items with product details
+                items_data = []
+                for item in order.items:
+                    item_dict = item.to_dict()
+                    product = Product.query.get(item.product_id)
+                    if product:
+                        item_dict['product'] = {
+                            'id': product.id,
+                            'name': product.name,
+                            'image': product.image
+                        }
+                    items_data.append(item_dict)
+                order_dict['items'] = items_data
+                
+                # Get address info if delivery order
+                if order.address_id:
+                    address = Address.query.get(order.address_id)
+                    if address:
+                        order_dict['address'] = address.to_dict()
+                
+                orders_data.append(order_dict)
+            
+            duplicate_sets.append({
+                'user': user.to_dict() if user else None,
+                'group_deal': group_deal.to_dict() if group_deal else None,
+                'orders': orders_data,
+                'order_count': dup.order_count
+            })
+        
+        return jsonify({
+            'duplicate_sets': duplicate_sets,
+            'total_sets': len(duplicate_sets)
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error finding duplicate orders: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to find duplicate orders',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/merge', methods=['POST'])
+def merge_orders():
+    """Merge multiple orders into one (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(MergeOrdersSchema)
+    if error_response:
+        return error_response, status_code
+    
+    order_ids = validated_data['order_ids']
+    keep_payment_method = validated_data.get('keep_payment_method')
+    keep_delivery_method = validated_data.get('keep_delivery_method')
+    keep_address_id = validated_data.get('keep_address_id')
+    keep_pickup_location = validated_data.get('keep_pickup_location')
+    keep_notes = validated_data.get('keep_notes')
+    
+    try:
+        # Fetch all orders
+        orders = Order.query.filter(
+            Order.id.in_(order_ids),
+            Order.deleted_at.is_(None)
+        ).all()
+        
+        if len(orders) < 2:
+            return jsonify({'error': 'At least 2 orders are required to merge'}), 400
+        
+        if len(orders) != len(order_ids):
+            return jsonify({'error': 'Some orders not found or already deleted'}), 404
+        
+        # Validate all orders belong to the same user
+        user_ids = {order.user_id for order in orders}
+        if len(user_ids) > 1:
+            return jsonify({'error': 'Cannot merge orders from different users'}), 400
+        
+        # Validate all orders are from the same group deal
+        group_deal_ids = {order.group_deal_id for order in orders}
+        if len(group_deal_ids) > 1:
+            return jsonify({'error': 'Cannot merge orders from different group deals'}), 400
+        
+        # Check if any order is cancelled or completed
+        statuses = {order.status for order in orders}
+        if OrderStatus.CANCELLED.value in statuses:
+            return jsonify({'error': 'Cannot merge cancelled orders'}), 400
+        
+        # Sort orders by creation date (earliest first will be the main order)
+        orders.sort(key=lambda x: x.created_at)
+        main_order = orders[0]
+        orders_to_merge = orders[1:]
+        
+        # Collect all items from all orders
+        all_items = {}  # product_id -> {'quantity': total, 'unit_price': price, 'final_weight': weight}
+        
+        for order in orders:
+            for item in order.items:
+                if item.product_id not in all_items:
+                    all_items[item.product_id] = {
+                        'quantity': item.quantity,
+                        'unit_price': float(item.unit_price),
+                        'final_weight': float(item.final_weight) if item.final_weight else None
+                    }
+                else:
+                    # Add quantities
+                    all_items[item.product_id]['quantity'] += item.quantity
+                    # Add weights if applicable
+                    if item.final_weight and all_items[item.product_id]['final_weight'] is not None:
+                        all_items[item.product_id]['final_weight'] += float(item.final_weight)
+        
+        # Update main order with merged items
+        # Delete existing items from main order
+        OrderItem.query.filter_by(order_id=main_order.id).delete()
+        
+        # Create new merged items
+        subtotal = Decimal('0')
+        for product_id, item_data in all_items.items():
+            product = Product.query.get(product_id)
+            if not product:
+                continue
+            
+            unit_price = Decimal(str(item_data['unit_price']))
+            quantity = item_data['quantity']
+            total_price = unit_price * quantity
+            subtotal += total_price
+            
+            order_item = OrderItem(
+                order_id=main_order.id,
+                product_id=product_id,
+                quantity=quantity,
+                unit_price=unit_price,
+                total_price=total_price,
+                final_weight=Decimal(str(item_data['final_weight'])) if item_data['final_weight'] else None
+            )
+            db.session.add(order_item)
+        
+        # Update main order attributes based on admin's choices
+        if keep_payment_method:
+            main_order.payment_method = keep_payment_method
+        
+        if keep_delivery_method:
+            main_order.delivery_method = keep_delivery_method
+        
+        if keep_address_id:
+            main_order.address_id = keep_address_id
+        elif keep_delivery_method == 'pickup':
+            main_order.address_id = None
+        
+        if keep_pickup_location:
+            main_order.pickup_location = keep_pickup_location
+        elif keep_delivery_method == 'delivery':
+            main_order.pickup_location = None
+        
+        if keep_notes is not None:
+            main_order.notes = keep_notes
+        
+        # Recalculate totals
+        address = None
+        if main_order.delivery_method == 'delivery' and main_order.address_id:
+            address = Address.query.get(main_order.address_id)
+        
+        # Build order items for shipping calculation
+        order_items_for_shipping = []
+        for product_id, item_data in all_items.items():
+            product = Product.query.get(product_id)
+            if product:
+                order_items_for_shipping.append({
+                    'product': product,
+                    'quantity': item_data['quantity']
+                })
+        
+        shipping_fee = calculate_shipping_fee(
+            float(subtotal),
+            main_order.delivery_method,
+            address,
+            order_items_for_shipping
+        )
+        
+        tax = Decimal('0')
+        total = subtotal + tax + shipping_fee
+        points_earned = int(subtotal + tax)
+        
+        main_order.subtotal = subtotal
+        main_order.tax = tax
+        main_order.shipping_fee = shipping_fee
+        main_order.total = total
+        main_order.points_earned = points_earned
+        main_order.updated_at = utc_now()
+        
+        # Soft delete the other orders
+        for order in orders_to_merge:
+            order.deleted_at = utc_now()
+        
+        db.session.commit()
+        
+        # Log the merge
+        merged_order_ids = [order.id for order in orders_to_merge]
+        current_app.logger.info(
+            f'Admin merged orders {merged_order_ids} into order {main_order.id} '
+            f'for user {main_order.user_id}'
+        )
+        
+        # Return the merged order with full details
+        order_dict = main_order.to_dict()
+        
+        # Get user info
+        user = User.query.get(main_order.user_id)
+        if user:
+            order_dict['user'] = user.to_dict()
+        
+        # Get group deal info
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == main_order.group_deal_id,
+            GroupDeal.deleted_at.is_(None)
+        ).first()
+        if group_deal:
+            order_dict['group_deal'] = group_deal.to_dict()
+        
+        # Get order items with product details
+        items_data = []
+        for item in main_order.items:
+            item_dict = item.to_dict()
+            product = Product.query.get(item.product_id)
+            if product:
+                item_dict['product'] = product.to_dict()
+            items_data.append(item_dict)
+        
+        order_dict['items'] = items_data
+        
+        return jsonify({
+            'message': 'Orders merged successfully',
+            'merged_order': order_dict,
+            'deleted_order_ids': merged_order_ids
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error merging orders: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to merge orders',
+            'message': str(e)
+        }), 500
+
+
 @admin_bp.route('/group-deals/<int:deal_id>/status', methods=['PUT'])
 def update_group_deal_status(deal_id):
     """Update group deal status - cascades to all orders (admin only)"""
@@ -2409,7 +2701,6 @@ def export_group_deal_delivery_csv(deal_id):
             # Get address info
             address = None
             if order.address_id:
-                from models.address import Address
                 address = Address.query.get(order.address_id)
             
             # Build address fields

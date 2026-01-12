@@ -455,12 +455,12 @@
     </div>
 
     <!-- Update Order Button -->
-    <div v-if="order && deal && canEditPaymentDelivery" class="update-order-section">
+    <div v-if="order && deal && canUpdateOrder" class="update-order-section">
       <div class="order-actions">
         <button @click="updateOrder" class="update-order-btn" :disabled="saving || (!hasSelectedItems() && canEditProducts)">
           {{ saving ? '保存中...' : '更新订单' }}
         </button>
-        <button @click="confirmCancelOrder" class="cancel-order-btn" :disabled="saving || cancelling">
+        <button v-if="canCancelOrder" @click="confirmCancelOrder" class="cancel-order-btn" :disabled="saving || cancelling">
           {{ cancelling ? '取消中...' : '取消订单' }}
         </button>
       </div>
@@ -661,11 +661,24 @@ export default {
       return this.isEditable && !this.isDealClosed && !isOrderConfirmed
     },
     canEditPaymentDelivery() {
-      // Can edit payment/delivery/notes if order is submitted OR confirmed (even if deal is closed)
-      // Everything is read-only for: preparing, ready_for_pickup, out_for_delivery, completed, and other statuses
+      // Can edit payment/delivery/notes if order is submitted, confirmed, or preparing
+      // Everything is read-only for: ready_for_pickup, out_for_delivery, completed, and other statuses
       if (!this.order) return false
-      const editableStatuses = ['submitted', 'confirmed']
+      const editableStatuses = ['submitted', 'confirmed', 'preparing']
       return editableStatuses.includes(this.order.status)
+    },
+    canCancelOrder() {
+      // Can cancel order only when status is 'submitted'
+      // Cannot cancel when: confirmed, preparing, ready_for_pickup, out_for_delivery, completed, cancelled
+      if (!this.order) return false
+      return this.order.status === 'submitted'
+    },
+    canUpdateOrder() {
+      // Can update order when status is submitted, confirmed, or preparing
+      // Cannot update when: ready_for_pickup, out_for_delivery, completed, cancelled
+      if (!this.order) return false
+      const updatableStatuses = ['submitted', 'confirmed', 'preparing']
+      return updatableStatuses.includes(this.order.status)
     },
     isDealClosed() {
       // Check if group deal is closed
@@ -925,15 +938,13 @@ export default {
     isOutOfStock(product) {
       if (!product) return false
       
+      // Check deal_stock_limit (deal-specific inventory)
+      // null or undefined means unlimited stock, only 0 means out of stock
       if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
         return product.deal_stock_limit === 0
       }
       
-      if (product.stock_limit !== undefined && product.stock_limit !== null) {
-        return product.stock_limit === 0
-      }
-      
-      return false
+      return false // No stock limit means unlimited stock
     },
     calculateItemTotal(product) {
       const quantity = this.getQuantity(product)
@@ -1037,7 +1048,7 @@ export default {
       return result.hasEstimated
     },
     async updateOrder() {
-      if (!this.canEditPaymentDelivery) {
+      if (!this.canUpdateOrder) {
         await this.warning('订单无法修改')
         return
       }
@@ -1162,6 +1173,11 @@ export default {
     },
     confirmCancelOrder() {
       if (!this.order) return
+      if (!this.canCancelOrder) {
+        const statusLabel = this.getStatusLabel(this.order.status)
+        this.warning(`订单状态为"${statusLabel}"，无法取消`)
+        return
+      }
       this.showCancelModal = true
       this.cancelError = null
     },
@@ -2028,9 +2044,9 @@ export default {
 }
 
 .cancel-order-btn {
-  background: white;
-  color: #C62828;
-  border: 2px solid #C62828;
+  background: #C62828;
+  color: white;
+  border: none;
 }
 
 .cancel-order-btn:disabled {
@@ -2038,12 +2054,10 @@ export default {
   cursor: not-allowed;
   background: var(--md-surface-variant);
   color: var(--md-on-surface-variant);
-  border-color: var(--md-outline-variant);
 }
 
 .cancel-order-btn:not(:disabled):hover {
-  background: #C62828;
-  color: white;
+  background: #B71C1C;
   transform: translateY(-2px);
   box-shadow: var(--md-elevation-4);
 }

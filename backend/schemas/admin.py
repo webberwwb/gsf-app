@@ -55,3 +55,16 @@ class UpdateOrderPaymentSchema(Schema):
     class Meta:
         unknown = EXCLUDE
 
+
+class MergeOrdersSchema(Schema):
+    """Schema for merging multiple orders"""
+    order_ids = fields.List(fields.Integer(), required=True, validate=validate.Length(min=2))
+    keep_payment_method = fields.String(allow_none=True)
+    keep_delivery_method = fields.String(allow_none=True)
+    keep_address_id = fields.Integer(allow_none=True)
+    keep_pickup_location = fields.String(allow_none=True)
+    keep_notes = fields.String(allow_none=True)
+    
+    class Meta:
+        unknown = EXCLUDE
+

@@ -4,12 +4,16 @@ from models.order import Order, OrderItem
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.product import Product
 from models.user import User, AuthToken
+from models.address import Address
 from datetime import datetime, timezone
 from models.base import utc_now
 from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, PaymentMethod, GroupDealStatus
 from schemas.order import CreateOrderSchema, UpdateOrderSchema
 from schemas.utils import validate_request
 from decimal import Decimal
+from utils.stock_management import check_and_reserve_stock, restore_stock, update_stock_after_order_modification
+from utils.shipping import calculate_shipping_fee
+from utils.sales_stats import update_product_sales_stats
 import random
 import string
 
@@ -132,7 +136,6 @@ def get_user_orders():
             
             # Get address info if delivery order
             if order.address_id:
-                from models.address import Address
                 address = Address.query.get(order.address_id)
                 if address:
                     order_dict['address'] = address.to_dict()
@@ -266,9 +269,13 @@ def create_order():
         
         # Allow multiple orders per group deal - users can place multiple orders
         
+        # Check and reserve stock (with row-level locking for concurrency safety)
+        stock_available, error_msg = check_and_reserve_stock(group_deal_id, items)
+        if not stock_available:
+            return jsonify({'error': error_msg}), 400
+        
         # Verify address belongs to user if delivery method is selected
         if delivery_method == DeliveryMethod.DELIVERY.value:
-            from models.address import Address
             address = Address.query.filter_by(id=address_id, user_id=user_id).first()
             if not address:
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
@@ -338,10 +345,8 @@ def create_order():
             })
         
         # Calculate shipping fee
-        from utils.shipping import calculate_shipping_fee
         address = None
         if delivery_method == DeliveryMethod.DELIVERY.value and address_id:
-            from models.address import Address
             address = Address.query.get(address_id)
         
         shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address, order_items)
@@ -399,7 +404,6 @@ def create_order():
         
         # Update product sales stats
         try:
-            from utils.sales_stats import update_product_sales_stats
             update_product_sales_stats(order)
         except Exception as e:
             current_app.logger.warning(f'Failed to update sales stats: {e}')
@@ -478,6 +482,14 @@ def cancel_order(order_id):
         ).first()
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
+        
+        # Restore stock for cancelled order
+        items_to_restore = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
+        try:
+            restore_stock(order.group_deal_id, items_to_restore)
+        except Exception as e:
+            current_app.logger.error(f'Failed to restore stock on cancellation: {e}')
+            # Continue with cancellation even if stock restoration fails
         
         # Cancel the order
         order.status = OrderStatus.CANCELLED.value
@@ -567,6 +579,12 @@ def reactivate_order(order_id):
         
         if group_deal.status == GroupDealStatus.CLOSED.value:
             return jsonify({'error': '团购已截单，无法提交订单'}), 400
+        
+        # Check and reserve stock again (with row-level locking for concurrency safety)
+        items_to_reserve = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
+        stock_available, error_msg = check_and_reserve_stock(order.group_deal_id, items_to_reserve)
+        if not stock_available:
+            return jsonify({'error': error_msg}), 400
         
         # Reactivate the order
         order.status = OrderStatus.SUBMITTED.value
@@ -663,6 +681,19 @@ def update_order(order_id):
         new_items = {(item_data['product_id'], item_data['quantity']) for item_data in items}
         items_changed = existing_items != new_items
         
+        # If items are being changed, we need to update stock
+        if items_changed:
+            # Prepare items lists for stock management
+            old_items_list = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
+            new_items_list = [{'product_id': item_data['product_id'], 'quantity': item_data['quantity']} for item_data in items]
+            
+            # Check and update stock (with row-level locking for concurrency safety)
+            stock_available, error_msg = update_stock_after_order_modification(
+                order.group_deal_id, old_items_list, new_items_list
+            )
+            if not stock_available:
+                return jsonify({'error': error_msg}), 400
+        
         # Check if delivery method is being changed
         current_delivery_method = order.delivery_method or DeliveryMethod.PICKUP.value
         delivery_method_changed = delivery_method != current_delivery_method
@@ -691,7 +722,6 @@ def update_order(order_id):
         
         # Verify address belongs to user if delivery method is selected
         if delivery_method == DeliveryMethod.DELIVERY.value:
-            from models.address import Address
             address = Address.query.filter_by(id=address_id, user_id=user_id).first()
             if not address:
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
@@ -761,10 +791,8 @@ def update_order(order_id):
             })
         
         # Calculate shipping fee
-        from utils.shipping import calculate_shipping_fee
         address = None
         if delivery_method == DeliveryMethod.DELIVERY.value and address_id:
-            from models.address import Address
             address = Address.query.get(address_id)
         
         shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address, new_order_items)
@@ -819,7 +847,6 @@ def update_order(order_id):
         
         # Update product sales stats
         try:
-            from utils.sales_stats import update_product_sales_stats
             update_product_sales_stats(order)
         except Exception as e:
             current_app.logger.warning(f'Failed to update sales stats: {e}')

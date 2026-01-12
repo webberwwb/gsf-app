@@ -158,7 +158,15 @@
 
       <!-- Orders List -->
       <div class="orders-section">
-        <h3>订单列表 ({{ filteredOrders.length }}{{ selectedProductFilters.length > 0 ? ' - 已筛选' : '' }})</h3>
+        <div class="orders-header">
+          <h3>订单列表 ({{ filteredOrders.length }}{{ selectedProductFilters.length > 0 ? ' - 已筛选' : '' }})</h3>
+          <button @click="findDuplicates" class="duplicates-btn" :disabled="loadingDuplicates">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            {{ loadingDuplicates ? '查找中...' : '查找一人多单' }}
+          </button>
+        </div>
         
         <div v-if="orders.length === 0" class="empty-state">
           <p>暂无订单</p>
@@ -253,6 +261,59 @@
         @order-updated="handleOrderUpdated"
       @update-error="(msg) => { this.updateError = msg }"
       />
+
+      <!-- Duplicates Modal -->
+      <div v-if="showDuplicatesModal" class="modal-overlay" @click="closeDuplicatesModal">
+        <div class="modal-content duplicates-modal" @click.stop>
+          <div class="modal-header">
+            <h2>一人多单</h2>
+            <button @click="closeDuplicatesModal" class="close-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div v-if="duplicates.length === 0" class="empty-state">
+              <p>没有找到一人多单</p>
+            </div>
+            <div v-else class="duplicates-list">
+              <div v-for="(duplicateSet, index) in duplicates" :key="index" class="duplicate-set">
+                <div class="duplicate-header">
+                  <div class="user-info">
+                    <strong>{{ duplicateSet.user?.nickname || '用户' }}</strong>
+                    <span v-if="duplicateSet.user?.phone" class="phone">{{ duplicateSet.user.phone }}</span>
+                  </div>
+                  <div class="group-deal-info">
+                    <span>{{ duplicateSet.group_deal?.title }}</span>
+                  </div>
+                </div>
+                <div class="duplicate-orders">
+                  <div v-for="order in duplicateSet.orders" :key="order.id" class="duplicate-order">
+                    <div class="order-id">{{ order.order_number }}</div>
+                    <div class="order-details">
+                      <span>商品: {{ order.items?.length || 0 }}件</span>
+                      <span>总价: ${{ parseFloat(order.total || 0).toFixed(2) }}</span>
+                      <span>状态: {{ getStatusText(order.status) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <button @click="openMergeModal(duplicateSet.orders)" class="merge-btn-action">
+                  合并这些订单
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Merge Modal -->
+      <OrderMergeModal
+        :show="showMergeModal"
+        :orders="ordersToMerge"
+        @close="closeMergeModal"
+        @merged="handleOrderMerged"
+      />
     </div>
   </div>
 </template>
@@ -263,12 +324,14 @@ import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import OrderCard from '../components/OrderCard.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
+import OrderMergeModal from '../components/OrderMergeModal.vue'
 
 export default {
   name: 'GroupDealDetail',
   components: {
     OrderCard,
-    OrderDetailModal
+    OrderDetailModal,
+    OrderMergeModal
   },
   setup() {
     const { confirm, success, error: showError } = useModal()
@@ -288,7 +351,13 @@ export default {
       markingComplete: false,
       updatingGroupDealStatus: false,
       activeOrderTab: 'all',
-      selectedProductFilters: []
+      selectedProductFilters: [],
+      // Duplicate orders
+      loadingDuplicates: false,
+      showDuplicatesModal: false,
+      duplicates: [],
+      showMergeModal: false,
+      ordersToMerge: []
     }
   },
   computed: {
@@ -983,6 +1052,70 @@ export default {
       } finally {
         this.markingComplete = false
       }
+    },
+    
+    async findDuplicates() {
+      this.loadingDuplicates = true
+      try {
+        const params = {
+          group_deal_id: this.groupDeal.id
+        }
+        
+        const response = await apiClient.get('/admin/orders/duplicates', { params })
+        this.duplicates = response.data.duplicate_sets || []
+        this.showDuplicatesModal = true
+        
+        if (this.duplicates.length === 0) {
+          await this.success('没有找到一人多单')
+        } else {
+          await this.success(`找到 ${this.duplicates.length} 组一人多单`)
+        }
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || '查找失败'
+        await this.showError(`查找失败: ${errorMsg}`)
+        console.error('Failed to find duplicates:', error)
+      } finally {
+        this.loadingDuplicates = false
+      }
+    },
+    
+    closeDuplicatesModal() {
+      this.showDuplicatesModal = false
+    },
+    
+    openMergeModal(orders) {
+      this.ordersToMerge = orders
+      this.showMergeModal = true
+      this.showDuplicatesModal = false
+    },
+    
+    closeMergeModal() {
+      this.showMergeModal = false
+      this.ordersToMerge = []
+    },
+    
+    async handleOrderMerged(mergedOrder) {
+      await this.success('订单合并成功')
+      // Refresh group deal and orders
+      await this.fetchGroupDealDetail()
+      // Optionally refresh duplicates if modal is still open
+      if (this.showDuplicatesModal) {
+        await this.findDuplicates()
+      }
+    },
+    
+    getStatusText(status) {
+      const statusMap = {
+        'submitted': '已提交订单',
+        'confirmed': '已确认订单',
+        'preparing': '正在配货',
+        'ready_for_pickup': '可以取货',
+        'out_for_delivery': '正在配送',
+        'delivering': '正在配送',
+        'completed': '订单完成',
+        'cancelled': '已取消'
+      }
+      return statusMap[status] || status
     }
   }
 }
@@ -1503,6 +1636,234 @@ export default {
   display: flex;
   flex-direction: column;
   gap: var(--md-spacing-md);
+}
+
+/* Orders header with duplicate button */
+.orders-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--md-spacing-md);
+  gap: var(--md-spacing-md);
+}
+
+.orders-header h3 {
+  margin: 0;
+}
+
+/* Duplicates button */
+.duplicates-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  padding: 10px 20px;
+  border: 1px solid rgba(156, 39, 176, 0.2);
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #F3E5F5;
+  color: #7B1FA2;
+  min-height: 40px;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  white-space: nowrap;
+}
+
+.duplicates-btn:hover:not(:disabled) {
+  background: #E1BEE7;
+  border-color: rgba(123, 31, 162, 0.4);
+  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  transform: translateY(-1px);
+}
+
+.duplicates-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Duplicates Modal */
+.duplicates-modal {
+  max-width: 1000px;
+}
+
+.duplicates-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-lg);
+}
+
+.duplicate-set {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: var(--md-spacing-md);
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+  border: 2px solid #F3E5F5;
+}
+
+.duplicate-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--md-spacing-md);
+  padding-bottom: var(--md-spacing-sm);
+  border-bottom: 2px solid #7B1FA2;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.user-info strong {
+  font-size: 1rem;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.user-info .phone {
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.group-deal-info {
+  font-size: 0.875rem;
+  color: #7B1FA2;
+  font-weight: 500;
+}
+
+.duplicate-orders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-sm);
+  margin-bottom: var(--md-spacing-md);
+}
+
+.duplicate-order {
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  background: #F5F5F5;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.duplicate-order .order-id {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.87);
+  margin-bottom: 4px;
+}
+
+.duplicate-order .order-details {
+  display: flex;
+  gap: var(--md-spacing-md);
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.merge-btn-action {
+  width: 100%;
+  padding: 10px 24px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(123, 31, 162, 0.2);
+  background: #F3E5F5;
+  color: #7B1FA2;
+  min-height: 40px;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.merge-btn-action:hover {
+  background: #E1BEE7;
+  border-color: rgba(123, 31, 162, 0.4);
+  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  transform: translateY(-1px);
+}
+
+.merge-btn-action:active {
+  background: #CE93D8;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  transform: translateY(0);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--md-spacing-md);
+}
+
+.modal-content {
+  background: #FFFFFF;
+  border-radius: 24px;
+  max-width: 800px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0px 11px 15px -7px rgba(0, 0, 0, 0.2), 0px 24px 38px 3px rgba(0, 0, 0, 0.14), 0px 9px 46px 8px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%);
+  border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+  border-radius: 24px 24px 0 0;
+}
+
+.modal-header h2 {
+  font-size: 1.25rem;
+  color: rgba(0, 0, 0, 0.9);
+  font-weight: 600;
+  margin: 0;
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+  border-radius: var(--md-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.close-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--md-spacing-lg);
+  background: #FAFAFA;
 }
 
 </style>

@@ -480,15 +480,10 @@ export default {
     isOutOfStock(product) {
       if (!product) return false
       
-      // Check deal_stock_limit (deal-specific inventory) first, then stock_limit (product-level inventory)
+      // Check deal_stock_limit (deal-specific inventory)
       // null or undefined means unlimited stock, only 0 means out of stock
-      // Explicitly check for 0 to handle both deal_stock_limit = 0 and stock_limit = 0
       if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
         return product.deal_stock_limit === 0
-      }
-      
-      if (product.stock_limit !== undefined && product.stock_limit !== null) {
-        return product.stock_limit === 0
       }
       
       return false // No stock limit means unlimited stock

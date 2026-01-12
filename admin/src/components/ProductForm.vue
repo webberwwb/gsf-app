@@ -270,20 +270,6 @@
           <small class="form-hint">选择产品的供应商（可选）</small>
         </div>
 
-        <!-- Stock Limit -->
-        <div class="form-group">
-          <label for="stock_limit">库存限制</label>
-          <input
-            id="stock_limit"
-            v-model.number="formData.stock_limit"
-            type="number"
-            min="0"
-            placeholder="留空表示无限制"
-            class="form-input"
-          />
-          <small class="form-hint">留空表示库存无限制</small>
-        </div>
-
         <!-- Active Status -->
         <div class="form-group">
           <label class="checkbox-label">
@@ -359,7 +345,6 @@ export default {
           max_weight: null
         },
         supplier_id: null,
-        stock_limit: null,
         is_active: true,
         counts_toward_free_shipping: true
       },
@@ -406,7 +391,6 @@ export default {
           max_weight: null
         },
         supplier_id: null,
-        stock_limit: null,
         is_active: true,
         counts_toward_free_shipping: true
       }
@@ -453,12 +437,6 @@ export default {
             max_weight: pricingData.max_weight || null
           },
           supplier_id: this.product.supplier_id || null,
-          // Handle stock_limit: explicitly preserve 0 value (0 means out of stock, null means unlimited)
-          stock_limit: this.product.stock_limit === 0 || this.product.stock_limit === '0'
-            ? 0
-            : (this.product.stock_limit !== undefined && this.product.stock_limit !== null && this.product.stock_limit !== '')
-              ? (typeof this.product.stock_limit === 'number' ? this.product.stock_limit : parseInt(this.product.stock_limit))
-              : null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true,
           counts_toward_free_shipping: this.product.counts_toward_free_shipping !== undefined ? this.product.counts_toward_free_shipping : true
         }
@@ -614,16 +592,6 @@ export default {
         }
         if (this.formData.description) {
           data.description = this.formData.description
-        }
-        // Handle stock_limit: null/undefined/'' means unlimited, 0 means out of stock, any other number is valid
-        // Check for 0 first (since 0 is falsy, we need to check explicitly)
-        if (this.formData.stock_limit === 0 || this.formData.stock_limit === '0') {
-          data.stock_limit = 0
-        } else if (this.formData.stock_limit !== null && this.formData.stock_limit !== '' && this.formData.stock_limit !== undefined) {
-          data.stock_limit = parseInt(this.formData.stock_limit)
-        } else {
-          // null, undefined, or empty string means unlimited stock
-          data.stock_limit = null
         }
         if (this.formData.supplier_id !== null && this.formData.supplier_id !== '') {
           data.supplier_id = parseInt(this.formData.supplier_id)
