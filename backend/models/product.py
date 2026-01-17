@@ -17,7 +17,7 @@ class Product(BaseModel):
     # Structure depends on pricing_type:
     # - per_item: {"price": 10.00}
     # - weight_range: {"ranges": [{"min": 0, "max": 2, "price": 10.00}, ...]}
-    # - unit_weight: {"price_per_unit": 5.00, "unit": "kg"}
+    # - unit_weight: {"price_per_unit": 5.00, "unit": "lb"}
     # - bundled_weight: {"price_per_unit": 5.00, "unit": "lb", "min_weight": 7, "max_weight": 15}
     pricing_data = db.Column(JSON, nullable=True)
     
@@ -94,19 +94,25 @@ class Product(BaseModel):
                     return float(range_item.get('price', 0)) * quantity
             return None
         elif self.pricing_type == 'unit_weight':
+            # unit_weight: products are weighed individually, not stacked
+            # unit_price = price_per_unit (the rate)
+            # total_price = price_per_unit * weight (or estimated weight)
+            # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
             if not weight or not self.pricing_data or 'price_per_unit' not in self.pricing_data:
                 return None
             price_per_unit = float(self.pricing_data['price_per_unit'])
-            return price_per_unit * weight * quantity
+            return price_per_unit * weight  # No quantity multiplication
         elif self.pricing_type == 'bundled_weight':
-            # quantity = number of packages
-            # Each package has variable weight between min_weight and max_weight
+            # bundled_weight: products are weighed individually, not stacked
+            # unit_price = price_per_unit (the rate)
+            # total_price = price_per_unit * weight (or estimated weight)
+            # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
             if not self.pricing_data or 'price_per_unit' not in self.pricing_data:
                 return None
             price_per_unit = float(self.pricing_data['price_per_unit'])
             # If weight is provided, use it; otherwise return None (needs weight)
             if weight:
-                return price_per_unit * weight * quantity
+                return price_per_unit * weight  # No quantity multiplication
             return None
         return None
     

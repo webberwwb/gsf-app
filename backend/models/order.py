@@ -104,7 +104,7 @@ class OrderItem(BaseModel):
     total_price = db.Column(Numeric(10, 2), nullable=False)
     
     # Final weight for weight-based products (set during pickup)
-    final_weight = db.Column(Numeric(10, 3), nullable=True)  # Weight in kg
+    final_weight = db.Column(Numeric(10, 3), nullable=True)  # Weight in lb
     
     def to_dict(self):
         data = super().to_dict()

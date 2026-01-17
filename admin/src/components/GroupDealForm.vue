@@ -129,17 +129,6 @@
               </div>
               <div class="product-detail-fields">
                 <div class="form-group-inline">
-                  <label>团购价格 ($)</label>
-                  <input
-                    v-model.number="selectedProduct.deal_price"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    :placeholder="`默认: ${selectedProduct.price}`"
-                    class="form-input-small"
-                  />
-                </div>
-                <div class="form-group-inline">
                   <label>库存限制</label>
                   <input
                     v-model.number="selectedProduct.deal_stock_limit"
@@ -258,7 +247,6 @@ export default {
             id: product.id,
             name: product.name,
             price: product.price,
-            deal_price: product.deal_price || product.price,
             deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null
           }))
         }
@@ -294,7 +282,6 @@ export default {
           id: product.id,
           name: product.name,
           price: product.price,
-          deal_price: product.price,
           deal_stock_limit: null
         })
       }
@@ -322,7 +309,6 @@ export default {
           status: this.formData.status,
           products: this.selectedProducts.map(p => ({
             product_id: p.id,
-            deal_price: p.deal_price || null,
             deal_stock_limit: p.deal_stock_limit !== undefined && p.deal_stock_limit !== null ? p.deal_stock_limit : null
           }))
         }

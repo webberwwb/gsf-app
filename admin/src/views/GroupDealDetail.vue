@@ -9,6 +9,12 @@
       </button>
       
       <div class="header-actions">
+        <button @click="bulkMarkDelivering" class="bulk-delivery-btn" :disabled="loading || !groupDeal || loadingBulkUpdate">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+          </svg>
+          {{ loadingBulkUpdate ? '更新中...' : '批量标记配送中' }}
+        </button>
         <button @click="exportOrders" class="export-btn" :disabled="loading || !groupDeal">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -158,76 +164,94 @@
 
       <!-- Orders List -->
       <div class="orders-section">
+        <div v-if="ordersStore.state.loading" class="orders-loading">
+          <div class="loading-spinner">
+            <svg class="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>加载订单中...</span>
+          </div>
+        </div>
+        <template v-else>
         <div class="orders-header">
           <h3>订单列表 ({{ filteredOrders.length }}{{ selectedProductFilters.length > 0 ? ' - 已筛选' : '' }})</h3>
-          <button @click="findDuplicates" class="duplicates-btn" :disabled="loadingDuplicates">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px;">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-            {{ loadingDuplicates ? '查找中...' : '查找一人多单' }}
-          </button>
+          <div class="orders-header-actions">
+            <div class="search-box">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="search-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input 
+                v-model="searchQuery" 
+                type="text" 
+                placeholder="搜索订单 (用户名/微信/电话/订单号)"
+                class="search-input"
+                @input="handleSearch"
+              />
+              <button 
+                v-if="searchQuery" 
+                @click="clearSearch" 
+                class="clear-search-btn"
+                title="清除搜索">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <button @click="findDuplicates" class="duplicates-btn" :disabled="loadingDuplicates">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              {{ loadingDuplicates ? '查找中...' : '查找一人多单' }}
+            </button>
+          </div>
         </div>
         
-        <div v-if="orders.length === 0" class="empty-state">
+        <div v-if="!ordersStore.state.loading && orders.length === 0" class="empty-state">
           <p>暂无订单</p>
         </div>
-        <div v-else>
-          <!-- Order Tabs -->
-          <div class="order-tabs">
-            <button 
-              :class="['tab-btn', { active: activeOrderTab === 'all' }]"
-              @click="activeOrderTab = 'all'">
-              全部订单 ({{ filteredAllOrders.length }})
-            </button>
-            <button 
-              v-if="deliveryOrders.length > 0"
-              :class="['tab-btn', 'delivery-tab', { active: activeOrderTab === 'delivery' }]"
-              @click="activeOrderTab = 'delivery'">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              </svg>
-              送货订单 ({{ filteredDeliveryOrders.length }})
-            </button>
-            <button 
-              v-if="markhamPickupOrders.length > 0"
-              :class="['tab-btn', 'markham-tab', { active: activeOrderTab === 'markham' }]"
-              @click="activeOrderTab = 'markham'">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              万锦取货 ({{ filteredMarkhamPickupOrders.length }})
-            </button>
-            <button 
-              v-if="northyorkPickupOrders.length > 0"
-              :class="['tab-btn', 'northyork-tab', { active: activeOrderTab === 'northyork' }]"
-              @click="activeOrderTab = 'northyork'">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              北约克取货 ({{ filteredNorthyorkPickupOrders.length }})
-            </button>
-            <button 
-              v-if="scarboroughPickupOrders.length > 0"
-              :class="['tab-btn', 'scarborough-tab', { active: activeOrderTab === 'scarborough' }]"
-              @click="activeOrderTab = 'scarborough'">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              士嘉堡取货 ({{ filteredScarboroughPickupOrders.length }})
-            </button>
-            <button 
-              v-if="downtownPickupOrders.length > 0"
-              :class="['tab-btn', 'downtown-tab', { active: activeOrderTab === 'downtown' }]"
-              @click="activeOrderTab = 'downtown'">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              市中心取货 ({{ filteredDowntownPickupOrders.length }})
-            </button>
+        <div v-else-if="!ordersStore.state.loading">
+          <!-- Order Tabs and Filters -->
+          <div class="order-tabs-container">
+            <div class="order-tabs">
+              <button 
+                :class="['tab-btn', 'markham-tab', { active: activeOrderTab === 'markham' }]"
+                @click="activeOrderTab = 'markham'">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                万锦取货 ({{ filteredMarkhamPickupOrders.length }})
+              </button>
+              <button 
+                :class="['tab-btn', 'northyork-tab', { active: activeOrderTab === 'northyork' }]"
+                @click="activeOrderTab = 'northyork'">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                北约克取货 ({{ filteredNorthyorkPickupOrders.length }})
+              </button>
+              <button 
+                :class="['tab-btn', 'delivery-tab', { active: activeOrderTab === 'delivery' }]"
+                @click="activeOrderTab = 'delivery'">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                </svg>
+                配送 ({{ filteredDeliveryOrders.length }})
+              </button>
+              <button 
+                :class="['tab-btn', { active: activeOrderTab === 'all' }]"
+                @click="activeOrderTab = 'all'">
+                全部订单 ({{ filteredAllOrders.length }})
+              </button>
+            </div>
+            <div class="order-filters">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="showCompletedOrders" class="checkbox-input">
+                <span class="checkbox-text">显示已完成订单</span>
+              </label>
+            </div>
           </div>
 
           <!-- Orders List -->
@@ -239,9 +263,11 @@
               :show-delete="false"
               :show-actions="false"
               @click="viewOrderDetail(order)"
+              @mark-packing-complete="handleMarkPackingComplete"
             />
           </div>
         </div>
+        </template>
       </div>
       
       <!-- Order Detail Modal -->
@@ -322,6 +348,7 @@
 import apiClient from '../api/client'
 import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
+import { useOrdersStore } from '../stores/orders'
 import OrderCard from '../components/OrderCard.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
 import OrderMergeModal from '../components/OrderMergeModal.vue'
@@ -335,14 +362,14 @@ export default {
   },
   setup() {
     const { confirm, success, error: showError } = useModal()
-    return { confirm, success, showError }
+    const ordersStore = useOrdersStore()
+    return { confirm, success, showError, ordersStore }
   },
   data() {
     return {
       loading: true,
       error: null,
       groupDeal: null,
-      orders: [],
       showOrderDetail: false,
       selectedOrder: null,
       availableProducts: [],
@@ -350,17 +377,31 @@ export default {
       updateError: null,
       markingComplete: false,
       updatingGroupDealStatus: false,
-      activeOrderTab: 'all',
+      activeOrderTab: 'markham',
       selectedProductFilters: [],
+      searchQuery: '',
+      showCompletedOrders: false,
       // Duplicate orders
       loadingDuplicates: false,
       showDuplicatesModal: false,
       duplicates: [],
       showMergeModal: false,
-      ordersToMerge: []
+      ordersToMerge: [],
+      // Bulk update
+      loadingBulkUpdate: false
     }
   },
   computed: {
+    orders() {
+      let orders = this.ordersStore.state.orders
+      
+      // Filter out completed orders by default unless checkbox is checked
+      if (!this.showCompletedOrders) {
+        orders = orders.filter(order => order.status !== 'completed')
+      }
+      
+      return orders
+    },
     filteredOrders() {
       let orders = []
       
@@ -399,6 +440,30 @@ export default {
             const productId = item.product?.id || item.product_id
             return this.selectedProductFilters.includes(productId)
           })
+        })
+      }
+      
+      // Then filter by search query (if any)
+      if (this.searchQuery && this.searchQuery.trim()) {
+        const query = this.searchQuery.trim().toLowerCase()
+        orders = orders.filter(order => {
+          // Search by username
+          const username = (order.user?.nickname || '').toLowerCase()
+          if (username.includes(query)) return true
+          
+          // Search by wechat name
+          const wechat = (order.user?.wechat || '').toLowerCase()
+          if (wechat.includes(query)) return true
+          
+          // Search by phone number
+          const phone = (order.user?.phone || '').toLowerCase()
+          if (phone.includes(query)) return true
+          
+          // Search by order number
+          const orderNumber = (order.order_number || '').toLowerCase()
+          if (orderNumber.includes(query)) return true
+          
+          return false
         })
       }
       
@@ -525,6 +590,8 @@ export default {
             const productName = item.product?.name || 'Unknown Product'
             const quantity = item.quantity || 0
             const unit = item.product?.unit || '件'
+            const pricingType = item.product?.pricing_type || 'per_item'
+            const pricingData = item.product?.pricing_data || {}
 
             if (productCountsMap.has(productId)) {
               const existing = productCountsMap.get(productId)
@@ -534,7 +601,9 @@ export default {
                 productId,
                 productName,
                 totalQuantity: quantity,
-                unit
+                unit,
+                pricingType,
+                pricingData
               })
             }
           })
@@ -597,64 +666,67 @@ export default {
     clearProductFilters() {
       this.selectedProductFilters = []
     },
+    handleSearch() {
+      // Search is handled by computed property filteredOrders
+      // This method can be used for debouncing if needed in the future
+    },
+    clearSearch() {
+      this.searchQuery = ''
+    },
     async fetchGroupDealDetail() {
       try {
         this.loading = true
         this.error = null
         const dealId = this.$route.params.id
         
-        // Fetch group deal
+        // Fetch group deal first (fast)
         const dealResponse = await apiClient.get(`/admin/group-deals/${dealId}`)
         this.groupDeal = dealResponse.data.group_deal
         // Store previous status for change detection
         if (this.groupDeal) {
           this.groupDeal._previousStatus = this.groupDeal.status
         }
-        // Store previous status for change detection
-        if (this.groupDeal) {
-          this.groupDeal._previousStatus = this.groupDeal.status
-        }
         
-        // Fetch orders for this group deal (excluding cancelled orders)
+        // Show the page immediately with group deal info
+        this.loading = false
+        
+        // Fetch orders in parallel (slow, but page is already visible)
+        this.fetchOrders(dealId)
+      } catch (error) {
+        this.error = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to load group deal'
+        console.error('Failed to fetch group deal detail:', error)
+        this.loading = false
+      }
+    },
+    async fetchOrders(dealId) {
+      try {
+        this.ordersStore.setLoading(true)
+        
+        // Fetch orders for this group deal with items included (excluding cancelled orders)
         const ordersResponse = await apiClient.get('/admin/orders', {
           params: {
             group_deal_id: dealId,
             per_page: 1000
           }
         })
+        
         // Filter out cancelled orders
         const orders = (ordersResponse.data.orders || []).filter(order => order.status !== 'cancelled')
         
-        // Fetch order items for product statistics (limit to first 100 orders for performance)
-        // Load items in batches to avoid overwhelming the server
-        const ordersToLoad = orders.slice(0, 100)
-        const orderItemPromises = ordersToLoad.map(order => 
-          apiClient.get(`/admin/orders/${order.id}`)
-            .then(response => {
-              order.items = response.data.order?.items || []
-              return order
-            })
-            .catch(error => {
-              console.warn(`Failed to load items for order ${order.id}:`, error)
-              order.items = []
-              return order
-            })
-        )
-        
-        // Wait for all order details to load (with items)
-        await Promise.all(orderItemPromises)
-        
-        // For orders beyond the first 100, set empty items array
-        orders.slice(100).forEach(order => {
-          order.items = []
+        // Ensure all orders have items array (even if empty)
+        orders.forEach(order => {
+          if (!order.items) {
+            order.items = []
+          }
         })
         
-        this.orders = orders
+        // Update store
+        this.ordersStore.setOrders(orders)
       } catch (error) {
-        this.error = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to load group deal'
-        console.error('Failed to fetch group deal detail:', error)
+        console.error('Failed to fetch orders:', error)
+        this.ordersStore.setError(error.response?.data?.message || error.response?.data?.error || 'Failed to load orders')
       } finally {
-        this.loading = false
+        this.ordersStore.setLoading(false)
       }
     },
     goBack() {
@@ -896,18 +968,25 @@ export default {
         const response = await apiClient.get(`/admin/orders/${order.id}`)
         this.selectedOrder = response.data.order
         
-        // Load available products from group deal
-        await this.loadAvailableProducts()
+        // Use products from already-loaded group deal (no need for another API call)
+        // Products are already available in this.groupDeal.products from fetchGroupDealDetail()
+        if (this.groupDeal && this.groupDeal.products && Array.isArray(this.groupDeal.products)) {
+          this.availableProducts = this.groupDeal.products
+        } else {
+          // Fallback: only load if group deal data is not available
+          await this.loadAvailableProducts()
+        }
         
         this.showOrderDetail = true
         this.updateError = null
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to load order details'
-        await this.error(`加载失败: ${errorMsg}`)
+        await this.showError(`加载失败: ${errorMsg}`)
         console.error('Failed to load order details:', error)
       }
     },
     async loadAvailableProducts() {
+      // Fallback method - only called if groupDeal.products is not available
       if (!this.selectedOrder?.group_deal_id) return
       
       try {
@@ -930,14 +1009,15 @@ export default {
       
       try {
         const response = await apiClient.put(`/admin/orders/${orderId}/update`, updateData)
+        const updatedOrder = response.data.order
         
-        // Update selected order with new data
-        this.selectedOrder = response.data.order
-        
-        // Refresh orders list
-        await this.fetchGroupDealDetail()
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        this.selectedOrder = updatedOrder
         
         await this.success('订单已更新')
+        
+        // Don't close the modal - keep it open so admin can continue editing
       } catch (error) {
         this.updateError = error.response?.data?.message || error.response?.data?.error || '更新失败'
         await this.error(`更新失败: ${this.updateError}`)
@@ -947,9 +1027,9 @@ export default {
       }
     },
     handleOrderUpdated(order) {
-      // Refresh the selected order after update
+      // Update the selected order after update from modal
       this.selectedOrder = order
-      this.fetchGroupDealDetail()
+      this.ordersStore.updateOrder(order)
     },
     async handleOrderStatusChange(orderId, newStatus) {
       if (!this.selectedOrder || !newStatus) {
@@ -967,18 +1047,42 @@ export default {
       }
       
       try {
-        await apiClient.put(`/admin/orders/${orderId}/status`, { status: newStatus })
+        const response = await apiClient.put(`/admin/orders/${orderId}/status`, { status: newStatus })
+        const updatedOrder = response.data.order
         
-        // Refresh order details
-        const response = await apiClient.get(`/admin/orders/${orderId}`)
-        this.selectedOrder = response.data.order
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        this.selectedOrder = updatedOrder
         
         await this.success(`订单状态已更新为: ${statusText}`)
-        await this.fetchGroupDealDetail()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)
         console.error('Failed to update order status:', error)
+      }
+    },
+    async handleMarkPackingComplete(order) {
+      if (!order || order.status !== 'preparing') {
+        return
+      }
+      
+      const confirmed = await this.confirm(`确认将订单 #${order.order_number} 标记为配货完成?`)
+      if (!confirmed) {
+        return
+      }
+      
+      try {
+        const response = await apiClient.put(`/admin/orders/${order.id}/status`, { status: 'packing_complete' })
+        const updatedOrder = response.data.order
+        
+        // Update store
+        this.ordersStore.updateOrder(updatedOrder)
+        
+        await this.success('订单已标记为配货完成')
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
+        await this.showError(`更新失败: ${errorMsg}`)
+        console.error('Failed to mark packing complete:', error)
       }
     },
     async handlePaymentMethodChange(paymentMethod) {
@@ -992,33 +1096,66 @@ export default {
         await this.markOrderAsPaid('cash')
       }
     },
-    async markOrderAsPaid(paymentMethod = 'etransfer') {
-      if (!this.selectedOrder || this.selectedOrder.payment_status === 'paid') {
+    async markOrderAsPaid(data) {
+      // Handle different data formats for backward compatibility
+      let orderId
+      let paymentMethod = 'etransfer'
+      
+      if (typeof data === 'object' && data !== null) {
+        // New format: { orderId, paymentMethod }
+        if (data.orderId) {
+          orderId = data.orderId
+          paymentMethod = data.paymentMethod || 'etransfer'
+        } else if (data.id) {
+          // Old format: order object (for backward compatibility)
+          orderId = data.id
+          paymentMethod = data.payment_method || 'etransfer'
+        } else {
+          return
+        }
+      } else if (typeof data === 'string') {
+        // Old format: paymentMethod string
+        paymentMethod = data
+        if (!this.selectedOrder) return
+        orderId = this.selectedOrder.id
+      } else {
         return
       }
       
-      const amount = parseFloat(this.selectedOrder.total || 0).toFixed(2)
-      const pointsToEarn = Math.floor(parseFloat(this.selectedOrder.total) * 100)
+      // Find the order to mark as paid
+      const orderToMark = this.selectedOrder?.id === orderId 
+        ? this.selectedOrder 
+        : this.orders.find(o => o.id === orderId)
       
-      const confirmed = await this.confirm(`确认标记订单 #${this.selectedOrder.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
+      if (!orderToMark || orderToMark.payment_status === 'paid') {
+        return
+      }
+      
+      const amount = parseFloat(orderToMark.total || 0).toFixed(2)
+      const pointsToEarn = Math.floor(parseFloat(orderToMark.total) * 100)
+      
+      const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
       if (!confirmed) {
         return
       }
       
       try {
-        const response = await apiClient.put(`/admin/orders/${this.selectedOrder.id}/payment`, { 
+        const response = await apiClient.put(`/admin/orders/${orderId}/payment`, { 
           payment_status: 'paid',
           payment_method: paymentMethod
         })
         
-        // Update selected order with new data
-        this.selectedOrder = response.data.order
+        const updatedOrder = response.data.order
+        
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        if (this.selectedOrder && this.selectedOrder.id === updatedOrder.id) {
+          this.selectedOrder = updatedOrder
+        }
         
         const pointsAwarded = response.data.points_awarded || 0
-        await this.success(`订单已标记为已付款\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
-        
-        // Refresh orders list
-        await this.fetchGroupDealDetail()
+        const paymentMethodLabel = paymentMethod === 'cash' ? '现金' : '电子转账'
+        await this.success(`订单已标记为已付款（${paymentMethodLabel}）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -1037,14 +1174,14 @@ export default {
       
       this.markingComplete = true
       try {
-        await apiClient.put(`/admin/orders/${this.selectedOrder.id}/status`, { status: 'completed' })
+        const response = await apiClient.put(`/admin/orders/${this.selectedOrder.id}/status`, { status: 'completed' })
+        const updatedOrder = response.data.order
         
-        // Refresh order details
-        const response = await apiClient.get(`/admin/orders/${this.selectedOrder.id}`)
-        this.selectedOrder = response.data.order
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        this.selectedOrder = updatedOrder
         
         await this.success('订单已标记为已完成')
-        await this.fetchGroupDealDetail()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -1096,19 +1233,71 @@ export default {
     
     async handleOrderMerged(mergedOrder) {
       await this.success('订单合并成功')
-      // Refresh group deal and orders
+      // Refresh group deal and orders - we need full refresh for merge as it affects multiple orders
       await this.fetchGroupDealDetail()
       // Optionally refresh duplicates if modal is still open
       if (this.showDuplicatesModal) {
         await this.findDuplicates()
       }
     },
-    
+
+    async bulkMarkDelivering() {
+      if (!this.groupDeal) {
+        return
+      }
+
+      // Count delivery orders that will be updated
+      const deliveryOrders = this.orders.filter(order => 
+        order.delivery_method === 'delivery' && 
+        order.status !== 'out_for_delivery' &&
+        order.status !== 'completed' &&
+        order.status !== 'cancelled'
+      )
+      
+      if (deliveryOrders.length === 0) {
+        await this.error('当前团购没有可更新的配送订单')
+        return
+      }
+      
+      const confirmed = await this.confirm(
+        `确认将"${this.groupDeal.title}"的所有配送订单标记为"正在配送"？\n\n将更新 ${deliveryOrders.length} 个配送订单\n\n此操作将更新该团购下所有符合条件的配送订单。`,
+        { type: 'warning', title: '批量更新确认' }
+      )
+      
+      if (!confirmed) {
+        return
+      }
+      
+      this.loadingBulkUpdate = true
+      try {
+        const params = {
+          status: 'out_for_delivery',
+          delivery_method: 'delivery',
+          group_deal_id: this.groupDeal.id
+        }
+        
+        const response = await apiClient.post('/admin/orders/bulk-update-status', params)
+        
+        const updatedCount = response.data.updated_count || 0
+        await this.success(`成功更新 ${updatedCount} 个订单为"正在配送"`)
+        
+        // Refresh group deal and orders
+        await this.fetchGroupDealDetail()
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || '批量更新失败'
+        await this.error(`更新失败: ${errorMsg}`)
+        console.error('Failed to bulk update orders:', error)
+      } finally {
+        this.loadingBulkUpdate = false
+      }
+    },
+
     getStatusText(status) {
       const statusMap = {
         'submitted': '已提交订单',
         'confirmed': '已确认订单',
         'preparing': '正在配货',
+        'packing_complete': '配货完成',
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
         'delivering': '正在配送',
@@ -1116,6 +1305,15 @@ export default {
         'cancelled': '已取消'
       }
       return statusMap[status] || status
+    },
+    formatPricingType(pricingType) {
+      const typeMap = {
+        'per_item': '按件计价',
+        'weight_range': '按重量区间计价',
+        'unit_weight': '按单位重量计价',
+        'bundled_weight': '按捆绑重量计价'
+      }
+      return typeMap[pricingType] || pricingType
     }
   }
 }
@@ -1161,6 +1359,67 @@ export default {
 .header-actions {
   display: flex;
   gap: var(--md-spacing-md);
+}
+
+.bulk-delivery-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: #E1F5FE;
+  color: #0277BD;
+  border: 1px solid rgba(2, 119, 189, 0.2);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--md-elevation-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.bulk-delivery-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.bulk-delivery-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(2, 119, 189, 0.1);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s, opacity 0.3s;
+  opacity: 0;
+}
+
+.bulk-delivery-btn:hover:not(:disabled) {
+  background: #B3E5FC;
+  border-color: rgba(2, 119, 189, 0.4);
+  box-shadow: var(--md-elevation-3);
+  transform: translateY(-2px);
+}
+
+.bulk-delivery-btn:active:not(:disabled) {
+  background: #81D4FA;
+  transform: translateY(0);
+}
+
+.bulk-delivery-btn:active:not(:disabled)::before {
+  width: 300px;
+  height: 300px;
+  opacity: 1;
+  transition: width 0s, height 0s, opacity 0.3s;
+}
+
+.bulk-delivery-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .export-btn {
@@ -1564,15 +1823,54 @@ export default {
   margin-bottom: var(--md-spacing-md);
 }
 
-.order-tabs {
-  display: flex;
-  gap: var(--md-spacing-sm);
+.order-tabs-container {
   margin-bottom: var(--md-spacing-lg);
-  flex-wrap: wrap;
   background: #FFFFFF;
   padding: var(--md-spacing-md);
   border-radius: var(--md-radius-lg);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.order-tabs {
+  display: flex;
+  gap: var(--md-spacing-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--md-spacing-md);
+}
+
+.order-filters {
+  display: flex;
+  gap: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  cursor: pointer;
+  user-select: none;
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  border-radius: var(--md-radius-sm);
+  transition: all 0.2s;
+}
+
+.checkbox-label:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.checkbox-input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--md-primary);
+}
+
+.checkbox-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.7);
 }
 
 .tab-btn {
@@ -1645,10 +1943,83 @@ export default {
   align-items: center;
   margin-bottom: var(--md-spacing-md);
   gap: var(--md-spacing-md);
+  flex-wrap: wrap;
 }
 
 .orders-header h3 {
   margin: 0;
+}
+
+.orders-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-md);
+  flex-wrap: wrap;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 24px;
+  padding: 8px 16px;
+  min-width: 300px;
+  transition: all 0.2s;
+}
+
+.search-box:focus-within {
+  border-color: var(--md-primary);
+  box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.2);
+}
+
+.search-icon {
+  width: 18px;
+  height: 18px;
+  color: rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.87);
+  padding: 0;
+}
+
+.search-input::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.clear-search-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  margin-left: 8px;
+  transition: all 0.2s;
+}
+
+.clear-search-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.clear-search-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Duplicates button */
@@ -1864,6 +2235,132 @@ export default {
   overflow-y: auto;
   padding: var(--md-spacing-lg);
   background: #FAFAFA;
+}
+
+/* Loading Spinner */
+.loading-section,
+.orders-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--md-spacing-xl);
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.03) 0%, rgba(255, 165, 0, 0.05) 100%);
+  border-radius: var(--md-radius-lg);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  min-height: 200px;
+  position: relative;
+  overflow: hidden;
+}
+
+.loading-section::before,
+.orders-loading::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 140, 0, 0.1), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--md-spacing-md);
+  position: relative;
+  z-index: 1;
+  animation: fadeInUp 0.4s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.spinner {
+  width: 56px;
+  height: 56px;
+  color: var(--md-primary);
+  animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+  filter: drop-shadow(0 2px 4px rgba(255, 140, 0, 0.2));
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+.spinner circle {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.spinner path {
+  animation: dash 1.5s ease-in-out infinite;
+}
+
+@keyframes dash {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124;
+  }
+}
+
+.loading-spinner span {
+  font-size: 0.9375rem;
+  color: var(--md-primary);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 </style>

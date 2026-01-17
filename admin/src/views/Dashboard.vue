@@ -84,7 +84,6 @@
 
 <script>
 import { getCurrentUser, clearAuth } from '../utils/auth'
-import packageJson from '../../package.json'
 import { useModal } from '../composables/useModal'
 
 export default {
@@ -97,7 +96,7 @@ export default {
     return {
       user: null,
       sidebarOpen: false,
-      version: packageJson.version
+      version: '加载中...'
     }
   },
   computed: {
@@ -127,6 +126,7 @@ export default {
   },
   mounted() {
     this.loadUser()
+    this.loadVersion()
     // Close sidebar when route changes on mobile
     this.$watch('$route', () => {
       if (window.innerWidth < 768) {
@@ -135,6 +135,77 @@ export default {
     })
   },
   methods: {
+    async loadVersion() {
+      // First try: Read directly from sw.js (most reliable and fastest)
+      try {
+        const response = await fetch('/sw.js?t=' + Date.now(), { 
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        })
+        if (response.ok) {
+          const text = await response.text()
+          const match = text.match(/const VERSION = ['"]([^'"]+)['"]/)
+          if (match && match[1]) {
+            this.version = match[1]
+            return
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to get version from sw.js:', e)
+      }
+
+      // Second try: Get from service worker via message channel (if available)
+      if ('serviceWorker' in navigator) {
+        try {
+          // Use Promise.race to timeout after 2 seconds
+          const registration = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+          ]).catch(() => null)
+          
+          if (registration && registration.active) {
+            const gotVersion = await new Promise((resolve) => {
+              const channel = new MessageChannel()
+              let resolved = false
+              const timeout = setTimeout(() => {
+                if (!resolved) {
+                  resolved = true
+                  channel.port1.close()
+                  resolve(false)
+                }
+              }, 1000)
+
+              channel.port1.onmessage = (event) => {
+                if (!resolved) {
+                  resolved = true
+                  clearTimeout(timeout)
+                  if (event.data && event.data.version) {
+                    this.version = event.data.version
+                    resolve(true)
+                  } else {
+                    resolve(false)
+                  }
+                  channel.port1.close()
+                }
+              }
+              
+              registration.active.postMessage({ type: 'GET_VERSION' }, [channel.port2])
+            })
+            
+            if (gotVersion) {
+              return
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to get version from service worker:', error)
+        }
+      }
+      
+      // Final fallback: show unknown if we couldn't get version
+      this.version = '未知'
+    },
     loadUser() {
       this.user = getCurrentUser()
     },

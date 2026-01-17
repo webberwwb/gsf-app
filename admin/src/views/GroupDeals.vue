@@ -66,10 +66,7 @@
               <div class="product-mini-info">
                 <div class="product-mini-name">{{ product.name }}</div>
                 <div class="product-mini-price">
-                  <span class="deal-price">${{ product.deal_price || product.price || '0.00' }}</span>
-                  <span v-if="product.deal_price && product.price && product.deal_price < product.price" class="original-price">
-                    ${{ product.price }}
-                  </span>
+                  <span class="deal-price">${{ product.price || '0.00' }}</span>
                 </div>
               </div>
             </div>

@@ -106,7 +106,12 @@
               <div class="product-price">
                 <span class="price-label">团购价:</span>
                 <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
-                  ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}
+                  <template v-if="getOrderItemForProduct(product) && getOrderItemForProduct(product).final_weight">
+                    ${{ (parseFloat(product.pricing_data?.price_per_unit || 0) * parseFloat(getOrderItemForProduct(product).final_weight)).toFixed(2) }}
+                  </template>
+                  <template v-else>
+                    ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                  </template>
                 </span>
                 <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
                   {{ formatPriceRange(product) }}
@@ -209,11 +214,27 @@
                     <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
                   </div>
                   <div class="package-info-wrapper">
-                    <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }})</span>
+                    <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
                   </div>
-                  <div class="item-total estimated">
-                    <span>预估小计: {{ calculateBundledItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click="showPriceInfo('价格基于每份重量范围估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                  <!-- Weight Input for bundled_weight products -->
+                  <div v-if="getQuantity(product) > 0 && canEditProducts" class="weight-control">
+                    <label>总重量 ({{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}):</label>
+                    <input
+                      type="number"
+                      :value="getWeight(product)"
+                      @input="setWeight(product, $event.target.value)"
+                      :min="product.pricing_data?.min_weight || 7"
+                      :max="(product.pricing_data?.max_weight || 15) * getQuantity(product)"
+                      :step="0.001"
+                      :disabled="!canEditProducts || isOrderCompleted"
+                      class="weight-input"
+                      placeholder="输入实际重量"
+                    />
+                  </div>
+                  <div class="item-total" :class="{ estimated: !hasWeight(product) }">
+                    <span v-if="hasWeight(product)">小计: {{ calculateBundledItemTotal(product) }}</span>
+                    <span v-else>预估小计: {{ calculateBundledItemTotal(product) }}</span>
+                    <div v-if="!hasWeight(product)" class="tooltip-container" @click="showPriceInfo('价格基于每份重量范围估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -227,6 +248,39 @@
                 <span v-else-if="isDealClosed">团购已截单，无法修改商品</span>
                 <span v-else-if="order && order.status === 'confirmed'">订单已确认，无法修改商品</span>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Confirmed Order Items Section (shows actual items with weights when order is confirmed/completed) -->
+      <div v-if="order && order.items && order.items.length > 0 && (order.status === 'confirmed' || order.status === 'preparing' || order.status === 'ready_for_pickup' || order.status === 'out_for_delivery' || order.status === 'completed')" class="confirmed-items-section">
+        <h3 class="section-title">订单商品明细</h3>
+        <div class="confirmed-items-list">
+          <div 
+            v-for="item in order.items" 
+            :key="item.id"
+            class="confirmed-item-row"
+          >
+            <div class="confirmed-item-info">
+              <div class="confirmed-item-name">{{ item.product?.name || '商品已下架' }}</div>
+              <div class="confirmed-item-meta">
+                <span class="confirmed-item-quantity">数量: {{ item.quantity }}</span>
+                <span v-if="item.product && (item.product.pricing_type === 'weight_range' || item.product.pricing_type === 'unit_weight' || item.product.pricing_type === 'bundled_weight') && item.final_weight" class="confirmed-item-weight">
+                  重量: {{ parseFloat(item.final_weight).toFixed(3) }} {{ item.product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                </span>
+                <span v-else-if="item.product && (item.product.pricing_type === 'weight_range' || item.product.pricing_type === 'unit_weight' || item.product.pricing_type === 'bundled_weight')" class="confirmed-item-weight pending">
+                  重量: 待确认
+                </span>
+              </div>
+            </div>
+            <div class="confirmed-item-price">
+              <template v-if="item.product && item.product.pricing_type === 'bundled_weight' && item.final_weight && item.product.pricing_data?.price_per_unit">
+                ${{ (parseFloat(item.product.pricing_data.price_per_unit) * parseFloat(item.final_weight)).toFixed(2) }}
+              </template>
+              <template v-else>
+                ${{ parseFloat(item.total_price || 0).toFixed(2) }}
+              </template>
             </div>
           </div>
         </div>
@@ -366,14 +420,14 @@
         <h3 class="section-title">支付方式</h3>
         <div class="payment-options">
           <label 
-            :class="['payment-option', { active: paymentMethod === 'cash' }]"
+            :class="['payment-option', { active: paymentMethod === 'cash', disabled: deliveryMethod === 'delivery' }]"
           >
             <input 
               type="radio" 
               name="paymentMethod" 
               value="cash" 
               v-model="paymentMethod"
-              :disabled="!canEditPaymentDelivery"
+              :disabled="!canEditPaymentDelivery || deliveryMethod === 'delivery'"
               class="payment-radio"
             />
             <div class="option-icon">
@@ -732,6 +786,10 @@ export default {
               this.selectedItems[item.product_id] = { quantity: 0 }
             }
             this.selectedItems[item.product_id].quantity = item.quantity
+            // Load weight if available (for bundled_weight products)
+            if (item.final_weight != null && item.final_weight > 0) {
+              this.selectedItems[item.product_id].weight = parseFloat(item.final_weight)
+            }
           })
         }
         
@@ -829,14 +887,11 @@ export default {
       return labels[status] || status
     },
     formatPrice(product) {
-      if (product.deal_price) {
-        return parseFloat(product.deal_price).toFixed(2)
-      }
       if (product.display_price) {
         return parseFloat(product.display_price).toFixed(2)
       }
-      if (product.sale_price) {
-        return parseFloat(product.sale_price).toFixed(2)
+      if (product.price) {
+        return parseFloat(product.price).toFixed(2)
       }
       return '0.00'
     },
@@ -844,9 +899,6 @@ export default {
       if (product.pricing_type === 'weight_range') {
         const ranges = product.pricing_data?.ranges || []
         if (ranges.length === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
@@ -856,9 +908,6 @@ export default {
           .filter(p => p > 0)
         
         if (prices.length === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
@@ -871,12 +920,9 @@ export default {
         return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
       } else if (product.pricing_type === 'unit_weight') {
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const unit = product.pricing_data?.unit || 'kg'
+        const unit = product.pricing_data?.unit || 'lb'
         
         if (pricePerUnit === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}/${unit}`
-          }
           return '价格待定'
         }
         
@@ -888,9 +934,6 @@ export default {
         const unit = product.pricing_data?.unit || 'lb'
         
         if (pricePerUnit === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}/份`
-          }
           return '价格待定'
         }
         
@@ -921,6 +964,29 @@ export default {
         this.selectedItems[product.id] = { quantity: 0 }
       }
       this.selectedItems[product.id].quantity = finalQty
+      
+      // Clear weight if quantity becomes 0
+      if (finalQty === 0) {
+        delete this.selectedItems[product.id].weight
+      }
+    },
+    getWeight(product) {
+      return this.selectedItems[product.id]?.weight || null
+    },
+    setWeight(product, value) {
+      if (!this.selectedItems[product.id]) {
+        this.selectedItems[product.id] = { quantity: 0 }
+      }
+      
+      const weight = parseFloat(value) || null
+      if (weight !== null && weight > 0) {
+        this.selectedItems[product.id].weight = weight
+      } else {
+        delete this.selectedItems[product.id].weight
+      }
+    },
+    hasWeight(product) {
+      return this.selectedItems[product.id]?.weight != null && this.selectedItems[product.id].weight > 0
     },
     increaseQuantity(product) {
       if (this.isOutOfStock(product)) {
@@ -951,7 +1017,7 @@ export default {
       if (quantity === 0) return '0.00'
       
       if (product.pricing_type === 'per_item') {
-        const price = product.deal_price || product.display_price || product.sale_price || 0
+        const price = product.display_price || product.price || 0
         return (parseFloat(price) * quantity).toFixed(2)
       } else if (product.pricing_type === 'weight_range') {
         const ranges = product.pricing_data?.ranges || []
@@ -960,38 +1026,65 @@ export default {
         const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
         return (minPrice * quantity).toFixed(2)
       } else if (product.pricing_type === 'unit_weight') {
+        // unit_weight: products are weighed individually, not stacked
+        // unit_price = price_per_unit (the rate)
+        // total_price = price_per_unit * final_weight (or estimated weight)
+        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const estimatedWeight = 1
-        return (parseFloat(pricePerUnit) * estimatedWeight * quantity).toFixed(2)
-      } else if (product.pricing_type === 'bundled_weight') {
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const minWeight = product.pricing_data?.min_weight || 7
-        const maxWeight = product.pricing_data?.max_weight || 15
-        const midWeight = (minWeight + maxWeight) / 2
+        const weight = this.getWeight(product)
         
+        if (weight != null && weight > 0) {
+          return (parseFloat(pricePerUnit) * weight).toFixed(2)
+        } else {
+          // Use estimated weight if not provided
+          const estimatedWeight = 1
+          return (parseFloat(pricePerUnit) * estimatedWeight).toFixed(2)
+        }
+      } else if (product.pricing_type === 'bundled_weight') {
+        // bundled_weight: products are weighed individually, not stacked
+        // unit_price = price_per_unit (the rate)
+        // total_price = price_per_unit * final_weight (or estimated weight)
+        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
+        const pricePerUnit = product.pricing_data?.price_per_unit || 0
         if (pricePerUnit === 0) return '0.00'
         
-        return (pricePerUnit * midWeight * quantity).toFixed(2)
+        // Use actual weight if provided, otherwise use mid-weight for estimation
+        const weight = this.getWeight(product)
+        if (weight != null && weight > 0) {
+          return (pricePerUnit * weight).toFixed(2)
+        } else {
+          const minWeight = product.pricing_data?.min_weight || 7
+          const maxWeight = product.pricing_data?.max_weight || 15
+          const midWeight = (minWeight + maxWeight) / 2
+          // For estimation, use mid-weight (no quantity multiplication)
+          return (pricePerUnit * midWeight).toFixed(2)
+        }
       }
       return '0.00'
     },
     calculateBundledItemTotal(product) {
-      const quantity = this.getQuantity(product)
-      if (quantity === 0) return '$0.00'
-      
+      // bundled_weight: products are weighed individually, not stacked
+      // Quantity is always 1 for weight-based products
       const pricePerUnit = product.pricing_data?.price_per_unit || 0
-      const minWeight = product.pricing_data?.min_weight || 7
-      const maxWeight = product.pricing_data?.max_weight || 15
-      
       if (pricePerUnit === 0) return '$0.00'
       
-      const minPrice = pricePerUnit * minWeight * quantity
-      const maxPrice = pricePerUnit * maxWeight * quantity
-      
-      if (minPrice === maxPrice) {
-        return `$${minPrice.toFixed(2)}`
+      // Use actual weight if provided, otherwise show price range
+      const weight = this.getWeight(product)
+      if (weight != null && weight > 0) {
+        const totalPrice = pricePerUnit * weight
+        return `$${totalPrice.toFixed(2)}`
+      } else {
+        const minWeight = product.pricing_data?.min_weight || 7
+        const maxWeight = product.pricing_data?.max_weight || 15
+        // For estimation, show price range (no quantity multiplication)
+        const minPrice = pricePerUnit * minWeight
+        const maxPrice = pricePerUnit * maxWeight
+        
+        if (minPrice === maxPrice) {
+          return `$${minPrice.toFixed(2)}`
+        }
+        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
       }
-      return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
     },
     calculateSubtotal() {
       if (!this.deal || !this.deal.products) return '0.00'
@@ -1061,11 +1154,17 @@ export default {
         this.deal.products.forEach(product => {
           const selection = this.selectedItems[product.id]
           if (selection && selection.quantity > 0) {
-            orderItems.push({
+            const itemData = {
               product_id: product.id,
               quantity: selection.quantity,
               pricing_type: product.pricing_type
-            })
+            }
+            // Include weight for bundled_weight products if provided
+            // Always send final_weight if it exists, even if 0 (though 0 is unlikely)
+            if (product.pricing_type === 'bundled_weight' && selection.weight != null) {
+              itemData.final_weight = parseFloat(selection.weight)
+            }
+            orderItems.push(itemData)
           }
         })
         
@@ -1076,11 +1175,31 @@ export default {
       } else {
         // Products can't be edited (deal closed or order confirmed) - use existing order items (can only update payment/delivery/notes)
         if (this.order.items && this.order.items.length > 0) {
-          orderItems = this.order.items.map(item => ({
-            product_id: item.product_id,
-            quantity: item.quantity,
-            pricing_type: item.product?.pricing_type || 'per_item'
-          }))
+          orderItems = this.order.items.map(item => {
+            const itemData = {
+              product_id: item.product_id,
+              quantity: item.quantity,
+              pricing_type: item.product?.pricing_type || 'per_item'
+            }
+            // For bundled_weight products, check if user has entered a new weight in selectedItems
+            // If so, use that instead of the existing weight
+            if (item.product?.pricing_type === 'bundled_weight') {
+              const selection = this.selectedItems[item.product_id]
+              if (selection && selection.weight != null && selection.weight > 0) {
+                // User has entered a new weight, use it
+                itemData.final_weight = parseFloat(selection.weight)
+              } else if (item.final_weight != null && item.final_weight > 0) {
+                // No new weight entered, use existing weight
+                itemData.final_weight = parseFloat(item.final_weight)
+              }
+            } else {
+              // For other pricing types, include existing weight if available
+              if (item.final_weight != null && item.final_weight > 0) {
+                itemData.final_weight = parseFloat(item.final_weight)
+              }
+            }
+            return itemData
+          })
         } else {
           await this.warning('订单中没有商品')
           return
@@ -1106,13 +1225,64 @@ export default {
         
         const response = await apiClient.patch(`/orders/${this.order.id}`, orderData)
         
-        // Update local order data
-        this.order = response.data.order
+        // Update local order data with response
+        const updatedOrder = response.data.order
+        this.order = updatedOrder
+        
+        // Get set of product IDs that are in the updated order
+        const orderProductIds = new Set()
+        if (updatedOrder.items && updatedOrder.items.length > 0) {
+          updatedOrder.items.forEach(item => {
+            orderProductIds.add(item.product_id)
+            if (this.selectedItems[item.product_id] === undefined) {
+              this.selectedItems[item.product_id] = { quantity: 0 }
+            }
+            this.selectedItems[item.product_id].quantity = item.quantity
+            // Update weight if available (for bundled_weight products)
+            if (item.final_weight != null && item.final_weight > 0) {
+              this.selectedItems[item.product_id].weight = parseFloat(item.final_weight)
+            } else {
+              // Clear weight if not present
+              delete this.selectedItems[item.product_id].weight
+            }
+          })
+        }
+        
+        // Clear quantity for products that are no longer in the order
+        // But only if we're editing products (not when deal is closed)
+        if (this.canEditProducts && this.deal && this.deal.products) {
+          this.deal.products.forEach(product => {
+            if (!orderProductIds.has(product.id)) {
+              if (this.selectedItems[product.id]) {
+                this.selectedItems[product.id].quantity = 0
+                delete this.selectedItems[product.id].weight
+              }
+            }
+          })
+        }
+        
+        // Update order settings from response
+        this.paymentMethod = updatedOrder.payment_method || 'cash'
+        this.deliveryMethod = updatedOrder.delivery_method || 'pickup'
+        this.selectedPickupLocation = updatedOrder.pickup_location || 'markham'
+        this.selectedAddressId = updatedOrder.address_id || null
+        this.notes = updatedOrder.notes || ''
+        
+        // Update address if delivery method is delivery
+        if (this.deliveryMethod === 'delivery' && this.selectedAddressId) {
+          // Only load addresses if we don't have the selected address
+          if (!this.selectedAddress || this.selectedAddress.id !== this.selectedAddressId) {
+            await this.loadAddresses()
+            const addr = this.addresses.find(a => a.id === this.selectedAddressId)
+            if (addr) {
+              this.selectedAddress = addr
+            }
+          }
+        } else {
+          this.selectedAddress = null
+        }
         
         await this.success('订单已更新')
-        
-        // Reload order to get latest data
-        await this.loadOrder()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || '更新订单失败'
         await this.showError(errorMsg)
@@ -1163,6 +1333,10 @@ export default {
     setDeliveryMethod(method) {
       if (!this.canEditPaymentDelivery) return
       this.deliveryMethod = method
+      // If delivery method is set to delivery, automatically set payment to etransfer
+      if (method === 'delivery' && this.paymentMethod === 'cash') {
+        this.paymentMethod = 'etransfer'
+      }
     },
     setPickupLocation(location) {
       if (!this.canEditPaymentDelivery) return
@@ -1212,6 +1386,11 @@ export default {
       } finally {
         this.cancelling = false
       }
+    },
+    getOrderItemForProduct(product) {
+      // Find the order item for this product if order exists
+      if (!this.order || !this.order.items) return null
+      return this.order.items.find(item => item.product_id === product.id) || null
     },
     async reactivateOrder() {
       if (!this.order || !this.deal) return
@@ -1695,6 +1874,35 @@ export default {
   padding: 0 var(--md-spacing-xs);
 }
 
+.weight-control {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  margin-top: var(--md-spacing-xs);
+}
+
+.weight-control label {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  min-width: 120px;
+}
+
+.weight-input {
+  flex: 1;
+  max-width: 150px;
+  height: 32px;
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-sm);
+  text-align: center;
+  font-size: var(--md-body-size);
+  padding: 0 var(--md-spacing-xs);
+}
+
+.weight-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .package-info-wrapper {
   width: 100%;
   margin-top: var(--md-spacing-xs);
@@ -1770,6 +1978,16 @@ export default {
 .payment-option.active {
   border-color: var(--md-primary);
   background: rgba(255, 165, 0, 0.1);
+}
+
+.payment-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.payment-option input:disabled {
+  cursor: not-allowed;
 }
 
 .option-icon {
@@ -2429,6 +2647,65 @@ export default {
   color: var(--md-primary);
 }
 
+.confirmed-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-md);
+}
+
+.confirmed-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: var(--md-spacing-md);
+  background: var(--md-surface-variant);
+  border-radius: var(--md-radius-md);
+  border: 1px solid var(--md-outline-variant);
+}
+
+.confirmed-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-xs);
+}
+
+.confirmed-item-name {
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  color: var(--md-on-surface);
+}
+
+.confirmed-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-spacing-md);
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+}
+
+.confirmed-item-quantity {
+  font-weight: 500;
+}
+
+.confirmed-item-weight {
+  color: var(--md-primary);
+  font-weight: 500;
+}
+
+.confirmed-item-weight.pending {
+  color: var(--md-on-surface-variant);
+  font-style: italic;
+}
+
+.confirmed-item-price {
+  font-size: var(--md-body-size);
+  font-weight: 600;
+  color: var(--md-primary);
+  margin-left: var(--md-spacing-md);
+  flex-shrink: 0;
+}
+
 @media (max-width: 480px) {
   .product-image {
     width: 80px;
@@ -2440,6 +2717,16 @@ export default {
   .reactivate-order-btn {
     padding: var(--md-spacing-sm) var(--md-spacing-md);
     font-size: var(--md-label-size);
+  }
+
+  .confirmed-item-row {
+    flex-direction: column;
+    gap: var(--md-spacing-sm);
+  }
+
+  .confirmed-item-price {
+    margin-left: 0;
+    align-self: flex-end;
   }
 }
 </style>

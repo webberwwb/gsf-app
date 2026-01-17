@@ -155,9 +155,6 @@ def get_group_deals():
                 product = Product.query.get(dp.product_id)
                 if product and product.is_active:
                     product_dict = product.to_dict()
-                    # Add deal-specific price if set
-                    if dp.deal_price:
-                        product_dict['deal_price'] = float(dp.deal_price)
                     product_dict['deal_stock_limit'] = dp.deal_stock_limit
                     products_data.append(product_dict)
             deal_dict['products'] = products_data
@@ -189,9 +186,6 @@ def get_group_deal(deal_id):
             product = Product.query.get(dp.product_id)
             if product:
                 product_dict = product.to_dict()
-                # Add deal-specific price if set
-                if dp.deal_price:
-                    product_dict['deal_price'] = float(dp.deal_price)
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 products_data.append(product_dict)
         

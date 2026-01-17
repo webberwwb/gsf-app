@@ -152,13 +152,13 @@
                 </template>
                 <template v-else-if="product.pricing_type === 'unit_weight'">
                   <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price }}</span>
-                  <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+                  <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'bundled_weight'">
                   <div class="bundled-price-compact">
                     <span class="sale-price">{{ formatBundledPrice(product) }}</span>
                     <span class="price-note">/ 份</span>
-                    <span class="unit-price-note">(${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }})</span>
+                    <span class="unit-price-note">(${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
                   </div>
                 </template>
                 <template v-else>

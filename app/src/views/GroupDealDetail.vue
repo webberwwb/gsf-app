@@ -96,21 +96,17 @@
               <div class="product-price">
                 <span class="price-label">团购价:</span>
                 <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
-                  ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}
+                  ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
                 </span>
                 <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
                   {{ formatPriceRange(product) }}
                 </span>
                 <span v-else class="price-value">${{ formatPrice(product) }}</span>
-                <span v-if="product.original_price && product.original_price > (product.deal_price || product.display_price) && product.pricing_type === 'per_item'" class="original-price">
-                  ${{ product.original_price }}
-                </span>
               </div>
               <!-- Debug: Remove after testing -->
               <!-- <div style="font-size: 10px; color: gray;">
                 Type: {{ product.pricing_type }}, 
                 Has ranges: {{ product.pricing_data?.ranges ? 'yes' : 'no' }},
-                Deal price: {{ product.deal_price }}
               </div> -->
 
               <!-- Stock Info -->
@@ -211,7 +207,7 @@
                     <button @click="increaseQuantity(product)" :disabled="!isOrderEditable || isOutOfStock(product)" class="qty-btn">+</button>
                   </div>
                   <div class="package-info-wrapper">
-                    <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }})</span>
+                    <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: {{ calculateBundledItemTotal(product) }}</span>
@@ -357,14 +353,11 @@ export default {
       return formatPickupDateTime_CN(dateString)
     },
     formatPrice(product) {
-      if (product.deal_price) {
-        return parseFloat(product.deal_price).toFixed(2)
-      }
       if (product.display_price) {
         return parseFloat(product.display_price).toFixed(2)
       }
-      if (product.sale_price) {
-        return parseFloat(product.sale_price).toFixed(2)
+      if (product.price) {
+        return parseFloat(product.price).toFixed(2)
       }
       return '0.00'
     },
@@ -372,10 +365,6 @@ export default {
       if (product.pricing_type === 'weight_range') {
         const ranges = product.pricing_data?.ranges || []
         if (ranges.length === 0) {
-          // Fallback to deal_price if no ranges
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
@@ -388,9 +377,6 @@ export default {
           .filter(p => p > 0) // Filter out invalid prices
         
         if (prices.length === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
@@ -403,13 +389,9 @@ export default {
         return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
       } else if (product.pricing_type === 'unit_weight') {
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const unit = product.pricing_data?.unit || 'kg'
+        const unit = product.pricing_data?.unit || 'lb'
         
         if (pricePerUnit === 0) {
-          // Fallback to deal_price if no price_per_unit
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}/${unit}`
-          }
           return '价格待定'
         }
         
@@ -422,9 +404,6 @@ export default {
         const unit = product.pricing_data?.unit || 'lb'
         
         if (pricePerUnit === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}/份`
-          }
           return '价格待定'
         }
         
@@ -497,7 +476,7 @@ export default {
       if (quantity === 0) return '0.00'
       
       if (product.pricing_type === 'per_item') {
-        const price = product.deal_price || product.display_price || product.sale_price || 0
+        const price = product.display_price || product.price || 0
         return (parseFloat(price) * quantity).toFixed(2)
       } else if (product.pricing_type === 'weight_range') {
         // Use LOWEST price for estimation (conservative estimate)
@@ -509,13 +488,18 @@ export default {
         
         return (minPrice * quantity).toFixed(2)
       } else if (product.pricing_type === 'unit_weight') {
-        // Use a default estimated weight (1 unit) for estimation
+        // unit_weight: products are weighed individually, not stacked
+        // unit_price = price_per_unit (the rate)
+        // total_price = price_per_unit * final_weight (or estimated weight)
+        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
         const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
-        return (parseFloat(pricePerUnit) * estimatedWeight * quantity).toFixed(2)
+        return (parseFloat(pricePerUnit) * estimatedWeight).toFixed(2)
       } else if (product.pricing_type === 'bundled_weight') {
-        // quantity = number of packages
-        // Use mid-weight (average) for estimation
+        // bundled_weight: products are weighed individually, not stacked
+        // unit_price = price_per_unit (the rate)
+        // total_price = price_per_unit * final_weight (or estimated weight)
+        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
         const minWeight = product.pricing_data?.min_weight || 7
         const maxWeight = product.pricing_data?.max_weight || 15
@@ -523,24 +507,23 @@ export default {
         
         if (pricePerUnit === 0) return '0.00'
         
-        // Return single estimated price using mid-weight
-        return (pricePerUnit * midWeight * quantity).toFixed(2)
+        // Return single estimated price using mid-weight (no quantity multiplication)
+        return (pricePerUnit * midWeight).toFixed(2)
       }
       return '0.00'
     },
     calculateBundledItemTotal(product) {
-      const quantity = this.getQuantity(product)
-      if (quantity === 0) return '$0.00'
-      
-      // quantity = number of packages
+      // bundled_weight: products are weighed individually, not stacked
+      // Quantity is always 1 for weight-based products
       const pricePerUnit = product.pricing_data?.price_per_unit || 0
       const minWeight = product.pricing_data?.min_weight || 7
       const maxWeight = product.pricing_data?.max_weight || 15
       
       if (pricePerUnit === 0) return '$0.00'
       
-      const minPrice = pricePerUnit * minWeight * quantity
-      const maxPrice = pricePerUnit * maxWeight * quantity
+      // Show price range (no quantity multiplication)
+      const minPrice = pricePerUnit * minWeight
+      const maxPrice = pricePerUnit * maxWeight
       
       if (minPrice === maxPrice) {
         return `$${minPrice.toFixed(2)}`
@@ -581,7 +564,7 @@ export default {
           let isEstimated = false
           
           if (product.pricing_type === 'per_item') {
-            const price = product.deal_price || product.display_price || product.sale_price || 0
+            const price = product.display_price || product.price || 0
             estimatedPrice = parseFloat(price) * quantity
           } else if (product.pricing_type === 'weight_range') {
             // Use LOWEST price for estimation (conservative estimate)

@@ -8,12 +8,13 @@ from enum import Enum
 class OrderStatus(str, Enum):
     """
     Order Status Enum
-    Workflow: submitted → confirmed → preparing → ready_for_pickup/out_for_delivery → completed
+    Workflow: submitted → confirmed → preparing → packing_complete → ready_for_pickup/out_for_delivery → completed
     Can be cancelled at any stage
     """
     SUBMITTED = 'submitted'           # 已提交订单 - User placed order, can edit/cancel
     CONFIRMED = 'confirmed'           # 已确认订单 - Order deadline passed, user cannot edit products but can edit pickup/payment
     PREPARING = 'preparing'           # 正在配货 - Admin started preparing
+    PACKING_COMPLETE = 'packing_complete'  # 配货完成 - Packing completed, ready for next step
     READY_FOR_PICKUP = 'ready_for_pickup'  # 可以取货 - Ready for customer pickup
     OUT_FOR_DELIVERY = 'out_for_delivery'  # 正在配送 - Out for delivery (delivery orders only)
     COMPLETED = 'completed'           # 订单完成 - Order completed and paid
@@ -26,6 +27,7 @@ class OrderStatus(str, Enum):
             cls.SUBMITTED: '已提交订单',
             cls.CONFIRMED: '已确认订单',
             cls.PREPARING: '正在配货',
+            cls.PACKING_COMPLETE: '配货完成',
             cls.READY_FOR_PICKUP: '可以取货',
             cls.OUT_FOR_DELIVERY: '正在配送',
             cls.COMPLETED: '订单完成',

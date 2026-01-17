@@ -53,14 +53,11 @@ class GroupDeal(BaseModel):
         return data
 
 class GroupDealProduct(BaseModel):
-    """Products in a group deal - can have promotional pricing"""
+    """Products in a group deal"""
     __tablename__ = 'group_deal_products'
     
     group_deal_id = db.Column(db.Integer, db.ForeignKey('group_deals.id'), nullable=False, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
-    
-    # Promotional price for this deal (optional - if null, use product's default price)
-    deal_price = db.Column(db.Numeric(10, 2), nullable=True)
     
     # Stock limit for this deal (optional)
     deal_stock_limit = db.Column(db.Integer, nullable=True)
@@ -70,7 +67,6 @@ class GroupDealProduct(BaseModel):
         data.update({
             'group_deal_id': self.group_deal_id,
             'product_id': self.product_id,
-            'deal_price': float(self.deal_price) if self.deal_price else None,
             'deal_stock_limit': self.deal_stock_limit
         })
         return data

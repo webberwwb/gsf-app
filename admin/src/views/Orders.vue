@@ -37,6 +37,7 @@
           <option value="submitted">已提交订单</option>
           <option value="confirmed">已确认订单</option>
           <option value="preparing">正在配货</option>
+          <option value="packing_complete">配货完成</option>
           <option value="ready_for_pickup">可以取货</option>
           <option value="delivering">正在配送</option>
           <option value="completed">订单完成</option>
@@ -127,6 +128,7 @@
 
     <!-- Order Detail Modal -->
     <OrderDetailModal
+      ref="orderDetailModal"
       :show="showOrderDetail"
       :order="selectedOrder"
       :available-products="availableProducts"
@@ -141,6 +143,7 @@
       @payment-method-change="handlePaymentMethodChange"
       @order-updated="handleOrderUpdated"
       @update-error="(msg) => { this.updateError = msg }"
+      @products-loaded="handleProductsLoaded"
     />
 
     <!-- Duplicates Modal -->
@@ -201,6 +204,7 @@
 <script>
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
+import { useOrdersStore } from '../stores/orders'
 import { Html5Qrcode } from 'html5-qrcode'
 import { formatDateEST_CN } from '../utils/date'
 import OrderCard from '../components/OrderCard.vue'
@@ -216,7 +220,8 @@ export default {
   },
   setup() {
     const { confirm, success, error } = useModal()
-    return { confirm, success, error }
+    const ordersStore = useOrdersStore()
+    return { confirm, success, error, ordersStore }
   },
   data() {
     return {
@@ -380,8 +385,8 @@ export default {
         const response = await apiClient.get(`/admin/orders/${order.id}`)
         this.selectedOrder = response.data.order
         
-        // Load available products from group deal
-        await this.loadAvailableProducts()
+        // Don't load products here - load them lazily when user clicks "Add Product"
+        // This avoids unnecessary API calls when just viewing/editing orders
         
         this.showOrderDetail = true
         this.updateError = null
@@ -414,14 +419,16 @@ export default {
       
       try {
         const response = await apiClient.put(`/admin/orders/${orderId}/update`, updateData)
+        const updatedOrder = response.data.order
         
-        // Update selected order with new data
-        this.selectedOrder = response.data.order
-        
-        // Refresh orders list
-        await this.fetchOrders()
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        this.selectedOrder = updatedOrder
         
         await this.success('订单已更新')
+        
+        // Close the modal
+        this.closeOrderDetail()
       } catch (error) {
         this.updateError = error.response?.data?.message || error.response?.data?.error || '更新失败'
         await this.error(`更新失败: ${this.updateError}`)
@@ -431,11 +438,15 @@ export default {
       }
     },
     handleOrderUpdated(order) {
-      // Refresh the selected order after update from modal
+      // Update the selected order after update from modal
       if (order) {
         this.selectedOrder = order
+        this.ordersStore.updateOrder(order)
       }
-      this.fetchOrders()
+    },
+    handleProductsLoaded(products) {
+      // Update available products when modal loads them
+      this.availableProducts = products
     },
     async openQRScanner() {
       this.showQRScanner = true
@@ -501,11 +512,11 @@ export default {
         }
         
         // Load available products
-        await this.loadAvailableProducts()
-        
+        // Don't load products here - load them lazily when user clicks "Add Product"
+
         this.showOrderDetail = true
         this.updateError = null
-        
+
         await this.success(`已找到订单: ${order.order_number}`)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || '订单未找到'
@@ -543,14 +554,14 @@ export default {
       }
       
       try {
-        await apiClient.put(`/admin/orders/${orderId}/status`, { status: newStatus })
+        const response = await apiClient.put(`/admin/orders/${orderId}/status`, { status: newStatus })
+        const updatedOrder = response.data.order
         
-        // Refresh order details
-        const response = await apiClient.get(`/admin/orders/${orderId}`)
-        this.selectedOrder = response.data.order
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        this.selectedOrder = updatedOrder
         
         await this.success(`订单状态已更新为: ${statusText}`)
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -569,14 +580,14 @@ export default {
           payment_method: 'cash'
         })
         
-        // Update selected order with new data
-        this.selectedOrder = response.data.order
+        const updatedOrder = response.data.order
+        
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        this.selectedOrder = updatedOrder
         
         const pointsAwarded = response.data.points_awarded || 0
         await this.success(`订单已自动标记为已付款（现金）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
-        
-        // Refresh orders list
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -584,36 +595,57 @@ export default {
       }
     },
     
-    async markOrderAsPaid() {
-      if (!this.selectedOrder || this.selectedOrder.payment_status === 'paid') {
+    async markOrderAsPaid(data) {
+      // Handle different data formats
+      let orderToMark
+      let paymentMethod = 'etransfer'
+      
+      if (typeof data === 'object' && data !== null) {
+        // New format: { orderId, paymentMethod }
+        if (data.orderId) {
+          orderToMark = this.orders.find(o => o.id === data.orderId) || this.selectedOrder
+          paymentMethod = data.paymentMethod || 'etransfer'
+        } else if (data.id) {
+          // Old format: order object (for backward compatibility)
+          orderToMark = data
+          paymentMethod = data.payment_method || 'etransfer'
+        } else {
+          orderToMark = this.selectedOrder
+        }
+      } else {
+        // Fallback to selectedOrder
+        orderToMark = this.selectedOrder
+      }
+      
+      if (!orderToMark || orderToMark.payment_status === 'paid') {
         return
       }
       
-      const amount = parseFloat(this.selectedOrder.total || 0).toFixed(2)
-      const pointsToEarn = Math.floor(parseFloat(this.selectedOrder.total) * 100)
+      const amount = parseFloat(orderToMark.total || 0).toFixed(2)
+      const pointsToEarn = Math.floor(parseFloat(orderToMark.total) * 100)
       
-      const confirmed = await this.confirm(`确认标记订单 #${this.selectedOrder.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
+      const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
       if (!confirmed) {
         return
       }
       
       try {
-        const response = await apiClient.put(`/admin/orders/${this.selectedOrder.id}/payment`, { 
+        const response = await apiClient.put(`/admin/orders/${orderToMark.id}/payment`, { 
           payment_status: 'paid',
-          payment_method: 'etransfer'
+          payment_method: paymentMethod
         })
         
-        // Update selected order with new data
-        this.selectedOrder = response.data.order
+        const updatedOrder = response.data.order
         
-        // Update order status in UI
-        this.selectedOrderStatus = this.selectedOrder.status || 'submitted'
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        if (this.selectedOrder && this.selectedOrder.id === updatedOrder.id) {
+          this.selectedOrder = updatedOrder
+        }
         
         const pointsAwarded = response.data.points_awarded || 0
-        await this.success(`订单已标记为已付款（电子转账）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
-        
-        // Refresh orders list
-        await this.fetchOrders()
+        const paymentMethodLabel = paymentMethod === 'cash' ? '现金' : '电子转账'
+        await this.success(`订单已标记为已付款（${paymentMethodLabel}）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -633,17 +665,14 @@ export default {
       
       this.markingComplete = true
       try {
-        await apiClient.put(`/admin/orders/${this.selectedOrder.id}/status`, { status: 'completed' })
+        const response = await apiClient.put(`/admin/orders/${this.selectedOrder.id}/status`, { status: 'completed' })
+        const updatedOrder = response.data.order
         
-        // Refresh order details
-        const response = await apiClient.get(`/admin/orders/${this.selectedOrder.id}`)
-        this.selectedOrder = response.data.order
-        
-        // Update order status in UI
-        this.selectedOrderStatus = this.selectedOrder.status || 'submitted'
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        this.selectedOrder = updatedOrder
         
         await this.success('订单已标记为已完成')
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -661,9 +690,13 @@ export default {
       }
       
       try {
-        await apiClient.put(`/admin/orders/${orderId}/status`, { status: newStatus })
+        const response = await apiClient.put(`/admin/orders/${orderId}/status`, { status: newStatus })
+        const updatedOrder = response.data.order
+        
+        // Update store
+        this.ordersStore.updateOrder(updatedOrder)
+        
         await this.success(`订单状态已更新为: ${statusText}`)
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -689,9 +722,13 @@ export default {
           payment_method: paymentMethod
         })
         
+        const updatedOrder = response.data.order
+        
+        // Update store
+        this.ordersStore.updateOrder(updatedOrder)
+        
         const pointsAwarded = response.data.points_awarded || 0
         await this.success(`订单已标记为已付款\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -711,9 +748,13 @@ export default {
       }
       
       try {
-        await apiClient.put(`/admin/orders/${order.id}/status`, { status: newStatus })
+        const response = await apiClient.put(`/admin/orders/${order.id}/status`, { status: newStatus })
+        const updatedOrder = response.data.order
+        
+        // Update store
+        this.ordersStore.updateOrder(updatedOrder)
+        
         await this.success(`订单已标记为${actionText}\n订单状态: ${statusText}`)
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -730,9 +771,13 @@ export default {
       }
       
       try {
-        await apiClient.post(`/admin/orders/${orderId}/cancel`)
+        const response = await apiClient.post(`/admin/orders/${orderId}/cancel`)
+        const updatedOrder = response.data.order
+        
+        // Update store
+        this.ordersStore.updateOrder(updatedOrder)
+        
         await this.success('订单已取消')
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to cancel order'
         await this.error(`取消失败: ${errorMsg}`)
@@ -751,8 +796,12 @@ export default {
       
       try {
         await apiClient.delete(`/admin/orders/${orderId}`)
+        
+        // Remove order from store by filtering it out
+        const orders = this.ordersStore.state.orders.filter(o => o.id !== orderId)
+        this.ordersStore.setOrders(orders)
+        
         await this.success('订单已删除')
-        await this.fetchOrders()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to delete order'
         await this.error(`删除失败: ${errorMsg}`)
@@ -765,6 +814,7 @@ export default {
         'submitted': '已提交订单',
         'confirmed': '已确认订单',
         'preparing': '正在配货',
+        'packing_complete': '配货完成',
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
         'delivering': '正在配送', // Legacy fallback
@@ -1115,6 +1165,11 @@ export default {
 .status-preparing {
   background: #F3E5F5;
   color: #7B1FA2;
+}
+
+.status-packing_complete {
+  background: #E1F5FE;
+  color: #01579B;
 }
 
 .status-ready_for_pickup {

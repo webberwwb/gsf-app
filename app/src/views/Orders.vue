@@ -84,7 +84,17 @@
                 <h4>{{ item.product ? item.product.name : '商品已下架' }}</h4>
                 <div class="item-meta">
                   <span>数量: {{ item.quantity }}</span>
-                  <span class="item-price">${{ item.total_price.toFixed(2) }}</span>
+                  <span v-if="item.product && (item.product.pricing_type === 'weight_range' || item.product.pricing_type === 'unit_weight' || item.product.pricing_type === 'bundled_weight') && item.final_weight" class="item-weight">
+                    重量: {{ parseFloat(item.final_weight).toFixed(3) }} {{ item.product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                  </span>
+                  <span class="item-price">
+                    <template v-if="item.product && item.product.pricing_type === 'bundled_weight' && item.final_weight && item.product.pricing_data?.price_per_unit">
+                      ${{ (parseFloat(item.product.pricing_data.price_per_unit) * parseFloat(item.final_weight)).toFixed(2) }}
+                    </template>
+                    <template v-else>
+                      ${{ item.total_price.toFixed(2) }}
+                    </template>
+                  </span>
                 </div>
               </div>
             </div>
@@ -960,6 +970,13 @@ export default {
   font-size: var(--md-label-size);
   font-weight: 400;
   color: var(--md-on-surface-variant);
+  flex-wrap: wrap;
+  gap: var(--md-spacing-sm);
+}
+
+.item-weight {
+  color: var(--md-primary);
+  font-weight: 500;
 }
 
 .item-price {

@@ -144,6 +144,10 @@ export const useCheckoutStore = defineStore('checkout', {
      */
     setDeliveryMethod(method) {
       this.deliveryMethod = method
+      // If delivery method is set to delivery, automatically set payment to etransfer
+      if (method === 'delivery' && this.paymentMethod === 'cash') {
+        this.paymentMethod = 'etransfer'
+      }
     },
     
     /**

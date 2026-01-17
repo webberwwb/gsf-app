@@ -15,6 +15,7 @@ export const OrderStatus = {
   SUBMITTED: 'submitted',           // 已提交订单 - User placed order, can edit/cancel
   CONFIRMED: 'confirmed',           // 已确认订单 - Order deadline passed, user cannot edit products but can edit pickup/payment
   PREPARING: 'preparing',           // 正在配货 - Admin started preparing
+  PACKING_COMPLETE: 'packing_complete',  // 配货完成 - Packing completed, ready for next step
   READY_FOR_PICKUP: 'ready_for_pickup',  // 可以取货 - Ready for customer pickup
   OUT_FOR_DELIVERY: 'out_for_delivery',  // 正在配送 - Out for delivery (delivery orders only)
   COMPLETED: 'completed',           // 订单完成 - Order completed and paid
@@ -25,6 +26,7 @@ export const OrderStatusLabels = {
   [OrderStatus.SUBMITTED]: '已提交订单',
   [OrderStatus.CONFIRMED]: '已确认订单',
   [OrderStatus.PREPARING]: '正在配货',
+  [OrderStatus.PACKING_COMPLETE]: '配货完成',
   [OrderStatus.READY_FOR_PICKUP]: '可以取货',
   [OrderStatus.OUT_FOR_DELIVERY]: '正在配送',
   [OrderStatus.COMPLETED]: '订单完成',

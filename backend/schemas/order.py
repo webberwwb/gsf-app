@@ -92,6 +92,9 @@ class AdminUpdateOrderSchema(Schema):
     """Schema for admin updating order items"""
     items = fields.List(fields.Nested(OrderItemSchema), required=True, validate=validate.Length(min=1))
     payment_method = fields.String(allow_none=True, validate=validate.OneOf(PaymentMethod.get_all_values()))
+    delivery_method = fields.String(allow_none=True, validate=validate.OneOf(DeliveryMethod.get_all_values()))
+    address_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    pickup_location = fields.String(allow_none=True, validate=validate.Length(max=100))
     
     class Meta:
         unknown = EXCLUDE

@@ -95,7 +95,6 @@ def setup_test_data(app):
             deal_product1 = GroupDealProduct(
                 group_deal_id=test_deal.id,
                 product_id=test_product1.id,
-                deal_price=Decimal('8.00'),
                 deal_stock_limit=100  # Limited stock
             )
             db.session.add(deal_product1)
@@ -110,7 +109,6 @@ def setup_test_data(app):
             deal_product2 = GroupDealProduct(
                 group_deal_id=test_deal.id,
                 product_id=test_product2.id,
-                deal_price=Decimal('15.00'),
                 deal_stock_limit=None  # Unlimited stock
             )
             db.session.add(deal_product2)

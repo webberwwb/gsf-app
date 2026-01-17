@@ -22,7 +22,7 @@ class PricingDataWeightRangeSchema(Schema):
 class PricingDataUnitWeightSchema(Schema):
     """Schema for unit_weight pricing_data"""
     price_per_unit = fields.Float(required=True, validate=validate.Range(min=0))
-    unit = fields.String(missing='kg')
+    unit = fields.String(missing='lb')
 
 
 class PricingDataBundledWeightSchema(Schema):

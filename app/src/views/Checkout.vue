@@ -165,7 +165,7 @@
         <h3 class="section-title">取货方式</h3>
         <div class="delivery-options">
           <button 
-            @click="deliveryMethod = 'pickup'" 
+            @click="setDeliveryMethod('pickup')" 
             :class="['delivery-option', { active: deliveryMethod === 'pickup' }]"
           >
             <div class="option-icon">
@@ -186,7 +186,7 @@
           </button>
 
           <button 
-            @click="deliveryMethod = 'delivery'" 
+            @click="setDeliveryMethod('delivery')" 
             :class="['delivery-option', { active: deliveryMethod === 'delivery' }]"
           >
             <div class="option-icon">
@@ -294,13 +294,14 @@
         <h3 class="section-title">支付方式</h3>
         <div class="payment-options">
           <label 
-            :class="['payment-option', { active: paymentMethod === 'cash' }]"
+            :class="['payment-option', { active: paymentMethod === 'cash', disabled: deliveryMethod === 'delivery' }]"
           >
             <input 
               type="radio" 
               name="paymentMethod" 
               value="cash" 
               v-model="paymentMethod"
+              :disabled="deliveryMethod === 'delivery'"
               class="payment-radio"
             />
             <div class="option-icon">
@@ -623,6 +624,9 @@ export default {
     }
   },
   methods: {
+    setDeliveryMethod(method) {
+      this.checkoutStore.setDeliveryMethod(method)
+    },
     async checkAuth() {
       if (this.authStore.token) {
         const isValid = await this.authStore.checkAuth()
@@ -1315,6 +1319,16 @@ export default {
   background: rgba(255, 140, 0, 0.05);
   box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
   animation: optionSelect 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.payment-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.payment-option input:disabled {
+  cursor: not-allowed;
 }
 
 .payment-note {

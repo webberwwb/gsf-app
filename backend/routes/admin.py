@@ -13,7 +13,7 @@ from utils.sales_stats import update_product_sales_stats, get_product_sales_by_d
 from utils.date_helpers import normalize_date_start, normalize_date_end
 from datetime import datetime, timedelta, timezone, date
 from config import Config
-from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod
+from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
 from schemas.product import CreateProductSchema, UpdateProductSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
 from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema
@@ -568,18 +568,86 @@ def get_user_roles(user_id):
             'message': str(e)
         }), 500
 
+@admin_bp.route('/users/<int:user_id>/addresses', methods=['GET'])
+def get_user_addresses(user_id):
+    """Get user addresses"""
+    admin_user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        user = User.query.get_or_404(user_id)
+        addresses = Address.query.filter_by(user_id=user.id, is_deleted=False).order_by(Address.created_at.desc()).all()
+        
+        return jsonify({
+            'addresses': [address.to_dict() for address in addresses]
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error fetching user addresses: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch user addresses',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/users/<int:user_id>/addresses', methods=['POST'])
+def create_user_address(user_id):
+    """Create a new address for a user"""
+    admin_user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        user = User.query.get_or_404(user_id)
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Validate required fields
+        required_fields = ['address_line1', 'city', 'postal_code']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'{field} is required'}), 400
+        
+        # Create new address
+        address = Address(
+            user_id=user.id,
+            address_line1=data['address_line1'],
+            address_line2=data.get('address_line2', ''),
+            city=data['city'],
+            postal_code=data['postal_code']
+        )
+        
+        db.session.add(address)
+        db.session.commit()
+        
+        current_app.logger.info(f'Admin {admin_user_id} created address {address.id} for user {user.id}')
+        
+        return jsonify({
+            'message': 'Address created successfully',
+            'address': address.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating user address: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to create address',
+            'message': str(e)
+        }), 500
+
 @admin_bp.route('/users/<int:user_id>/roles', methods=['POST'])
 def assign_user_role(user_id):
     """Assign a role to a user"""
     admin_user_id, error_response, status_code = require_admin_auth()
     if error_response:
         return error_response, status_code
-    
+
     # Validate request data using schema
     validated_data, error_response, status_code = validate_request(AssignRoleSchema)
     if error_response:
         return error_response, status_code
-    
+
     role_name = validated_data['role'].lower()
     
     try:
@@ -690,7 +758,6 @@ def get_group_deals():
                 product = Product.query.get(dp.product_id)
                 if product:
                     product_dict = product.to_dict()
-                    product_dict['deal_price'] = float(dp.deal_price) if dp.deal_price else None
                     product_dict['deal_stock_limit'] = dp.deal_stock_limit
                     product_dict['group_deal_product_id'] = dp.id
                     products_data.append(product_dict)
@@ -735,7 +802,6 @@ def get_group_deal(deal_id):
             product = Product.query.get(dp.product_id)
             if product:
                 product_dict = product.to_dict()
-                product_dict['deal_price'] = float(dp.deal_price) if dp.deal_price else None
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 product_dict['group_deal_product_id'] = dp.id
                 products_data.append(product_dict)
@@ -805,7 +871,6 @@ def create_group_deal():
             deal_product = GroupDealProduct(
                 group_deal_id=group_deal.id,
                 product_id=product_id,
-                deal_price=product_data.get('deal_price'),
                 deal_stock_limit=product_data.get('deal_stock_limit')
             )
             db.session.add(deal_product)
@@ -822,7 +887,6 @@ def create_group_deal():
             product = Product.query.get(dp.product_id)
             if product:
                 product_dict = product.to_dict()
-                product_dict['deal_price'] = float(dp.deal_price) if dp.deal_price else None
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 products_data.append(product_dict)
         deal_dict['products'] = products_data
@@ -1006,7 +1070,6 @@ def update_group_deal(deal_id):
                 deal_product = GroupDealProduct(
                     group_deal_id=deal.id,
                     product_id=product_id,
-                    deal_price=product_data.get('deal_price'),
                     deal_stock_limit=product_data.get('deal_stock_limit')
                 )
                 db.session.add(deal_product)
@@ -1023,7 +1086,6 @@ def update_group_deal(deal_id):
             product = Product.query.get(dp.product_id)
             if product:
                 product_dict = product.to_dict()
-                product_dict['deal_price'] = float(dp.deal_price) if dp.deal_price else None
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 products_data.append(product_dict)
         deal_dict['products'] = products_data
@@ -1423,8 +1485,23 @@ def get_admin_orders():
                 if address:
                     order_dict['address'] = address.to_dict()
             
-            # Get order items count
-            order_dict['items_count'] = len(order.items)
+            # Get order items with product details
+            items_data = []
+            for item in order.items:
+                item_dict = item.to_dict()
+                product = Product.query.get(item.product_id)
+                if product:
+                    item_dict['product'] = {
+                        'id': product.id,
+                        'name': product.name,
+                        'image': product.image,
+                        'pricing_type': product.pricing_type,
+                        'pricing_data': product.pricing_data
+                    }
+                items_data.append(item_dict)
+            
+            order_dict['items'] = items_data
+            order_dict['items_count'] = len(items_data)
             
             orders_data.append(order_dict)
         
@@ -1515,14 +1592,53 @@ def update_order_status(order_id):
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
         old_status = order.status
+        old_payment_status = order.payment_status
         order.status = status
+        
+        # For pickup orders with cash payment: auto-mark as paid when completing
+        if (status == OrderStatus.COMPLETED.value and 
+            order.delivery_method == DeliveryMethod.PICKUP.value and 
+            order.payment_method == PaymentMethod.CASH.value and
+            old_payment_status == PaymentStatus.UNPAID.value):
+            
+            order.payment_status = PaymentStatus.PAID.value
+            order.payment_date = utc_now()
+            
+            # Calculate and award points: 1 point per cent ($0.01), excluding shipping fee
+            subtotal_and_tax = float(order.subtotal) + float(order.tax or 0)
+            total_cents = int(subtotal_and_tax * 100)
+            order.points_earned = total_cents
+            
+            # Update user's points balance
+            user = User.query.get(order.user_id)
+            if user:
+                user.points = (user.points or 0) + total_cents
+                current_app.logger.info(f'Awarded {total_cents} points to user {user.id} for order {order_id}')
+            
+            current_app.logger.info(f'Auto-marked pickup cash order {order_id} as paid when completing')
+        
         db.session.commit()
         
         current_app.logger.info(f'Updated order {order_id} status from {old_status} to {status}')
         
+        # Build response with user info
+        order_dict = order.to_dict()
+        
+        # Get user info
+        user = User.query.get(order.user_id)
+        if user:
+            order_dict['user'] = {
+                'id': user.id,
+                'nickname': user.nickname,
+                'phone': user.phone,
+                'email': user.email,
+                'wechat': user.wechat,
+                'is_admin': user.is_admin
+            }
+        
         return jsonify({
             'message': 'Order status updated successfully',
-            'order': order.to_dict()
+            'order': order_dict
         }), 200
         
     except Exception as e:
@@ -1530,6 +1646,84 @@ def update_order_status(order_id):
         current_app.logger.error(f'Error updating order status: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to update order status',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/orders/bulk-update-status', methods=['POST'])
+def bulk_update_order_status():
+    """Bulk update order status for multiple orders (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        new_status = data.get('status')
+        group_deal_id = data.get('group_deal_id')
+        delivery_method = data.get('delivery_method')
+        current_status = data.get('current_status')
+        
+        if not new_status:
+            return jsonify({'error': 'Status is required'}), 400
+        
+        # Validate status
+        if new_status not in OrderStatus.get_all_values():
+            return jsonify({'error': f'Invalid status: {new_status}'}), 400
+        
+        # Build query for orders to update
+        query = Order.query.filter(Order.deleted_at.is_(None))
+        
+        # Apply filters
+        if group_deal_id:
+            query = query.filter(Order.group_deal_id == group_deal_id)
+        
+        if delivery_method:
+            query = query.filter(Order.delivery_method == delivery_method)
+        
+        if current_status:
+            query = query.filter(Order.status == current_status)
+        else:
+            # If no specific current status is provided, exclude orders that are already in final states
+            # Don't update orders that are already out_for_delivery, completed, or cancelled
+            query = query.filter(Order.status.notin_([
+                OrderStatus.OUT_FOR_DELIVERY.value,
+                OrderStatus.COMPLETED.value,
+                OrderStatus.CANCELLED.value
+            ]))
+        
+        # Get orders to update
+        orders = query.all()
+        
+        if not orders:
+            return jsonify({
+                'message': 'No orders found matching the criteria',
+                'updated_count': 0
+            }), 200
+        
+        # Update all orders
+        updated_count = 0
+        for order in orders:
+            old_status = order.status
+            order.status = new_status
+            order.updated_at = utc_now()
+            updated_count += 1
+            current_app.logger.info(f'Bulk updated order {order.id} status from {old_status} to {new_status}')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully updated {updated_count} orders to {OrderStatus.get_label(new_status)}',
+            'updated_count': updated_count
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error bulk updating order status: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to bulk update order status',
             'message': str(e)
         }), 500
 
@@ -1611,16 +1805,35 @@ def update_order_payment(order_id):
                 user.points = (user.points or 0) + total_cents
                 current_app.logger.info(f'Awarded {total_cents} points to user {user.id} for order {order_id}')
             
-            # Auto-complete the order
-            order.status = OrderStatus.COMPLETED.value
-            
-            current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {total_cents}')
+            # Auto-complete the order for pickup cash orders
+            if order.delivery_method == DeliveryMethod.PICKUP.value and order.payment_method == PaymentMethod.CASH.value:
+                order.status = OrderStatus.COMPLETED.value
+                current_app.logger.info(f'Pickup cash order {order_id} marked as paid and auto-completed. Points: {total_cents}')
+            else:
+                # For other orders, also auto-complete (existing behavior)
+                order.status = OrderStatus.COMPLETED.value
+                current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {total_cents}')
         
         db.session.commit()
         
+        # Build response with user info
+        order_dict = order.to_dict()
+        
+        # Get user info
+        user = User.query.get(order.user_id)
+        if user:
+            order_dict['user'] = {
+                'id': user.id,
+                'nickname': user.nickname,
+                'phone': user.phone,
+                'email': user.email,
+                'wechat': user.wechat,
+                'is_admin': user.is_admin
+            }
+        
         return jsonify({
             'message': 'Payment status updated successfully',
-            'order': order.to_dict(),
+            'order': order_dict,
             'points_awarded': order.points_earned if payment_status == PaymentStatus.PAID.value else 0
         }), 200
         
@@ -1736,28 +1949,69 @@ def update_order_weights(order_id):
                 order_item.final_weight = float(final_weight)
             
             # Recalculate price if product is weight-based
-            if product.pricing_type in ['weight_range', 'unit_weight'] and final_weight is not None:
-                # Calculate new price based on final weight
-                new_price = product.calculate_price(quantity=order_item.quantity, weight=float(final_weight))
-                if new_price is not None:
-                    order_item.unit_price = new_price / order_item.quantity
-                    order_item.total_price = new_price
+            if product.pricing_type in ['weight_range', 'unit_weight', 'bundled_weight'] and final_weight is not None:
+                # For weight-based products: unit_price = price_per_unit, total_price = price_per_unit * weight
+                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
+                if product.pricing_type == 'weight_range':
+                    # Find matching range based on final_weight
+                    ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
+                    matched_price = None
+                    for range_item in ranges:
+                        min_weight = range_item.get('min', 0)
+                        max_weight = range_item.get('max')
+                        if final_weight >= min_weight and (max_weight is None or final_weight < max_weight):
+                            matched_price = float(range_item.get('price', 0))
+                            break
+                    if matched_price is not None:
+                        order_item.unit_price = matched_price
+                        order_item.total_price = matched_price  # Quantity is 1 for weight-based products
+                elif product.pricing_type == 'unit_weight':
+                    price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
+                    if price_per_unit > 0:
+                        order_item.unit_price = price_per_unit
+                        order_item.total_price = price_per_unit * float(final_weight)
+                elif product.pricing_type == 'bundled_weight':
+                    price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
+                    if price_per_unit > 0:
+                        order_item.unit_price = price_per_unit
+                        order_item.total_price = price_per_unit * float(final_weight)
         
         # Recalculate subtotal from ALL items in the order (not just updated ones)
-        subtotal = 0
+        from decimal import Decimal
+        subtotal = Decimal('0')
         for order_item in order.items:
-            subtotal += float(order_item.total_price)
+            subtotal += Decimal(str(order_item.total_price))
         
         # Recalculate order totals
-        tax = 0
-        # Include shipping fee in total if it exists
-        shipping_fee = order.shipping_fee or 0
+        tax = Decimal('0')
+        
+        # Recalculate shipping fee for delivery orders (may be waived with new price)
+        from utils.shipping import calculate_shipping_fee
+        from models.address import Address
+        
+        address = None
+        if order.delivery_method == DeliveryMethod.DELIVERY.value and order.address_id:
+            address = Address.query.get(order.address_id)
+        
+        # Prepare order items for shipping calculation
+        order_items_for_shipping = []
+        for order_item in order.items:
+            product = Product.query.get(order_item.product_id)
+            if product:
+                order_items_for_shipping.append({
+                    'product': product,
+                    'total_price': float(order_item.total_price)
+                })
+        
+        shipping_fee = calculate_shipping_fee(subtotal, order.delivery_method, address, order_items_for_shipping)
+        
         total = subtotal + tax + shipping_fee
         # Calculate points excluding shipping fee: 1 point per cent
         points_earned = int((subtotal + tax) * 100)
         
         order.subtotal = subtotal
         order.tax = tax
+        order.shipping_fee = shipping_fee
         order.total = total
         order.points_earned = points_earned
         
@@ -1819,6 +2073,9 @@ def update_admin_order(order_id):
     
     items_data = validated_data['items']
     payment_method = validated_data.get('payment_method', '').strip() if validated_data.get('payment_method') else None
+    delivery_method = validated_data.get('delivery_method')
+    address_id = validated_data.get('address_id')
+    pickup_location = validated_data.get('pickup_location')
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
@@ -1835,7 +2092,8 @@ def update_admin_order(order_id):
         OrderItem.query.filter_by(order_id=order_id).delete()
         
         # Calculate new order totals
-        subtotal = 0
+        from decimal import Decimal
+        subtotal = Decimal('0')
         new_order_items = []
         
         for item_data in items_data:
@@ -1854,57 +2112,170 @@ def update_admin_order(order_id):
             if not product:
                 continue
             
-            # Get group deal specific price (if set for this deal)
-            deal_product = GroupDealProduct.query.filter_by(
-                group_deal_id=order.group_deal_id,
-                product_id=product_id
-            ).first()
+            # ============================================================================
+            # CRITICAL: Calculate item price based on pricing type
+            # ============================================================================
+            # This logic MUST handle ALL pricing types correctly, especially when
+            # final_weight is provided. DO NOT REMOVE OR SIMPLIFY WITHOUT TESTING!
+            #
+            # Pricing types:
+            # 1. bundled_weight: Price = final_weight × price_per_unit (e.g., 3.77 lb × $6.99/lb)
+            # 2. weight_range: Price based on weight ranges
+            # 3. unit_weight: Price = weight × price_per_unit
+            # 4. per_item: Fixed price per item
+            #
+            # REGRESSION WARNING: This code was previously missing bundled_weight handling,
+            # causing incorrect prices when final_weight was provided. The bug was:
+            # - User enters final_weight = 3.77 lb for a $6.99/lb product
+            # - Expected: $26.35 (3.77 × 6.99)
+            # - Bug caused: $38.45 (using estimated mid-weight instead)
+            # ============================================================================
             
-            # Calculate item price
-            if final_weight is not None and product.pricing_type in ['weight_range', 'unit_weight']:
-                # Use final weight for price calculation
-                item_price = product.calculate_price(quantity=quantity, weight=float(final_weight))
-            else:
-                # Use deal price if available, otherwise use product price
-                if deal_product and deal_product.deal_price:
-                    unit_price = float(deal_product.deal_price)
+            if product.pricing_type == 'bundled_weight':
+                # BUNDLED WEIGHT: Products are weighed individually, not stacked
+                # unit_price = price_per_unit (the rate)
+                # total_price = price_per_unit * final_weight (or estimated weight)
+                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
+                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
+                
+                unit_price = price_per_unit  # Unit price is the rate itself
+                
+                if final_weight is not None and final_weight > 0 and price_per_unit > 0:
+                    # ACTUAL WEIGHT PROVIDED: Use exact weight for precise calculation
+                    total_price = float(final_weight) * price_per_unit
                 else:
-                    unit_price = float(product.price) if product.price else 0
-                item_price = unit_price * quantity
+                    # NO WEIGHT PROVIDED: Use mid-weight estimation
+                    if price_per_unit > 0:
+                        min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
+                        max_weight = float(product.pricing_data.get('max_weight', 15) if product.pricing_data else 15)
+                        mid_weight = (min_weight + max_weight) / 2
+                        total_price = price_per_unit * mid_weight
+                    else:
+                        # price_per_unit is 0 or missing - unit_price stays as price_per_unit (0)
+                        # No fallback - unit_price should always be price_per_unit from DB
+                        total_price = 0
+                        
+            elif product.pricing_type == 'unit_weight':
+                # UNIT WEIGHT: Products are weighed individually, not stacked
+                # unit_price = price_per_unit (the rate)
+                # total_price = price_per_unit * final_weight (or estimated weight)
+                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
+                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
+                
+                unit_price = price_per_unit  # Unit price is the rate itself
+                
+                if final_weight is not None and final_weight > 0 and price_per_unit > 0:
+                    total_price = price_per_unit * float(final_weight)
+                else:
+                    # Use estimated weight if not provided
+                    estimated_weight = 1
+                    total_price = price_per_unit * estimated_weight
+                    
+            elif final_weight is not None and product.pricing_type == 'weight_range':
+                # WEIGHT RANGE: Find matching range based on final_weight
+                ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
+                matched_price = None
+                for range_item in ranges:
+                    min_weight = range_item.get('min', 0)
+                    max_weight = range_item.get('max')
+                    if float(final_weight) >= min_weight and (max_weight is None or float(final_weight) < max_weight):
+                        matched_price = float(range_item.get('price', 0))
+                        break
+                
+                if matched_price is not None:
+                    unit_price = matched_price
+                    total_price = matched_price * quantity
+                else:
+                    # No matching range, use first range price from DB for estimation
+                    unit_price = float(ranges[0].get('price', 0)) if ranges else 0
+                    total_price = unit_price * quantity
+                
+            else:
+                # PER ITEM or NO WEIGHT: Use fixed price per item
+                unit_price = product.get_display_price() or 0
+                total_price = unit_price * quantity
             
-            if item_price is None:
-                item_price = 0
+            # Ensure unit_price and total_price are set
+            if 'unit_price' not in locals() or 'total_price' not in locals():
+                unit_price = 0
+                total_price = 0
             
             # Create order item
             order_item = OrderItem(
                 order_id=order_id,
                 product_id=product_id,
                 quantity=quantity,
-                unit_price=item_price / quantity if quantity > 0 else 0,
-                total_price=item_price,
+                unit_price=unit_price,
+                total_price=total_price,
                 final_weight=float(final_weight) if final_weight is not None else None
             )
             db.session.add(order_item)
             new_order_items.append(order_item)
-            subtotal += item_price
-        
-        # Recalculate order totals
-        tax = 0
-        # Include shipping fee in total if it exists
-        shipping_fee = order.shipping_fee or 0
-        total = subtotal + tax + shipping_fee
-        # Calculate points excluding shipping fee: 1 point per cent
-        points_earned = int((subtotal + tax) * 100)
-        
-        order.subtotal = subtotal
-        order.tax = tax
-        order.total = total
-        order.points_earned = points_earned
+            subtotal += Decimal(str(total_price))
         
         # Update payment method if provided
         if payment_method:
             if payment_method in PaymentMethod.get_all_values():
                 order.payment_method = payment_method
+        
+        # Update delivery method if provided
+        if delivery_method:
+            if delivery_method in DeliveryMethod.get_all_values():
+                order.delivery_method = delivery_method
+                # Clear pickup_location if switching to delivery
+                if delivery_method == DeliveryMethod.DELIVERY.value:
+                    order.pickup_location = None
+                # Clear address_id if switching to pickup
+                elif delivery_method == DeliveryMethod.PICKUP.value:
+                    order.address_id = None
+        
+        # Determine the effective delivery method (use updated value if provided, otherwise current)
+        effective_delivery_method = delivery_method if delivery_method else order.delivery_method
+        
+        # Update address_id if provided (only for delivery orders)
+        if address_id is not None:
+            if effective_delivery_method == DeliveryMethod.DELIVERY.value:
+                order.address_id = address_id
+        
+        # Update pickup_location if provided (only for pickup orders)
+        if pickup_location is not None:
+            if effective_delivery_method == DeliveryMethod.PICKUP.value:
+                order.pickup_location = pickup_location
+        
+        # Recalculate order totals (after delivery method and address updates)
+        from decimal import Decimal
+        subtotal_decimal = Decimal(str(subtotal))
+        tax = Decimal('0')
+        
+        # Recalculate shipping fee for delivery orders (may be waived with new price)
+        from utils.shipping import calculate_shipping_fee
+        from models.address import Address
+        
+        address = None
+        if order.delivery_method == DeliveryMethod.DELIVERY.value and order.address_id:
+            address = Address.query.get(order.address_id)
+        
+        # Prepare order items for shipping calculation
+        order_items_for_shipping = []
+        for order_item in new_order_items:
+            product = Product.query.get(order_item.product_id)
+            if product:
+                order_items_for_shipping.append({
+                    'product': product,
+                    'total_price': float(order_item.total_price)
+                })
+        
+        shipping_fee = calculate_shipping_fee(subtotal_decimal, order.delivery_method, address, order_items_for_shipping)
+        
+        total = subtotal_decimal + tax + shipping_fee
+        # Calculate points excluding shipping fee: 1 point per cent
+        points_earned = int((subtotal_decimal + tax) * 100)
+        
+        order.subtotal = subtotal_decimal
+        order.tax = tax
+        order.shipping_fee = shipping_fee
+        order.total = total
+        order.points_earned = points_earned
         
         db.session.commit()
         
@@ -2042,7 +2413,9 @@ def find_duplicate_orders():
                         item_dict['product'] = {
                             'id': product.id,
                             'name': product.name,
-                            'image': product.image
+                            'image': product.image,
+                            'pricing_type': product.pricing_type,
+                            'pricing_data': product.pricing_data
                         }
                     items_data.append(item_dict)
                 order_dict['items'] = items_data
@@ -2206,7 +2579,7 @@ def merge_orders():
                 })
         
         shipping_fee = calculate_shipping_fee(
-            float(subtotal),
+            subtotal,
             main_order.delivery_method,
             address,
             order_items_for_shipping

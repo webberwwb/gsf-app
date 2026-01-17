@@ -49,9 +49,6 @@
           <div class="price-info">
             <template v-if="product.pricing_type === 'per_item'">
               <span class="sale-price">${{ product.price || product.pricing_data?.price || '0.00' }}</span>
-              <span v-if="product.pricing_data?.original_price && product.pricing_data.original_price > (product.price || product.pricing_data?.price || 0)" class="original-price">
-                ${{ product.pricing_data.original_price }}
-              </span>
             </template>
             <template v-else-if="product.pricing_type === 'weight_range'">
               <span class="sale-price">{{ formatWeightRangePrice(product) }}</span>
@@ -59,7 +56,7 @@
             </template>
             <template v-else-if="product.pricing_type === 'unit_weight'">
               <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price || '0.00' }}</span>
-              <span class="price-type-badge">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+              <span class="price-type-badge">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
             </template>
             <template v-else-if="product.pricing_type === 'bundled_weight'">
               <span class="sale-price">{{ formatBundledPrice(product) }}</span>

@@ -179,8 +179,8 @@
               class="form-input"
               required
             >
-              <option value="kg">千克 (kg)</option>
               <option value="lb">磅 (lb)</option>
+              <option value="kg">千克 (kg)</option>
             </select>
           </div>
         </div>
@@ -340,7 +340,7 @@ export default {
           price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
-          unit: 'kg',
+          unit: 'lb',
           min_weight: null,
           max_weight: null
         },
@@ -386,7 +386,7 @@ export default {
           price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
-          unit: 'kg',
+          unit: 'lb',
           min_weight: null,
           max_weight: null
         },
@@ -432,7 +432,7 @@ export default {
             price: pricingData.price || null,
             ranges: pricingData.ranges || [{ min: 0, max: null, price: null }],
             price_per_unit: pricingData.price_per_unit || null,
-            unit: pricingData.unit || 'kg',
+            unit: pricingData.unit || 'lb',
             min_weight: pricingData.min_weight || null,
             max_weight: pricingData.max_weight || null
           },
@@ -456,7 +456,7 @@ export default {
       } else if (this.formData.pricing_type === 'unit_weight') {
         this.formData.pricing_data = {
           price_per_unit: null,
-          unit: 'kg'
+          unit: 'lb'
         }
       } else if (this.formData.pricing_type === 'bundled_weight') {
         this.formData.pricing_data = {

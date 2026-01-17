@@ -13,13 +13,26 @@
     
     <div class="order-header">
       <div class="order-id">{{ order.order_number }}</div>
-      <div class="status-badges">
-        <div class="order-status" :class="`status-${order.status}`">
-          {{ getStatusText(order.status) }}
+      <div class="header-right">
+        <div class="status-badges">
+          <div class="order-status" :class="`status-${order.status}`">
+            {{ getStatusText(order.status) }}
+          </div>
+          <div class="payment-status" :class="`payment-${order.payment_status}`">
+            {{ getPaymentStatusText(order.payment_status) }}
+          </div>
         </div>
-        <div class="payment-status" :class="`payment-${order.payment_status}`">
-          {{ getPaymentStatusText(order.payment_status) }}
-        </div>
+        <!-- Quick Action Button: Mark Packing Complete -->
+        <button 
+          v-if="order.status === 'preparing'"
+          @click.stop="handleMarkPackingComplete" 
+          class="quick-action-btn-header packing-complete-btn"
+          title="标记配货完成">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span class="quick-action-text">标记配货完成</span>
+        </button>
       </div>
     </div>
     
@@ -112,10 +125,58 @@
           v-for="item in order.items" 
           :key="item.id"
           class="item-row">
-          <span class="item-name">{{ item.product?.name || 'Unknown' }}</span>
+          <span class="item-name">
+            {{ item.product?.name || 'Unknown' }}
+            <div v-if="item.product" class="product-info-icon" @click.stop title="查看价格详情">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div class="price-tooltip">
+                <div class="tooltip-content">
+                  <div class="tooltip-header">{{ item.product.name }}</div>
+                  <div class="tooltip-body">
+                    <div class="tooltip-row">
+                      <span class="tooltip-label">定价类型:</span>
+                      <span class="tooltip-value">{{ formatPricingType(item.product.pricing_type) }}</span>
+                    </div>
+                    <div class="tooltip-divider"></div>
+                    <div v-if="item.product.pricing_type === 'per_item'" class="tooltip-row">
+                      <span class="tooltip-label">价格:</span>
+                      <span class="tooltip-value">${{ item.product.pricing_data?.price?.toFixed(2) }}</span>
+                    </div>
+                    <div v-else-if="item.product.pricing_type === 'weight_range'" class="tooltip-section">
+                      <div class="tooltip-label">价格区间:</div>
+                      <div v-for="(range, idx) in item.product.pricing_data?.ranges" :key="idx" class="tooltip-range">
+                        <span>{{ range.min }}{{ range.max ? ` - ${range.max}` : '+' }} {{ item.product.pricing_data?.unit || 'lb' }}:</span>
+                        <span class="tooltip-price">${{ range.price?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                      </div>
+                    </div>
+                    <div v-else-if="item.product.pricing_type === 'unit_weight'" class="tooltip-row">
+                      <span class="tooltip-label">单价:</span>
+                      <span class="tooltip-value">${{ item.product.pricing_data?.price_per_unit?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                    </div>
+                    <div v-else-if="item.product.pricing_type === 'bundled_weight'" class="tooltip-section">
+                      <div class="tooltip-row">
+                        <span class="tooltip-label">单价:</span>
+                        <span class="tooltip-value">${{ item.product.pricing_data?.price_per_unit?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                      </div>
+                      <div class="tooltip-row">
+                        <span class="tooltip-label">重量范围:</span>
+                        <span class="tooltip-value">{{ item.product.pricing_data?.min_weight }} - {{ item.product.pricing_data?.max_weight }} {{ item.product.pricing_data?.unit || 'lb' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </span>
           <span class="item-quantity">x{{ item.quantity }}</span>
-          <span class="item-price">${{ parseFloat(item.price || 0).toFixed(2) }}</span>
+          <span class="item-price">${{ parseFloat(item.total_price || item.unit_price * item.quantity || 0).toFixed(2) }}</span>
         </div>
+      </div>
+      <div class="items-subtotal">
+        <span class="subtotal-label">小计:</span>
+        <span class="subtotal-amount">${{ calculateSubtotal().toFixed(2) }}</span>
       </div>
     </div>
     
@@ -201,13 +262,14 @@ export default {
       default: true
     }
   },
-  emits: ['click', 'delete', 'update-payment', 'mark-shipped', 'update-status', 'cancel'],
+  emits: ['click', 'delete', 'update-payment', 'mark-shipped', 'update-status', 'cancel', 'mark-packing-complete'],
   methods: {
     getStatusText(status) {
       const statusMap = {
         'submitted': '已提交订单',
         'confirmed': '已确认订单',
         'preparing': '正在配货',
+        'packing_complete': '配货完成',
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
         'delivering': '正在配送',
@@ -232,6 +294,17 @@ export default {
       if (address.postal_code) parts.push(address.postal_code)
       return parts.join(', ') || 'N/A'
     },
+    calculateSubtotal() {
+      if (!this.order.items || !Array.isArray(this.order.items) || this.order.items.length === 0) {
+        return 0
+      }
+      
+      return this.order.items.reduce((sum, item) => {
+        // Use total_price if available, otherwise calculate from unit_price * quantity
+        const itemTotal = parseFloat(item.total_price || (item.unit_price * item.quantity) || 0)
+        return sum + itemTotal
+      }, 0)
+    },
     async impersonateUser(userId) {
       const confirmed = await this.confirm('确定要以该用户身份登录吗？您将被重定向到用户端应用，可以直接修改订单。', {
         type: 'warning',
@@ -251,6 +324,18 @@ export default {
         await this.error(error.response?.data?.message || error.response?.data?.error || '代登录失败')
         console.error('Impersonate user error:', error)
       }
+    },
+    handleMarkPackingComplete() {
+      this.$emit('mark-packing-complete', this.order)
+    },
+    formatPricingType(pricingType) {
+      const typeMap = {
+        'per_item': '按件计价',
+        'weight_range': '按重量区间计价',
+        'unit_weight': '按单位重量计价',
+        'bundled_weight': '按捆绑重量计价'
+      }
+      return typeMap[pricingType] || pricingType
     }
   }
 }
@@ -265,7 +350,7 @@ export default {
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
 }
 
@@ -325,6 +410,12 @@ export default {
   font-family: 'Courier New', monospace;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+}
+
 .status-badges {
   display: flex;
   gap: var(--md-spacing-sm);
@@ -350,6 +441,11 @@ export default {
 .status-preparing {
   background: #F3E5F5;
   color: #7B1FA2;
+}
+
+.status-packing_complete {
+  background: #E1F5FE;
+  color: #01579B;
 }
 
 .status-ready_for_pickup {
@@ -619,6 +715,7 @@ export default {
   margin-top: var(--md-spacing-md);
   padding-top: var(--md-spacing-md);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
+  overflow: visible;
 }
 
 .items-header {
@@ -641,6 +738,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: visible;
 }
 
 .item-row {
@@ -651,12 +749,21 @@ export default {
   background: rgba(0, 0, 0, 0.02);
   border-radius: 8px;
   font-size: 0.875rem;
+  position: relative;
+  z-index: 1;
+}
+
+.item-row:hover {
+  z-index: 1001;
 }
 
 .item-name {
   flex: 1;
   color: rgba(0, 0, 0, 0.87);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .item-quantity {
@@ -671,6 +778,212 @@ export default {
   font-weight: 600;
   min-width: 60px;
   text-align: right;
+}
+
+.items-subtotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--md-spacing-sm);
+  padding-top: var(--md-spacing-sm);
+  border-top: 2px solid rgba(0, 0, 0, 0.12);
+  font-weight: 600;
+}
+
+.subtotal-label {
+  color: rgba(0, 0, 0, 0.87);
+  font-size: 0.875rem;
+}
+
+.subtotal-amount {
+  color: var(--md-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.quick-action-btn-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(1, 87, 155, 0.2);
+  background: #E1F5FE;
+  color: #01579B;
+  flex-shrink: 0;
+  box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.1);
+  outline: none;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.quick-action-btn-header svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.quick-action-text {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.quick-action-btn-header:hover {
+  background: #B3E5FC;
+  border-color: rgba(1, 87, 155, 0.4);
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.quick-action-btn-header:active {
+  background: #81D4FA;
+  box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.1);
+  transform: translateY(0);
+}
+
+/* Product Info Icon and Tooltip */
+.product-info-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: help;
+  color: rgba(0, 0, 0, 0.4);
+  transition: all 0.2s;
+}
+
+.product-info-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.product-info-icon:hover {
+  color: var(--md-primary);
+  transform: scale(1.1);
+}
+
+.price-tooltip {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.product-info-icon:hover .price-tooltip {
+  opacity: 1;
+  visibility: visible;
+  left: calc(100% + 12px);
+}
+
+.tooltip-content {
+  background: #FFFFFF;
+  border-radius: 12px;
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.15), 0px 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 12px 16px;
+  min-width: 260px;
+  max-width: 350px;
+  width: max-content;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  position: relative;
+}
+
+.tooltip-content::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  background: #FFFFFF;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.tooltip-header {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--md-on-surface);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--md-primary);
+}
+
+.tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.8125rem;
+}
+
+.tooltip-label {
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tooltip-value {
+  color: var(--md-on-surface);
+  font-weight: 600;
+  text-align: right;
+}
+
+.tooltip-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 4px 0;
+}
+
+.tooltip-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tooltip-section .tooltip-label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.tooltip-range {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: rgba(255, 140, 0, 0.05);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.tooltip-range span:first-child {
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.tooltip-price {
+  color: var(--md-primary);
+  font-weight: 600;
+  white-space: nowrap;
 }
 </style>
 

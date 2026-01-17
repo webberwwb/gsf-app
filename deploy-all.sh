@@ -103,6 +103,14 @@ FRONTEND_VERSION=$(get_frontend_version "$(pwd)")
 echo "📦 Frontend version set to: $FRONTEND_VERSION"
 cd ..
 
+# Update admin version
+echo "🔄 Updating admin version before deployment..."
+cd admin
+update_frontend_version "$(pwd)"
+ADMIN_VERSION=$(get_frontend_version "$(pwd)")
+echo "📦 Admin version set to: $ADMIN_VERSION"
+cd ..
+
 # Deploy Backend
 echo "Building and deploying backend..."
 cd backend

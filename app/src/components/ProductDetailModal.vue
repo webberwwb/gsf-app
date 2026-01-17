@@ -80,9 +80,6 @@
               <div class="price-value">
                 <template v-if="product.pricing_type === 'per_item'">
                   <span class="sale-price">${{ formatPrice(product) }}</span>
-                  <span v-if="product.original_price && product.original_price > (product.deal_price || product.display_price || product.price)" class="original-price">
-                    ${{ product.original_price }}
-                  </span>
                 </template>
                 <template v-else-if="product.pricing_type === 'weight_range'">
                   <span class="sale-price">{{ formatPriceRange(product) }}</span>
@@ -90,18 +87,18 @@
                 </template>
                 <template v-else-if="product.pricing_type === 'unit_weight'">
                   <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price }}</span>
-                  <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+                  <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'bundled_weight'">
                   <div class="bundled-price-display">
                     <div class="package-price">
                       <span class="sale-price">{{ formatBundledPrice(product) }}</span>
-                      <span class="price-note">/ 份 ({{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}/份)</span>
+                      <span class="price-note">/ 份 ({{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}/份)</span>
                     </div>
                     <div class="unit-price">
                       <span class="unit-price-label">单价:</span>
                       <span class="unit-price-value">${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}</span>
-                      <span class="unit-price-unit">/ {{ product.pricing_data?.unit === 'kg' ? 'kg' : 'lb' }}</span>
+                      <span class="unit-price-unit">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                     </div>
                   </div>
                 </template>
@@ -258,14 +255,8 @@ export default {
       }
     },
     formatPrice(product) {
-      if (product.deal_price) {
-        return parseFloat(product.deal_price).toFixed(2)
-      }
       if (product.display_price) {
         return parseFloat(product.display_price).toFixed(2)
-      }
-      if (product.sale_price) {
-        return parseFloat(product.sale_price).toFixed(2)
       }
       if (product.price) {
         return parseFloat(product.price).toFixed(2)
@@ -276,9 +267,6 @@ export default {
       if (product.pricing_type === 'weight_range') {
         const ranges = product.pricing_data?.ranges || []
         if (ranges.length === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
@@ -288,9 +276,6 @@ export default {
           .filter(p => p > 0)
         
         if (prices.length === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
@@ -303,12 +288,9 @@ export default {
         return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
       } else if (product.pricing_type === 'unit_weight') {
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const unit = product.pricing_data?.unit || 'kg'
+        const unit = product.pricing_data?.unit || 'lb'
         
         if (pricePerUnit === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}/${unit}`
-          }
           return '价格待定'
         }
         
@@ -320,9 +302,6 @@ export default {
         const unit = product.pricing_data?.unit || 'lb'
         
         if (pricePerUnit === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
@@ -343,9 +322,6 @@ export default {
         const maxWeight = product.pricing_data?.max_weight || 15
         
         if (pricePerUnit === 0) {
-          if (product.deal_price) {
-            return `$${parseFloat(product.deal_price).toFixed(2)}`
-          }
           return '价格待定'
         }
         
