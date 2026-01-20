@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { fetchShippingConfig, calculateShippingFee } from '../utils/shipping'
 
 export const useCheckoutStore = defineStore('checkout', {
   state: () => ({
@@ -18,7 +19,10 @@ export const useCheckoutStore = defineStore('checkout', {
     deliveryMethod: 'pickup',
     selectedPickupLocation: 'markham',
     selectedAddressId: null,
-    notes: ''
+    notes: '',
+    
+    // Shipping fee configuration
+    shippingConfig: null
   }),
   
   getters: {
@@ -58,13 +62,8 @@ export const useCheckoutStore = defineStore('checkout', {
         return sum
       }, 0)
       
-      // Free shipping for orders >= $150 (using adjusted subtotal)
-      if (freeShippingSubtotal >= 150) {
-        return 0
-      }
-      
-      // GTA shipping fee for orders < $150
-      return 7.99
+      // Use dynamic config if available, otherwise fallback to default calculation
+      return calculateShippingFee(freeShippingSubtotal, state.shippingConfig)
     },
     
     total: (state) => {
@@ -82,7 +81,7 @@ export const useCheckoutStore = defineStore('checkout', {
           }
           return sum
         }, 0)
-        shipping = freeShippingSubtotal >= 150 ? 0 : 7.99
+        shipping = calculateShippingFee(freeShippingSubtotal, state.shippingConfig)
       }
       
       return subtotal + shipping
@@ -90,6 +89,16 @@ export const useCheckoutStore = defineStore('checkout', {
   },
   
   actions: {
+    /**
+     * Load shipping fee configuration
+     */
+    async loadShippingConfig() {
+      if (!this.shippingConfig) {
+        this.shippingConfig = await fetchShippingConfig()
+      }
+      return this.shippingConfig
+    },
+    
     /**
      * Set deal information
      */

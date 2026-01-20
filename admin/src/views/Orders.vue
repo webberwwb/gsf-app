@@ -67,6 +67,12 @@
           <option value="markham">Markham</option>
           <option value="northyork">North York</option>
         </select>
+        
+        <select v-model="userSourceFilter" class="filter-select">
+          <option value="">全部获客渠道</option>
+          <option value="花泽">花泽</option>
+          <option value="default">默认</option>
+        </select>
       </div>
     </div>
 
@@ -237,6 +243,7 @@ export default {
       paymentMethodFilter: '',
       deliveryMethodFilter: '',
       pickupLocationFilter: '',
+      userSourceFilter: '',
       currentPage: 1,
       showQRScanner: false,
       qrScanner: null,
@@ -281,6 +288,10 @@ export default {
       this.fetchOrders()
     },
     pickupLocationFilter() {
+      this.currentPage = 1
+      this.fetchOrders()
+    },
+    userSourceFilter() {
       this.currentPage = 1
       this.fetchOrders()
     }
@@ -337,6 +348,9 @@ export default {
         }
         if (this.pickupLocationFilter) {
           params.pickup_location = this.pickupLocationFilter
+        }
+        if (this.userSourceFilter) {
+          params.user_source = this.userSourceFilter
         }
         
         const response = await apiClient.get('/admin/orders', { params })

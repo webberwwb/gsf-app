@@ -43,6 +43,11 @@ const router = createRouter({
           path: 'suppliers',
           name: 'Suppliers',
           component: () => import('../views/Suppliers.vue')
+        },
+        {
+          path: 'shipping-fee',
+          name: 'ShippingFeeManagement',
+          component: () => import('../views/ShippingFeeManagement.vue')
         }
       ]
     },

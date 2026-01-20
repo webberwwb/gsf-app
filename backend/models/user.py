@@ -40,6 +40,9 @@ class User(BaseModel):
     # WeChat ID for group buying (required for users)
     wechat = db.Column(db.String(255), nullable=True)
     
+    # User source (e.g., "花泽", "default")
+    user_source = db.Column(db.String(50), nullable=True, default='default')
+    
     # Relationships
     addresses = db.relationship('Address', backref='user', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', backref='user', lazy=True)
@@ -80,6 +83,7 @@ class User(BaseModel):
             'status': self.status,
             'email': self.email,
             'wechat': self.wechat,
+            'user_source': self.user_source or 'default',
             'is_active': self.is_active,
             'is_admin': self.is_admin,
             'roles': self.get_roles()

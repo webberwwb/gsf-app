@@ -19,12 +19,26 @@
     <!-- User List Tab -->
     <div v-if="activeTab === 'users'" class="tab-content">
       <div class="page-header-actions">
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索用户 (手机号/昵称)"
-          class="search-input"
-        />
+        <div class="search-and-actions">
+          <div class="search-row">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="搜索用户 (手机号/昵称/微信号)"
+              class="search-input"
+            />
+            <button @click="toggleCheckboxes" class="add-source-btn" :class="{ 'active': showCheckboxes }">
+              {{ showCheckboxes ? '取消' : '管理获客渠道' }}
+            </button>
+          </div>
+          <div class="bulk-actions" v-if="showCheckboxes && selectedUsers.length > 0">
+            <span class="selected-count">已选择 {{ selectedUsers.length }} 个用户</span>
+            <button @click="showBulkAssignModal = true" class="bulk-assign-btn">
+              批量分配来源
+            </button>
+            <button @click="clearSelection" class="clear-selection-btn">清除选择</button>
+          </div>
+        </div>
       </div>
 
       <div v-if="loading" class="loading">加载中...</div>
@@ -33,12 +47,24 @@
         <p>暂无用户</p>
       </div>
       <div v-else class="users-list">
-      <div v-for="user in filteredUsers" :key="user.id" class="user-card">
+      <div v-for="user in filteredUsers" :key="user.id" class="user-card" :class="{ 'selected': isUserSelected(user.id) }">
+        <div class="user-checkbox" v-if="showCheckboxes">
+          <input
+            type="checkbox"
+            :checked="isUserSelected(user.id)"
+            @change="toggleUserSelection(user.id)"
+            class="checkbox-input"
+          />
+        </div>
         <div class="user-avatar">{{ getUserInitial(user) }}</div>
         <div class="user-info">
           <div class="user-name-row">
             <span class="user-name">{{ user.nickname || user.phone || '未设置' }}</span>
             <span v-if="user.is_admin" class="admin-badge">管理员</span>
+            <span v-else class="normal-user-badge">普通用户</span>
+            <span v-if="user.user_source" class="source-badge" :class="user.user_source === '花泽' ? 'source-huaze' : 'source-default'">
+              {{ user.user_source }}
+            </span>
           </div>
           <div class="user-phone">{{ user.phone || user.email || 'N/A' }}</div>
           <div v-if="user.wechat" class="user-wechat">微信号: {{ user.wechat }}</div>
@@ -72,6 +98,33 @@
     <!-- OTP Stats Tab -->
     <div v-if="activeTab === 'otp-stats'" class="tab-content">
       <OTPStats />
+    </div>
+
+    <!-- Bulk Assign Source Modal -->
+    <div v-if="showBulkAssignModal" class="modal-overlay" @click="closeBulkAssignModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h2>批量分配用户来源</h2>
+          <button @click="closeBulkAssignModal" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="bulk-assign-info">
+            <p><strong>已选择用户:</strong> {{ selectedUsers.length }} 个</p>
+          </div>
+          <div class="bulk-assign-form">
+            <label>用户来源:</label>
+            <select v-model="bulkAssignSource" class="role-select">
+              <option value="">请选择来源</option>
+              <option value="花泽">花泽</option>
+              <option value="default">默认</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeBulkAssignModal" class="cancel-btn">取消</button>
+          <button @click="executeBulkAssign" class="confirm-btn" :disabled="!bulkAssignSource">确定</button>
+        </div>
+      </div>
     </div>
 
     <!-- Role Management Modal -->
@@ -133,10 +186,14 @@ export default {
       error: null,
       users: [],
       searchQuery: '',
+      selectedUsers: [],
+      showCheckboxes: false,
       showRoleModal: false,
       roleModalUser: null,
       roleAction: '',
-      roleName: ''
+      roleName: '',
+      showBulkAssignModal: false,
+      bulkAssignSource: ''
     }
   },
   computed: {
@@ -148,7 +205,8 @@ export default {
       return this.users.filter(user => {
         const phone = (user.phone || '').toLowerCase()
         const nickname = (user.nickname || '').toLowerCase()
-        return phone.includes(query) || nickname.includes(query)
+        const wechat = (user.wechat || '').toLowerCase()
+        return phone.includes(query) || nickname.includes(query) || wechat.includes(query)
       })
     }
   },
@@ -277,6 +335,54 @@ export default {
         await this.error(error.response?.data?.message || error.response?.data?.error || '代登录失败')
         console.error('Impersonate user error:', error)
       }
+    },
+    toggleUserSelection(userId) {
+      const index = this.selectedUsers.indexOf(userId)
+      if (index > -1) {
+        this.selectedUsers.splice(index, 1)
+      } else {
+        this.selectedUsers.push(userId)
+      }
+    },
+    isUserSelected(userId) {
+      return this.selectedUsers.includes(userId)
+    },
+    clearSelection() {
+      this.selectedUsers = []
+    },
+    toggleCheckboxes() {
+      this.showCheckboxes = !this.showCheckboxes
+      if (!this.showCheckboxes) {
+        // Clear selection when hiding checkboxes
+        this.selectedUsers = []
+      }
+    },
+    closeBulkAssignModal() {
+      this.showBulkAssignModal = false
+      this.bulkAssignSource = ''
+    },
+    async executeBulkAssign() {
+      if (!this.bulkAssignSource || this.selectedUsers.length === 0) {
+        await this.$alert('请选择用户来源', {
+          type: 'warning',
+          title: '输入错误'
+        })
+        return
+      }
+      
+      try {
+        await apiClient.post('/admin/users/bulk-assign-source', {
+          user_ids: this.selectedUsers,
+          user_source: this.bulkAssignSource
+        })
+        await this.success(`成功为 ${this.selectedUsers.length} 个用户分配来源`)
+        await this.fetchUsers()
+        this.clearSelection()
+        this.closeBulkAssignModal()
+      } catch (error) {
+        await this.error(error.response?.data?.message || error.response?.data?.error || '批量分配失败')
+        console.error('Bulk assign error:', error)
+      }
     }
   }
 }
@@ -289,6 +395,96 @@ export default {
 
 .page-header-actions {
   margin-bottom: var(--md-spacing-lg);
+}
+
+.search-and-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-md);
+}
+
+.search-row {
+  display: flex;
+  gap: var(--md-spacing-md);
+  align-items: center;
+}
+
+.add-source-btn {
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  background: rgba(255, 140, 0, 0.1);
+  color: var(--md-primary);
+  border: 1px solid rgba(255, 140, 0, 0.3);
+  white-space: nowrap;
+}
+
+.add-source-btn:hover {
+  background: rgba(255, 140, 0, 0.2);
+  border-color: rgba(255, 140, 0, 0.5);
+}
+
+.add-source-btn.active {
+  background: var(--gradient-primary);
+  color: white;
+  border-color: transparent;
+}
+
+.add-source-btn.active:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-md);
+  padding: var(--md-spacing-md);
+  background: rgba(255, 140, 0, 0.1);
+  border-radius: var(--md-radius-md);
+  border: 1px solid rgba(255, 140, 0, 0.3);
+}
+
+.selected-count {
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  color: var(--md-primary);
+}
+
+.bulk-assign-btn,
+.clear-selection-btn {
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.bulk-assign-btn {
+  background: var(--gradient-primary);
+  color: white;
+}
+
+.bulk-assign-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+}
+
+.clear-selection-btn {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.clear-selection-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .search-input {
@@ -330,9 +526,27 @@ export default {
   align-items: center;
   gap: var(--md-spacing-lg);
   transition: var(--transition-normal);
-  border: none;
+  border: 2px solid transparent;
   position: relative;
   overflow: hidden;
+}
+
+.user-card.selected {
+  border-color: var(--md-primary);
+  background: rgba(255, 140, 0, 0.05);
+}
+
+.user-checkbox {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.checkbox-input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--md-primary);
 }
 
 .user-card:hover {
@@ -386,6 +600,34 @@ export default {
   border-radius: var(--md-radius-sm);
   font-size: var(--md-label-size);
   font-weight: 500;
+}
+
+.normal-user-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.6);
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+}
+
+.source-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+}
+
+.source-badge.source-huaze {
+  background: rgba(156, 39, 176, 0.2);
+  color: #9c27b0;
+}
+
+.source-badge.source-default {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .user-roles {
@@ -565,14 +807,39 @@ export default {
 
 /* Mobile Responsive Styles */
 @media (max-width: 767px) {
+  .search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .search-input {
     max-width: 100%;
+  }
+
+  .add-source-btn {
+    width: 100%;
+  }
+
+  .bulk-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bulk-assign-btn,
+  .clear-selection-btn {
+    width: 100%;
   }
 
   .user-card {
     flex-direction: column;
     align-items: flex-start;
     padding: var(--md-spacing-md);
+  }
+
+  .user-checkbox {
+    position: absolute;
+    top: var(--md-spacing-md);
+    right: var(--md-spacing-md);
   }
 
   .user-avatar {
@@ -716,10 +983,21 @@ export default {
   font-size: 14px;
 }
 
-.role-form {
+.role-form,
+.bulk-assign-form {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.bulk-assign-info {
+  margin-bottom: 20px;
+}
+
+.bulk-assign-info p {
+  margin: 8px 0;
+  color: #374151;
+  font-size: 14px;
 }
 
 .role-form label {

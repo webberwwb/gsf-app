@@ -8,6 +8,7 @@ from models.supplier import Supplier
 from models.order import Order, OrderItem
 from models.address import Address
 from models.product_sales_stats import ProductSalesStats
+from models.delivery_fee_config import DeliveryFeeConfig
 from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
 from utils.date_helpers import normalize_date_start, normalize_date_end
@@ -16,7 +17,7 @@ from config import Config
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
 from schemas.product import CreateProductSchema, UpdateProductSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
-from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema
+from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateDeliveryFeeConfigSchema
 from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
 from schemas.utils import validate_request
 from urllib.parse import quote
@@ -27,6 +28,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import func
 from decimal import Decimal
 from utils.shipping import calculate_shipping_fee
+from utils.stock_management import restore_stock
 import csv
 import io
 
@@ -385,7 +387,8 @@ def get_users():
                 db.or_(
                     User.phone.like(search_term),
                     User.nickname.like(search_term),
-                    User.email.like(search_term)
+                    User.email.like(search_term),
+                    User.wechat.like(search_term)
                 )
             )
         
@@ -544,6 +547,63 @@ def unban_user(user_id):
         current_app.logger.error(f'Error unbanning user: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to unban user',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/users/bulk-assign-source', methods=['POST'])
+def bulk_assign_user_source():
+    """Bulk assign user source to multiple users (admin only)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        user_ids = data.get('user_ids', [])
+        user_source = data.get('user_source', '').strip()
+        
+        if not user_ids:
+            return jsonify({'error': 'user_ids is required'}), 400
+        
+        if not user_source:
+            return jsonify({'error': 'user_source is required'}), 400
+        
+        # Validate user_source (should be "花泽" or "default")
+        if user_source not in ['花泽', 'default']:
+            return jsonify({'error': f'Invalid user_source: {user_source}. Must be "花泽" or "default"'}), 400
+        
+        # Get users to update
+        users = User.query.filter(User.id.in_(user_ids)).all()
+        
+        if not users:
+            return jsonify({
+                'message': 'No users found',
+                'updated_count': 0
+            }), 200
+        
+        # Update all users
+        updated_count = 0
+        for user in users:
+            user.user_source = user_source
+            user.updated_at = utc_now()
+            updated_count += 1
+            current_app.logger.info(f'Bulk updated user {user.id} source to {user_source}')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Successfully updated {updated_count} users source to {user_source}',
+            'updated_count': updated_count
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error bulk updating user source: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to bulk update user source',
             'message': str(e)
         }), 500
 
@@ -1411,6 +1471,7 @@ def get_admin_orders():
         payment_method_filter = request.args.get('payment_method', '').strip()
         delivery_method_filter = request.args.get('delivery_method', '').strip()
         group_deal_id = request.args.get('group_deal_id')
+        user_source_filter = request.args.get('user_source', '').strip()
         search = request.args.get('search', '').strip()
         
         # Build query - join with User for phone search
@@ -1443,6 +1504,9 @@ def get_admin_orders():
         if group_deal_id:
             query = query.filter(Order.group_deal_id == int(group_deal_id))
         
+        if user_source_filter:
+            query = query.filter(User.user_source == user_source_filter)
+        
         # Order by creation date (newest first)
         query = query.order_by(Order.created_at.desc())
         
@@ -1464,7 +1528,8 @@ def get_admin_orders():
                     'nickname': user.nickname,
                     'phone': user.phone,
                     'email': user.email,
-                    'wechat': user.wechat
+                    'wechat': user.wechat,
+                    'user_source': user.user_source or 'default'
                 }
             
             # Get group deal info (excluding soft-deleted)
@@ -1593,6 +1658,16 @@ def update_order_status(order_id):
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
         old_status = order.status
         old_payment_status = order.payment_status
+        
+        # If changing status to cancelled, restore stock
+        if status == OrderStatus.CANCELLED.value and old_status != OrderStatus.CANCELLED.value:
+            items_to_restore = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
+            try:
+                restore_stock(order.group_deal_id, items_to_restore)
+            except Exception as e:
+                current_app.logger.error(f'Failed to restore stock when changing order status to cancelled: {e}')
+                # Continue with status change even if stock restoration fails
+        
         order.status = status
         
         # For pickup orders with cash payment: auto-mark as paid when completing
@@ -1743,6 +1818,14 @@ def admin_cancel_order(order_id):
         
         if order.status == OrderStatus.COMPLETED.value:
             return jsonify({'error': 'Cannot cancel a completed order. Please refund instead.'}), 400
+        
+        # Restore stock for cancelled order
+        items_to_restore = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
+        try:
+            restore_stock(order.group_deal_id, items_to_restore)
+        except Exception as e:
+            current_app.logger.error(f'Failed to restore stock on admin cancellation: {e}')
+            # Continue with cancellation even if stock restoration fails
         
         old_status = order.status
         order.status = OrderStatus.CANCELLED.value
@@ -2186,7 +2269,7 @@ def update_admin_order(order_id):
                     unit_price = matched_price
                     total_price = matched_price * quantity
                 else:
-                    # No matching range, use first range price from DB for estimation
+                    # No matching range, use first range (lowest weight) for estimation
                     unit_price = float(ranges[0].get('price', 0)) if ranges else 0
                     total_price = unit_price * quantity
                 
@@ -3125,5 +3208,95 @@ def export_group_deal_delivery_csv(deal_id):
         current_app.logger.error(f'Error exporting delivery CSV: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to export delivery CSV',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/delivery-fee-config', methods=['GET'])
+def get_delivery_fee_config():
+    """Get the active delivery fee configuration"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        config = DeliveryFeeConfig.query.filter_by(is_active=True).first()
+        
+        if not config:
+            # Return default values if no config exists
+            return jsonify({
+                'config': {
+                    'id': None,
+                    'base_fee': 7.99,
+                    'threshold_1_amount': 58.00,
+                    'threshold_1_fee': 5.99,
+                    'threshold_2_amount': 128.00,
+                    'threshold_2_fee': 3.99,
+                    'threshold_3_amount': 150.00,
+                    'is_active': True
+                }
+            }), 200
+        
+        return jsonify({
+            'config': config.to_dict()
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching delivery fee config: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch delivery fee config',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/delivery-fee-config', methods=['PUT'])
+def update_delivery_fee_config():
+    """Update or create the active delivery fee configuration"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateDeliveryFeeConfigSchema)
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get or create active config
+        config = DeliveryFeeConfig.query.filter_by(is_active=True).first()
+        
+        if not config:
+            # Create new config
+            config = DeliveryFeeConfig(
+                base_fee=validated_data['base_fee'],
+                threshold_1_amount=validated_data['threshold_1_amount'],
+                threshold_1_fee=validated_data['threshold_1_fee'],
+                threshold_2_amount=validated_data['threshold_2_amount'],
+                threshold_2_fee=validated_data['threshold_2_fee'],
+                threshold_3_amount=validated_data['threshold_3_amount'],
+                is_active=True
+            )
+            db.session.add(config)
+        else:
+            # Update existing config
+            config.base_fee = validated_data['base_fee']
+            config.threshold_1_amount = validated_data['threshold_1_amount']
+            config.threshold_1_fee = validated_data['threshold_1_fee']
+            config.threshold_2_amount = validated_data['threshold_2_amount']
+            config.threshold_2_fee = validated_data['threshold_2_fee']
+            config.threshold_3_amount = validated_data['threshold_3_amount']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated delivery fee config: {config.id}')
+        
+        return jsonify({
+            'config': config.to_dict(),
+            'message': '运费配置已更新'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating delivery fee config: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update delivery fee config',
             'message': str(e)
         }), 500

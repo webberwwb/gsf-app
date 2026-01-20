@@ -323,11 +323,9 @@ def create_order():
                 unit_price = product.get_display_price() or 0
                 total_price = unit_price * quantity
             elif pricing_type == 'weight_range':
-                # unit_price should be loaded directly from DB (first range price or matched range price)
-                # For estimation without final_weight, use first range price from DB
+                # For estimation without final_weight, use first range (lowest weight)
                 ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
                 if ranges:
-                    # Use first range price directly from DB (not calculated min)
                     unit_price = float(ranges[0].get('price', 0))
                 else:
                     unit_price = 0
@@ -866,19 +864,19 @@ def update_order(order_id):
                                 unit_price = matched_price
                                 total_price = unit_price * quantity
                             else:
-                                # No matching range, use first range price from DB for estimation
+                                # No matching range, use first range (lowest weight) for estimation
                                 unit_price = float(ranges[0].get('price', 0)) if ranges else 0
                                 total_price = unit_price * quantity
                         else:
-                            # Invalid weight, use first range price from DB for estimation
+                            # Invalid weight, use first range (lowest weight) for estimation
                             unit_price = float(ranges[0].get('price', 0)) if ranges else 0
                             total_price = unit_price * quantity
                     except (ValueError, TypeError):
-                        # Invalid weight, use first range price from DB for estimation
+                        # Invalid weight, use first range (lowest weight) for estimation
                         unit_price = float(ranges[0].get('price', 0)) if ranges else 0
                         total_price = unit_price * quantity
                 else:
-                    # No final_weight, use first range price from DB for estimation
+                    # No final_weight, use first range (lowest weight) for estimation
                     unit_price = float(ranges[0].get('price', 0)) if ranges else 0
                     total_price = unit_price * quantity
             elif pricing_type == 'unit_weight':

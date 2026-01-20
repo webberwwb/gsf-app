@@ -99,6 +99,15 @@
                 标记为已付款
               </button>
             </div>
+            <!-- Mark as Unpaid Button (for paid orders) -->
+            <div class="info-row" v-if="order && order.payment_status === 'paid'">
+              <button @click="handleMarkAsUnpaid" class="mark-unpaid-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                标记为未付款
+              </button>
+            </div>
           </div>
 
           <!-- Delivery Method Section -->
@@ -405,7 +414,7 @@ export default {
       default: null
     }
   },
-  emits: ['close', 'update', 'mark-paid', 'mark-complete', 'status-change', 'payment-method-change', 'order-updated', 'update-error', 'products-loaded'],
+  emits: ['close', 'update', 'mark-paid', 'mark-unpaid', 'mark-complete', 'status-change', 'payment-method-change', 'order-updated', 'update-error', 'products-loaded'],
   data() {
     return {
       localOrderStatus: '',
@@ -920,6 +929,14 @@ export default {
         this.$emit('mark-paid', {
           orderId: this.order.id,
           paymentMethod: this.localPaymentMethod
+        })
+      }
+    },
+    handleMarkAsUnpaid() {
+      // Emit order ID to mark as unpaid
+      if (this.order) {
+        this.$emit('mark-unpaid', {
+          orderId: this.order.id
         })
       }
     },
@@ -1573,23 +1590,24 @@ export default {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 24px;
+  padding: 8px 16px;
   border: 1px solid rgba(46, 125, 50, 0.2);
-  border-radius: 24px;
-  font-size: 14px;
+  border-radius: 20px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.1px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: #E8F5E9;
   color: #2E7D32;
-  min-height: 40px;
+  min-height: 36px;
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
   position: relative;
   overflow: hidden;
   outline: none;
-  width: 100%;
+  width: auto;
   justify-content: center;
+  white-space: nowrap;
 }
 
 .mark-paid-btn::before {
@@ -1620,6 +1638,64 @@ export default {
 }
 
 .mark-paid-btn:active::before {
+  width: 300px;
+  height: 300px;
+  opacity: 1;
+  transition: width 0s, height 0s, opacity 0.3s;
+}
+
+.mark-unpaid-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid rgba(229, 57, 53, 0.2);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #FFEBEE;
+  color: #C62828;
+  min-height: 36px;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  width: auto;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.mark-unpaid-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(229, 57, 53, 0.1);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s, opacity 0.3s;
+  opacity: 0;
+}
+
+.mark-unpaid-btn:hover {
+  background: #FFCDD2;
+  border-color: rgba(229, 57, 53, 0.4);
+  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  transform: translateY(-1px);
+}
+
+.mark-unpaid-btn:active {
+  background: #EF9A9A;
+  transform: translateY(0);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.mark-unpaid-btn:active::before {
   width: 300px;
   height: 300px;
   opacity: 1;

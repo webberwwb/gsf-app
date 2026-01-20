@@ -149,7 +149,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>团购商品价格超过$150免运费 (不计入免运的商品除外）</span>
+            <span>{{ deliveryPolicyText }}</span>
           </div>
           <div class="pricing-disclaimer">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -581,9 +581,42 @@ export default {
         return '免运费'
       }
       return `$${this.shippingFee.toFixed(2)}`
+    },
+    deliveryPolicyText() {
+      const config = this.checkoutStore.shippingConfig
+      if (!config) {
+        return '团购商品价格超过$150免运费 (不计入免运的商品除外）'
+      }
+      
+      const baseFee = config.base_fee || 7.99
+      const threshold1 = config.threshold_1_amount || 58.00
+      const fee1 = config.threshold_1_fee || 5.99
+      const threshold2 = config.threshold_2_amount || 128.00
+      const fee2 = config.threshold_2_fee || 3.99
+      const threshold3 = config.threshold_3_amount || 150.00
+      
+      // Build policy text in a readable format
+      const parts = []
+      
+      // Base fee
+      parts.push(`订单小计 < $${threshold1.toFixed(2)}: 运费 $${baseFee.toFixed(2)}`)
+      
+      // Threshold 1
+      parts.push(`$${threshold1.toFixed(2)} ≤ 订单小计 < $${threshold2.toFixed(2)}: 运费 $${fee1.toFixed(2)}`)
+      
+      // Threshold 2
+      parts.push(`$${threshold2.toFixed(2)} ≤ 订单小计 < $${threshold3.toFixed(2)}: 运费 $${fee2.toFixed(2)}`)
+      
+      // Free shipping
+      parts.push(`订单小计 ≥ $${threshold3.toFixed(2)}: 免运费`)
+      
+      return `运费规则: ${parts.join('; ')} (不计入免运的商品除外）`
     }
   },
   async mounted() {
+    // Load shipping config
+    await this.checkoutStore.loadShippingConfig()
+    
     // Load auth from storage if not already loaded
     if (!this.authStore.token) {
       this.authStore.loadFromStorage()

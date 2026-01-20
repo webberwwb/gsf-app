@@ -654,6 +654,7 @@ import apiClient from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
+import { fetchShippingConfig, calculateShippingFee } from '../utils/shipping'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import Modal from '../components/Modal.vue'
 
@@ -687,7 +688,8 @@ export default {
       showCancelModal: false,
       cancelling: false,
       cancelError: null,
-      reactivating: false
+      reactivating: false,
+      shippingConfig: null
     }
   },
   setup() {
@@ -759,6 +761,9 @@ export default {
       this.loading = false
       return
     }
+    
+    // Load shipping config
+    this.shippingConfig = await fetchShippingConfig()
     
     await this.loadOrder()
   },
@@ -1114,8 +1119,8 @@ export default {
         return sum
       }, 0)
       
-      // Free shipping for orders >= $150
-      return freeShippingSubtotal >= 150 ? 0 : 7.99
+      // Use dynamic config if available
+      return calculateShippingFee(freeShippingSubtotal, this.shippingConfig)
     },
     calculateTotal() {
       if (!this.deal || !this.deal.products) return { total: '0.00', hasEstimated: false }

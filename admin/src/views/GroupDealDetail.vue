@@ -71,7 +71,7 @@
       </div>
 
       <!-- Statistics Section -->
-      <div v-if="orders.length > 0" class="statistics-section">
+      <div class="statistics-section">
         <h3>统计汇总</h3>
         <div class="stats-grid">
           <!-- Total Orders -->
@@ -251,6 +251,11 @@
                 <input type="checkbox" v-model="showCompletedOrders" class="checkbox-input">
                 <span class="checkbox-text">显示已完成订单</span>
               </label>
+              <select v-model="userSourceFilter" class="source-filter-select">
+                <option value="">全部获客渠道</option>
+                <option value="花泽">花泽</option>
+                <option value="default">默认</option>
+              </select>
             </div>
           </div>
 
@@ -281,6 +286,7 @@
         @close="closeOrderDetail"
         @update="handleUpdateOrder"
         @mark-paid="markOrderAsPaid"
+        @mark-unpaid="markOrderAsUnpaid"
         @mark-complete="markOrderComplete"
         @status-change="handleOrderStatusChange"
         @payment-method-change="handlePaymentMethodChange"
@@ -380,7 +386,8 @@ export default {
       activeOrderTab: 'markham',
       selectedProductFilters: [],
       searchQuery: '',
-      showCompletedOrders: false,
+      showCompletedOrders: true,
+      userSourceFilter: '',
       // Duplicate orders
       loadingDuplicates: false,
       showDuplicatesModal: false,
@@ -467,6 +474,21 @@ export default {
         })
       }
       
+      // Then filter by user source (if any)
+      if (this.userSourceFilter) {
+        orders = orders.filter(order => {
+          const userSource = order.user?.user_source || 'default'
+          return userSource === this.userSourceFilter
+        })
+      }
+      
+      // Sort by payment status: unpaid first, then others
+      orders.sort((a, b) => {
+        const aPaid = a.payment_status === 'paid' ? 1 : 0
+        const bPaid = b.payment_status === 'paid' ? 1 : 0
+        return aPaid - bPaid
+      })
+      
       return orders
     },
     filteredAllOrders() {
@@ -511,7 +533,10 @@ export default {
       )
     },
     statistics() {
-      if (!this.orders || this.orders.length === 0) {
+      // Use all orders from store, not filtered ones
+      const allOrders = this.ordersStore.state.orders || []
+      
+      if (!allOrders || allOrders.length === 0) {
         return {
           totalOrders: 0,
           totalAmount: 0,
@@ -540,7 +565,7 @@ export default {
       let totalPickedUpPickup = 0
       const productCountsMap = new Map()
 
-      this.orders.forEach(order => {
+      allOrders.forEach(order => {
         // Total amount
         const orderTotal = parseFloat(order.total || 0)
         totalAmount += orderTotal
@@ -615,7 +640,7 @@ export default {
         .sort((a, b) => a.productName.localeCompare(b.productName))
 
       return {
-        totalOrders: this.orders.length,
+        totalOrders: allOrders.length,
         totalAmount,
         totalPaidOrders,
         totalPaidAmount,
@@ -1160,6 +1185,59 @@ export default {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
         await this.error(`更新失败: ${errorMsg}`)
         console.error('Failed to mark as paid:', error)
+      }
+    },
+    async markOrderAsUnpaid(data) {
+      // Handle different data formats
+      let orderId
+      
+      if (typeof data === 'object' && data !== null) {
+        if (data.orderId) {
+          orderId = data.orderId
+        } else if (data.id) {
+          orderId = data.id
+        } else {
+          return
+        }
+      } else {
+        if (!this.selectedOrder) return
+        orderId = this.selectedOrder.id
+      }
+      
+      // Find the order to mark as unpaid
+      const orderToMark = this.selectedOrder?.id === orderId 
+        ? this.selectedOrder 
+        : this.orders.find(o => o.id === orderId)
+      
+      if (!orderToMark || orderToMark.payment_status !== 'paid') {
+        return
+      }
+      
+      const amount = parseFloat(orderToMark.total || 0).toFixed(2)
+      
+      const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为未付款?\n\n金额: $${amount}\n\n此操作将撤销已发放的积分。`)
+      if (!confirmed) {
+        return
+      }
+      
+      try {
+        const response = await apiClient.put(`/admin/orders/${orderId}/payment`, { 
+          payment_status: 'unpaid'
+        })
+        
+        const updatedOrder = response.data.order
+        
+        // Update store and local state
+        this.ordersStore.updateOrder(updatedOrder)
+        if (this.selectedOrder && this.selectedOrder.id === updatedOrder.id) {
+          this.selectedOrder = updatedOrder
+        }
+        
+        await this.success(`订单已标记为未付款`)
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
+        await this.error(`更新失败: ${errorMsg}`)
+        console.error('Failed to mark as unpaid:', error)
       }
     },
     async markOrderComplete() {
@@ -1843,6 +1921,30 @@ export default {
   gap: var(--md-spacing-md);
   padding-top: var(--md-spacing-md);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.source-filter-select {
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.source-filter-select:hover {
+  border-color: var(--md-primary);
+}
+
+.source-filter-select:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  border-width: 2px;
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
 }
 
 .checkbox-label {

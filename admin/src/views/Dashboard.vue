@@ -53,6 +53,12 @@
           </svg>
           <span>供应商管理</span>
         </router-link>
+        <router-link to="/shipping-fee" class="nav-item" :class="{ active: $route.path === '/shipping-fee' }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+          <span>运费管理</span>
+        </router-link>
       </nav>
       <div class="sidebar-footer">
         <div class="user-info">
@@ -107,7 +113,8 @@ export default {
         '/group-deals': '团购管理',
         '/orders': '订单管理',
         '/users': '用户管理',
-        '/suppliers': '供应商管理'
+        '/suppliers': '供应商管理',
+        '/shipping-fee': '运费管理'
       }
       return titles[this.$route.path] || '管理后台'
     },

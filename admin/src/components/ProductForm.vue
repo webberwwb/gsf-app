@@ -290,7 +290,7 @@
               v-model="formData.counts_toward_free_shipping"
               class="checkbox-input"
             />
-            <span>计入免运费门槛 ($150)</span>
+            <span>计入免运费门槛</span>
           </label>
           <small class="form-hint">取消勾选后，此商品价格不会计入免运费门槛计算</small>
         </div>

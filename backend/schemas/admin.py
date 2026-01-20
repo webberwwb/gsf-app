@@ -68,3 +68,16 @@ class MergeOrdersSchema(Schema):
     class Meta:
         unknown = EXCLUDE
 
+
+class UpdateDeliveryFeeConfigSchema(Schema):
+    """Schema for updating delivery fee configuration"""
+    base_fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    threshold_1_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    threshold_1_fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    threshold_2_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    threshold_2_fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    threshold_3_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    
+    class Meta:
+        unknown = EXCLUDE
+
