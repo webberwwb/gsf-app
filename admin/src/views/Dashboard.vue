@@ -47,6 +47,12 @@
           </svg>
           <span>用户管理</span>
         </router-link>
+        <router-link to="/sales-management" class="nav-item" :class="{ active: $route.path === '/sales-management' }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>销售管理</span>
+        </router-link>
         <router-link to="/suppliers" class="nav-item" :class="{ active: $route.path === '/suppliers' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -113,6 +119,7 @@ export default {
         '/group-deals': '团购管理',
         '/orders': '订单管理',
         '/users': '用户管理',
+        '/sales-management': '销售管理',
         '/suppliers': '供应商管理',
         '/shipping-fee': '运费管理'
       }

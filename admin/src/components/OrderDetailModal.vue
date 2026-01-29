@@ -52,7 +52,8 @@
                 </button>
               </div>
               <div class="info-item-price">
-                <span class="value price">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
+                <span class="value price">${{ parseFloat(order.final_total || order.total || 0).toFixed(2) }}</span>
+                <span v-if="order.final_total !== order.total" class="price-note">(含调整)</span>
               </div>
             </div>
             <div class="info-row">
@@ -350,6 +351,72 @@
             </div>
           </div>
 
+          <!-- Order Adjustments Section -->
+          <!-- Order Totals Summary -->
+          <div class="order-totals-summary">
+            <div class="total-row">
+              <span class="total-label">商品小计:</span>
+              <span class="total-value">${{ parseFloat(order?.subtotal || 0).toFixed(2) }}</span>
+            </div>
+            <div class="total-row">
+              <span class="total-label">税费:</span>
+              <span class="total-value">${{ parseFloat(order?.tax || 0).toFixed(2) }}</span>
+            </div>
+            <div class="total-row">
+              <span class="total-label">运费:</span>
+              <span class="total-value">${{ parseFloat(order?.shipping_fee || 0).toFixed(2) }}</span>
+            </div>
+            
+            <!-- Adjustment Section -->
+            <div class="adjustment-section">
+              <div class="adjustment-header">
+                <span class="total-label">订单调整:</span>
+                <div class="adjustment-input-wrapper">
+                  <span class="adjustment-currency">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    v-model.number="localAdjustmentAmount"
+                    class="adjustment-input-inline"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div class="adjustment-hint">
+                <small class="field-hint">正数表示增加，负数表示扣除/折扣（如：会员折扣、损坏赔偿、额外费用等）</small>
+              </div>
+              <div v-if="localAdjustmentAmount !== 0" class="adjustment-display-row">
+                <span class="total-label">调整金额:</span>
+                <span :class="['total-value', localAdjustmentAmount >= 0 ? 'positive' : 'negative']">
+                  {{ localAdjustmentAmount >= 0 ? '+' : '' }}${{ localAdjustmentAmount.toFixed(2) }}
+                </span>
+              </div>
+              <div class="adjustment-notes-wrapper">
+                <textarea
+                  v-model="localAdjustmentNotes"
+                  class="adjustment-textarea-inline"
+                  placeholder="调整说明（可选）"
+                  rows="2"
+                ></textarea>
+              </div>
+            </div>
+            
+            <div class="total-row final-total-row">
+              <span class="total-label">最终总额:</span>
+              <span class="total-value-large">${{ finalTotal.toFixed(2) }}</span>
+            </div>
+            
+            <div class="adjustments-actions">
+              <button
+                @click="handleSaveAdjustments"
+                class="save-adjustments-btn"
+                :disabled="savingAdjustment"
+              >
+                {{ savingAdjustment ? '保存中...' : '保存调整' }}
+              </button>
+            </div>
+          </div>
+
           <div v-if="updateError" class="error-message">{{ updateError }}</div>
         </div>
       </div>
@@ -438,7 +505,11 @@ export default {
       tempIdCounter: 0,
       isInitializingOrder: false,
       lastOrderId: null, // Track last initialized order ID to prevent duplicate initialization
-      loadingProducts: false // Track if products are being loaded
+      loadingProducts: false, // Track if products are being loaded
+      // Order adjustments
+      localAdjustmentAmount: 0,
+      localAdjustmentNotes: '',
+      savingAdjustment: false
     }
   },
   computed: {
@@ -446,6 +517,12 @@ export default {
       return this.newAddress.address_line1 && 
              this.newAddress.city && 
              this.newAddress.postal_code
+    },
+    finalTotal() {
+      if (!this.order) return 0
+      const baseTotal = parseFloat(this.order.total || 0) || 0
+      const adjustment = parseFloat(this.localAdjustmentAmount || 0) || 0
+      return Number((baseTotal + adjustment).toFixed(2))
     }
   },
   watch: {
@@ -599,6 +676,10 @@ export default {
         this.loadUserAddresses()
       }
       
+      // Initialize adjustments
+      this.localAdjustmentAmount = parseFloat(this.order.adjustment_amount || 0) || 0
+      this.localAdjustmentNotes = this.order.adjustment_notes || ''
+      
       // lastOrderId was already set above
       
       // Reset initialization flag after watcher has had chance to see it
@@ -630,6 +711,10 @@ export default {
       this.isInitializingOrder = false
       this.lastOrderId = null
       this.loadingProducts = false
+      // Reset adjustments
+      this.localAdjustmentAmount = 0
+      this.localAdjustmentNotes = ''
+      this.savingAdjustment = false
     },
     updateOrderData(updatedOrder) {
       // Update local state from updated order without full reinitialization
@@ -696,6 +781,14 @@ export default {
       }
       if (updatedOrder.payment_method !== undefined) {
         this.localPaymentMethod = updatedOrder.payment_method || ''
+      }
+      
+      // Update adjustments
+      if (updatedOrder.adjustment_amount !== undefined) {
+        this.localAdjustmentAmount = parseFloat(updatedOrder.adjustment_amount || 0) || 0
+      }
+      if (updatedOrder.adjustment_notes !== undefined) {
+        this.localAdjustmentNotes = updatedOrder.adjustment_notes || ''
       }
       
       // Update lastOrderId to prevent reinitialization
@@ -888,6 +981,31 @@ export default {
       }
       
       this.$emit('update', this.order.id, updateData)
+    },
+    async handleSaveAdjustments() {
+      if (!this.order) {
+        return
+      }
+
+      try {
+        this.savingAdjustment = true
+
+        await apiClient.put(`/admin/orders/${this.order.id}/adjustment`, {
+          adjustment_amount: parseFloat(this.localAdjustmentAmount || 0) || 0,
+          adjustment_notes: this.localAdjustmentNotes || ''
+        })
+
+        await this.success('订单调整保存成功')
+        
+        // Refresh order data
+        this.$emit('order-updated', { id: this.order.id })
+        
+      } catch (err) {
+        await this.error(err.response?.data?.message || err.response?.data?.error || '保存调整失败')
+        console.error('Failed to save order adjustments:', err)
+      } finally {
+        this.savingAdjustment = false
+      }
     },
     handleOrderUpdated(order) {
       // Update local state when order is updated from parent
@@ -1184,6 +1302,182 @@ export default {
   overflow-y: auto;
   padding: var(--md-spacing-md);
   background: #FAFAFA;
+}
+
+.adjustments-actions {
+  margin-top: var(--md-spacing-md);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.save-adjustments-btn {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.save-adjustments-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+}
+
+.save-adjustments-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Order Totals Summary */
+.order-totals-summary {
+  background: rgba(255, 140, 0, 0.05);
+  border: 2px solid rgba(255, 140, 0, 0.2);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: var(--md-spacing-md);
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.total-row.final-total-row {
+  padding-top: 12px;
+  border-top: 2px solid rgba(255, 140, 0, 0.3);
+  margin-top: 12px;
+}
+
+/* Adjustment Section */
+.adjustment-section {
+  margin: 12px 0;
+  padding: 12px 0;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 140, 0, 0.15);
+}
+
+.adjustment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.adjustment-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 10px;
+  transition: border-color 0.2s;
+}
+
+.adjustment-input-wrapper:focus-within {
+  border-color: #ff8c00;
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+}
+
+.adjustment-currency {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.adjustment-input-inline {
+  border: none;
+  outline: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  width: 100px;
+  text-align: right;
+  padding: 0;
+}
+
+.adjustment-input-inline::placeholder {
+  color: #9ca3af;
+}
+
+.adjustment-display-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  margin-top: 4px;
+}
+
+.adjustment-notes-wrapper {
+  margin-top: 8px;
+}
+
+.adjustment-textarea-inline {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #111827;
+  background: white;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+.adjustment-textarea-inline:focus {
+  outline: none;
+  border-color: #ff8c00;
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+}
+
+.adjustment-textarea-inline::placeholder {
+  color: #9ca3af;
+}
+
+.adjustment-hint {
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.total-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.total-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.total-value.positive {
+  color: #16a34a;
+}
+
+.total-value.negative {
+  color: #dc2626;
+}
+
+.total-value-large {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ff8c00;
 }
 
 .modal-footer {
@@ -1514,6 +1808,13 @@ export default {
   color: var(--md-primary);
   font-weight: 600;
   font-size: 1.1rem;
+}
+
+.price-note {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-left: 6px;
+  font-weight: normal;
 }
 
 .info-item-payment-method {

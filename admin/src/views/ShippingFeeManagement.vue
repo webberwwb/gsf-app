@@ -125,19 +125,19 @@
         <h3>运费规则预览</h3>
         <div class="rules-list">
           <div class="rule-item">
-            <span class="rule-condition">订单小计 < ${{ formData.threshold_1_amount.toFixed(2) }}</span>
-            <span class="rule-fee">运费: ${{ formData.base_fee.toFixed(2) }}</span>
+            <span class="rule-condition">订单小计 < ${{ formatPrice(formData.threshold_1_amount) }}</span>
+            <span class="rule-fee">运费: ${{ formatPrice(formData.base_fee) }}</span>
           </div>
           <div class="rule-item">
-            <span class="rule-condition">${{ formData.threshold_1_amount.toFixed(2) }} ≤ 订单小计 < ${{ formData.threshold_2_amount.toFixed(2) }}</span>
-            <span class="rule-fee">运费: ${{ formData.threshold_1_fee.toFixed(2) }}</span>
+            <span class="rule-condition">${{ formatPrice(formData.threshold_1_amount) }} ≤ 订单小计 < ${{ formatPrice(formData.threshold_2_amount) }}</span>
+            <span class="rule-fee">运费: ${{ formatPrice(formData.threshold_1_fee) }}</span>
           </div>
           <div class="rule-item">
-            <span class="rule-condition">${{ formData.threshold_2_amount.toFixed(2) }} ≤ 订单小计 < ${{ formData.threshold_3_amount.toFixed(2) }}</span>
-            <span class="rule-fee">运费: ${{ formData.threshold_2_fee.toFixed(2) }}</span>
+            <span class="rule-condition">${{ formatPrice(formData.threshold_2_amount) }} ≤ 订单小计 < ${{ formatPrice(formData.threshold_3_amount) }}</span>
+            <span class="rule-fee">运费: ${{ formatPrice(formData.threshold_2_fee) }}</span>
           </div>
           <div class="rule-item free-shipping">
-            <span class="rule-condition">订单小计 ≥ ${{ formData.threshold_3_amount.toFixed(2) }}</span>
+            <span class="rule-condition">订单小计 ≥ ${{ formatPrice(formData.threshold_3_amount) }}</span>
             <span class="rule-fee">免运费</span>
           </div>
         </div>
@@ -177,6 +177,13 @@ export default {
     await this.fetchConfig()
   },
   methods: {
+    formatPrice(value) {
+      // Handle empty or invalid values gracefully
+      if (value === null || value === undefined || value === '' || isNaN(value)) {
+        return '0.00'
+      }
+      return Number(value).toFixed(2)
+    },
     async fetchConfig() {
       this.loading = true
       this.error = null

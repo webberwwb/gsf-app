@@ -9,9 +9,11 @@ from models.order import Order, OrderItem
 from models.address import Address
 from models.product_sales_stats import ProductSalesStats
 from models.delivery_fee_config import DeliveryFeeConfig
+from models.sdr import SDR, CommissionRule, CommissionRecord
 from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
 from utils.date_helpers import normalize_date_start, normalize_date_end
+from utils.commission import calculate_commission_for_group_deal, get_commission_summary_for_group_deal
 from datetime import datetime, timedelta, timezone, date
 from config import Config
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
@@ -1190,6 +1192,16 @@ def delete_group_deal(deal_id):
         
         orders_deleted = 0
         for order in associated_orders:
+            # Restore stock if order is not already cancelled (cancelled orders already had stock restored)
+            if order.status != OrderStatus.CANCELLED.value:
+                items_to_restore = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
+                try:
+                    restore_stock(order.group_deal_id, items_to_restore)
+                    current_app.logger.info(f'Restored stock for order {order.id} when deleting group deal {deal_id}')
+                except Exception as e:
+                    current_app.logger.error(f'Failed to restore stock for order {order.id} when deleting group deal {deal_id}: {e}')
+                    # Continue with deletion even if stock restoration fails
+            
             order.deleted_at = now
             orders_deleted += 1
         
@@ -1928,6 +1940,48 @@ def update_order_payment(order_id):
             'message': str(e)
         }), 500
 
+@admin_bp.route('/orders/<int:order_id>/adjustment', methods=['PUT'])
+def update_order_adjustment(order_id):
+    """Update order adjustments (discount and manual adjustment)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        
+        data = request.get_json()
+        
+        # Update adjustment amount (can be positive or negative)
+        if 'adjustment_amount' in data:
+            # Convert to Decimal safely, handling None and empty strings
+            adjustment_value = data['adjustment_amount']
+            if adjustment_value is None or adjustment_value == '':
+                order.adjustment_amount = Decimal('0')
+            else:
+                order.adjustment_amount = Decimal(str(adjustment_value))
+        
+        # Update adjustment notes
+        if 'adjustment_notes' in data:
+            order.adjustment_notes = data['adjustment_notes'] or None
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated adjustments for order {order_id}')
+        
+        return jsonify({
+            'message': '订单调整更新成功',
+            'order': order.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating order adjustment {order_id}: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update order adjustment',
+            'message': str(e)
+        }), 500
+
 @admin_bp.route('/orders/by-pickup-code/<pickup_code>', methods=['GET'])
 def get_order_by_pickup_code(pickup_code):
     """Get order by pickup code (for QR scanning) - pickup_code is the last part of order_number"""
@@ -2415,6 +2469,17 @@ def delete_order(order_id):
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        
+        # Restore stock if order is not already cancelled (cancelled orders already had stock restored)
+        # Only restore stock for orders that were actually reserving stock
+        if order.status != OrderStatus.CANCELLED.value:
+            items_to_restore = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
+            try:
+                restore_stock(order.group_deal_id, items_to_restore)
+                current_app.logger.info(f'Restored stock for deleted order {order_id} (order_number: {order.order_number})')
+            except Exception as e:
+                current_app.logger.error(f'Failed to restore stock when deleting order {order_id}: {e}')
+                # Continue with deletion even if stock restoration fails
         
         # Soft delete: set deleted_at timestamp
         order.deleted_at = utc_now()
@@ -3300,3 +3365,515 @@ def update_delivery_fee_config():
             'error': 'Failed to update delivery fee config',
             'message': str(e)
         }), 500
+
+
+# ============================================================================
+# SDR Management Routes
+# ============================================================================
+
+@admin_bp.route('/sdrs', methods=['GET'])
+def get_sdrs():
+    """Get all SDRs"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        sdrs = SDR.query.order_by(SDR.name).all()
+        return jsonify({
+            'sdrs': [sdr.to_dict() for sdr in sdrs]
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error fetching SDRs: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to fetch SDRs'}), 500
+
+
+@admin_bp.route('/sdrs/<int:sdr_id>', methods=['GET'])
+def get_sdr(sdr_id):
+    """Get single SDR with commission rules"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        sdr_data = sdr.to_dict()
+        # Include commission rules
+        rules = CommissionRule.query.filter_by(sdr_id=sdr_id, is_active=True).all()
+        sdr_data['commission_rules'] = [rule.to_dict(include_product=True) for rule in rules]
+        
+        return jsonify({'sdr': sdr_data}), 200
+    except Exception as e:
+        current_app.logger.error(f'Error fetching SDR {sdr_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to fetch SDR'}), 500
+
+
+@admin_bp.route('/sdrs', methods=['POST'])
+def create_sdr():
+    """Create new SDR"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('name') or not data.get('source_identifier'):
+            return jsonify({'error': 'Name and source identifier are required'}), 400
+        
+        # Check if source_identifier already exists
+        existing = SDR.query.filter_by(source_identifier=data['source_identifier']).first()
+        if existing:
+            return jsonify({'error': 'Source identifier already exists'}), 400
+        
+        sdr = SDR(
+            name=data['name'],
+            source_identifier=data['source_identifier'],
+            email=data.get('email'),
+            phone=data.get('phone'),
+            is_active=data.get('is_active', True)
+        )
+        
+        db.session.add(sdr)
+        db.session.commit()
+        
+        current_app.logger.info(f'Created SDR: {sdr.name} (ID: {sdr.id})')
+        
+        return jsonify({
+            'sdr': sdr.to_dict(),
+            'message': 'SDR创建成功'
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating SDR: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to create SDR', 'message': str(e)}), 500
+
+
+@admin_bp.route('/sdrs/<int:sdr_id>', methods=['PUT'])
+def update_sdr(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Update SDR"""
+    try:
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        data = request.get_json()
+        
+        # Check if source_identifier is being changed and if it already exists
+        if 'source_identifier' in data and data['source_identifier'] != sdr.source_identifier:
+            existing = SDR.query.filter_by(source_identifier=data['source_identifier']).first()
+            if existing:
+                return jsonify({'error': 'Source identifier already exists'}), 400
+        
+        # Update fields
+        if 'name' in data:
+            sdr.name = data['name']
+        if 'source_identifier' in data:
+            sdr.source_identifier = data['source_identifier']
+        if 'email' in data:
+            sdr.email = data['email']
+        if 'phone' in data:
+            sdr.phone = data['phone']
+        if 'is_active' in data:
+            sdr.is_active = data['is_active']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated SDR: {sdr.name} (ID: {sdr.id})')
+        
+        return jsonify({
+            'sdr': sdr.to_dict(),
+            'message': 'SDR更新成功'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating SDR {sdr_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update SDR', 'message': str(e)}), 500
+
+
+@admin_bp.route('/sdrs/<int:sdr_id>', methods=['DELETE'])
+def delete_sdr(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Delete SDR"""
+    try:
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        sdr_name = sdr.name
+        db.session.delete(sdr)
+        db.session.commit()
+        
+        current_app.logger.info(f'Deleted SDR: {sdr_name} (ID: {sdr_id})')
+        
+        return jsonify({'message': 'SDR删除成功'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting SDR {sdr_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to delete SDR', 'message': str(e)}), 500
+
+
+# ============================================================================
+# Commission Rules Routes
+# ============================================================================
+
+@admin_bp.route('/sdrs/<int:sdr_id>/commission-rules', methods=['GET'])
+def get_commission_rules(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Get all commission rules for an SDR"""
+    try:
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        rules = CommissionRule.query.filter_by(sdr_id=sdr_id, is_active=True).all()
+        
+        return jsonify({
+            'rules': [rule.to_dict(include_product=True) for rule in rules]
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching commission rules for SDR {sdr_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to fetch commission rules'}), 500
+
+
+@admin_bp.route('/sdrs/<int:sdr_id>/commission-rules', methods=['POST'])
+def create_or_update_commission_rule(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Create or update commission rule for a product"""
+    try:
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('product_id'):
+            return jsonify({'error': 'Product ID is required'}), 400
+        if 'own_customer_amount' not in data or 'general_customer_amount' not in data:
+            return jsonify({'error': 'Commission amounts are required'}), 400
+        
+        product_id = data['product_id']
+        product = Product.query.get(product_id)
+        if not product:
+            return jsonify({'error': 'Product not found'}), 404
+        
+        # Check if rule already exists
+        existing_rule = CommissionRule.query.filter_by(
+            sdr_id=sdr_id,
+            product_id=product_id
+        ).first()
+        
+        # Get commission_type (default to 'per_item' if not provided)
+        commission_type = data.get('commission_type', 'per_item')
+        if commission_type not in ['per_item', 'per_weight']:
+            commission_type = 'per_item'
+        
+        if existing_rule:
+            # Update existing rule
+            existing_rule.commission_type = commission_type
+            existing_rule.own_customer_amount = Decimal(str(data['own_customer_amount']))
+            existing_rule.general_customer_amount = Decimal(str(data['general_customer_amount']))
+            existing_rule.is_active = data.get('is_active', True)
+            rule = existing_rule
+            message = '提成规则更新成功'
+        else:
+            # Create new rule
+            rule = CommissionRule(
+                sdr_id=sdr_id,
+                product_id=product_id,
+                commission_type=commission_type,
+                own_customer_amount=Decimal(str(data['own_customer_amount'])),
+                general_customer_amount=Decimal(str(data['general_customer_amount'])),
+                is_active=data.get('is_active', True)
+            )
+            db.session.add(rule)
+            message = '提成规则创建成功'
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Created/updated commission rule for SDR {sdr_id}, Product {product_id}')
+        
+        return jsonify({
+            'rule': rule.to_dict(include_product=True),
+            'message': message
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating/updating commission rule: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to save commission rule', 'message': str(e)}), 500
+
+
+@admin_bp.route('/sdrs/<int:sdr_id>/commission-rules/batch', methods=['POST'])
+def batch_update_commission_rules(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Batch update commission rules for multiple products"""
+    try:
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        data = request.get_json()
+        rules_data = data.get('rules', [])
+        
+        if not rules_data:
+            return jsonify({'error': 'No rules provided'}), 400
+        
+        updated_rules = []
+        
+        for rule_data in rules_data:
+            product_id = rule_data.get('product_id')
+            if not product_id:
+                continue
+            
+            product = Product.query.get(product_id)
+            if not product:
+                continue
+            
+            # Check if rule exists
+            existing_rule = CommissionRule.query.filter_by(
+                sdr_id=sdr_id,
+                product_id=product_id
+            ).first()
+            
+            # Get commission_type (default to 'per_item' if not provided)
+            commission_type = rule_data.get('commission_type', 'per_item')
+            if commission_type not in ['per_item', 'per_weight']:
+                commission_type = 'per_item'
+            
+            if existing_rule:
+                # Update existing
+                existing_rule.commission_type = commission_type
+                existing_rule.own_customer_amount = Decimal(str(rule_data['own_customer_amount']))
+                existing_rule.general_customer_amount = Decimal(str(rule_data['general_customer_amount']))
+                existing_rule.is_active = rule_data.get('is_active', True)
+                updated_rules.append(existing_rule)
+            else:
+                # Create new
+                rule = CommissionRule(
+                    sdr_id=sdr_id,
+                    product_id=product_id,
+                    commission_type=commission_type,
+                    own_customer_amount=Decimal(str(rule_data['own_customer_amount'])),
+                    general_customer_amount=Decimal(str(rule_data['general_customer_amount'])),
+                    is_active=rule_data.get('is_active', True)
+                )
+                db.session.add(rule)
+                updated_rules.append(rule)
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Batch updated {len(updated_rules)} commission rules for SDR {sdr_id}')
+        
+        return jsonify({
+            'rules': [rule.to_dict(include_product=True) for rule in updated_rules],
+            'message': f'成功更新{len(updated_rules)}条提成规则'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error batch updating commission rules: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to batch update commission rules', 'message': str(e)}), 500
+
+
+@admin_bp.route('/commission-rules/<int:rule_id>', methods=['DELETE'])
+def delete_commission_rule(rule_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Delete commission rule"""
+    try:
+        rule = CommissionRule.query.get(rule_id)
+        if not rule:
+            return jsonify({'error': 'Commission rule not found'}), 404
+        
+        db.session.delete(rule)
+        db.session.commit()
+        
+        current_app.logger.info(f'Deleted commission rule ID: {rule_id}')
+        
+        return jsonify({'message': '提成规则删除成功'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting commission rule {rule_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to delete commission rule', 'message': str(e)}), 500
+
+
+# ============================================================================
+# Commission Calculation & Records Routes
+# ============================================================================
+
+@admin_bp.route('/group-deals/<int:deal_id>/commission/calculate', methods=['POST'])
+def calculate_group_deal_commission(deal_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Calculate commission for a group deal"""
+    try:
+        data = request.get_json() or {}
+        recalculate = data.get('recalculate', False)
+        
+        result = calculate_commission_for_group_deal(deal_id, recalculate=recalculate)
+        
+        if not result['success']:
+            return jsonify({'error': result.get('error', 'Failed to calculate commission')}), 400
+        
+        return jsonify({
+            'message': '提成计算成功',
+            'records': result['records'],
+            'total_commission': result['total_commission']
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error calculating commission for group deal {deal_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to calculate commission', 'message': str(e)}), 500
+
+
+@admin_bp.route('/group-deals/<int:deal_id>/commission', methods=['GET'])
+def get_group_deal_commission(deal_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Get commission breakdown for a group deal"""
+    try:
+        summary = get_commission_summary_for_group_deal(deal_id)
+        
+        if not summary:
+            return jsonify({
+                'message': '暂无提成记录',
+                'records': [],
+                'total_commission': 0
+            }), 200
+        
+        return jsonify(summary), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching commission for group deal {deal_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to fetch commission', 'message': str(e)}), 500
+
+
+@admin_bp.route('/commission-records', methods=['GET'])
+def get_commission_records():
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Get all commission records with optional filters"""
+    try:
+        # Get query parameters
+        sdr_id = request.args.get('sdr_id', type=int)
+        payment_status = request.args.get('payment_status')
+        group_deal_id = request.args.get('group_deal_id', type=int)
+        
+        # Build query
+        query = CommissionRecord.query
+        
+        if sdr_id:
+            query = query.filter_by(sdr_id=sdr_id)
+        if payment_status:
+            query = query.filter_by(payment_status=payment_status)
+        if group_deal_id:
+            query = query.filter_by(group_deal_id=group_deal_id)
+        
+        records = query.order_by(CommissionRecord.created_at.desc()).all()
+        
+        return jsonify({
+            'records': [record.to_dict(include_relations=True) for record in records],
+            'total_commission': sum(float(record.total_commission) for record in records)
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching commission records: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to fetch commission records'}), 500
+
+
+@admin_bp.route('/commission-records/<int:record_id>/payment', methods=['PUT'])
+def update_commission_payment(record_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Update payment status of commission record"""
+    try:
+        record = CommissionRecord.query.get(record_id)
+        if not record:
+            return jsonify({'error': 'Commission record not found'}), 404
+        
+        data = request.get_json()
+        
+        if 'payment_status' in data:
+            record.payment_status = data['payment_status']
+        
+        if data.get('payment_status') == 'paid' and not record.payment_date:
+            record.payment_date = utc_now()
+        
+        if 'payment_notes' in data:
+            record.payment_notes = data['payment_notes']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated payment status for commission record {record_id}')
+        
+        return jsonify({
+            'record': record.to_dict(include_relations=True),
+            'message': '付款状态更新成功'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating commission payment {record_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update payment status', 'message': str(e)}), 500
+
+
+@admin_bp.route('/commission-records/<int:record_id>/adjustment', methods=['PUT'])
+def update_commission_adjustment(record_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Update manual adjustment for commission record"""
+    try:
+        record = CommissionRecord.query.get(record_id)
+        if not record:
+            return jsonify({'error': 'Commission record not found'}), 404
+        
+        data = request.get_json()
+        
+        if 'manual_adjustment' in data:
+            # Can be positive (bonus) or negative (deduction)
+            record.manual_adjustment = Decimal(str(data['manual_adjustment']))
+        
+        if 'adjustment_notes' in data:
+            record.adjustment_notes = data['adjustment_notes']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated manual adjustment for commission record {record_id}: {record.manual_adjustment}')
+        
+        return jsonify({
+            'record': record.to_dict(include_relations=True),
+            'message': '手动调整保存成功'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating commission adjustment {record_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update adjustment', 'message': str(e)}), 500

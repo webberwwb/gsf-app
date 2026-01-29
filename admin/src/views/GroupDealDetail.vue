@@ -9,6 +9,12 @@
       </button>
       
       <div class="header-actions">
+        <button @click="viewCommission" class="commission-btn" :disabled="loading || !groupDeal">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          查看分红
+        </button>
         <button @click="bulkMarkDelivering" class="bulk-delivery-btn" :disabled="loading || !groupDeal || loadingBulkUpdate">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
@@ -346,6 +352,13 @@
         @close="closeMergeModal"
         @merged="handleOrderMerged"
       />
+
+      <!-- Commission Breakdown Modal -->
+      <CommissionBreakdownModal
+        v-if="showCommissionModal && groupDeal"
+        :groupDeal="groupDeal"
+        @close="closeCommissionModal"
+      />
     </div>
   </div>
 </template>
@@ -358,13 +371,15 @@ import { useOrdersStore } from '../stores/orders'
 import OrderCard from '../components/OrderCard.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
 import OrderMergeModal from '../components/OrderMergeModal.vue'
+import CommissionBreakdownModal from '../components/CommissionBreakdownModal.vue'
 
 export default {
   name: 'GroupDealDetail',
   components: {
     OrderCard,
     OrderDetailModal,
-    OrderMergeModal
+    OrderMergeModal,
+    CommissionBreakdownModal
   },
   setup() {
     const { confirm, success, error: showError } = useModal()
@@ -395,7 +410,9 @@ export default {
       showMergeModal: false,
       ordersToMerge: [],
       // Bulk update
-      loadingBulkUpdate: false
+      loadingBulkUpdate: false,
+      // Commission
+      showCommissionModal: false
     }
   },
   computed: {
@@ -756,6 +773,12 @@ export default {
     },
     goBack() {
       this.$router.push('/group-deals')
+    },
+    viewCommission() {
+      this.showCommissionModal = true
+    },
+    closeCommissionModal() {
+      this.showCommissionModal = false
     },
     exportOrders() {
       try {
@@ -1528,6 +1551,37 @@ export default {
 }
 
 .export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.commission-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
+  color: white;
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.commission-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.commission-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7b1fa2 0%, #6a1b9a 100%);
+  box-shadow: var(--md-elevation-3);
+  transform: translateY(-2px);
+}
+
+.commission-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

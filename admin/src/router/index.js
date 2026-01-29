@@ -40,6 +40,11 @@ const router = createRouter({
           component: () => import('../views/Users.vue')
         },
         {
+          path: 'sales-management',
+          name: 'SalesManagement',
+          component: () => import('../views/SalesManagement.vue')
+        },
+        {
           path: 'suppliers',
           name: 'Suppliers',
           component: () => import('../views/Suppliers.vue')

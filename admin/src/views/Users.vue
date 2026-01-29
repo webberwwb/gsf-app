@@ -46,52 +46,64 @@
       <div v-else-if="filteredUsers.length === 0" class="empty-state">
         <p>暂无用户</p>
       </div>
-      <div v-else class="users-list">
-      <div v-for="user in filteredUsers" :key="user.id" class="user-card" :class="{ 'selected': isUserSelected(user.id) }">
-        <div class="user-checkbox" v-if="showCheckboxes">
-          <input
-            type="checkbox"
-            :checked="isUserSelected(user.id)"
-            @change="toggleUserSelection(user.id)"
-            class="checkbox-input"
-          />
-        </div>
-        <div class="user-avatar">{{ getUserInitial(user) }}</div>
-        <div class="user-info">
-          <div class="user-name-row">
-            <span class="user-name">{{ user.nickname || user.phone || '未设置' }}</span>
-            <span v-if="user.is_admin" class="admin-badge">管理员</span>
-            <span v-else class="normal-user-badge">普通用户</span>
-            <span v-if="user.user_source" class="source-badge" :class="user.user_source === '花泽' ? 'source-huaze' : 'source-default'">
-              {{ user.user_source }}
-            </span>
+      <div v-else>
+        <div class="users-list">
+          <div v-for="user in filteredUsers" :key="user.id" class="user-card" :class="{ 'selected': isUserSelected(user.id) }">
+            <div class="user-checkbox" v-if="showCheckboxes">
+              <input
+                type="checkbox"
+                :checked="isUserSelected(user.id)"
+                @change="toggleUserSelection(user.id)"
+                class="checkbox-input"
+              />
+            </div>
+            <div class="user-avatar">{{ getUserInitial(user) }}</div>
+            <div class="user-info">
+              <div class="user-name-row">
+                <span class="user-name">{{ user.nickname || user.phone || '未设置' }}</span>
+                <span v-if="user.is_admin" class="admin-badge">管理员</span>
+                <span v-else class="normal-user-badge">普通用户</span>
+                <span v-if="user.user_source" class="source-badge" :class="user.user_source === '花泽' ? 'source-huaze' : 'source-default'">
+                  {{ user.user_source }}
+                </span>
+              </div>
+              <div class="user-phone">{{ user.phone || user.email || 'N/A' }}</div>
+              <div v-if="user.wechat" class="user-wechat">微信号: {{ user.wechat }}</div>
+              <div class="user-meta">
+                <span v-if="!user.is_admin" class="meta-item">积分: {{ user.points || 0 }}</span>
+                <span class="meta-item">注册时间: {{ formatDate(user.creation_date) }}</span>
+                <span v-if="user.last_login_date" class="meta-item">最后登录: {{ formatDate(user.last_login_date) }}</span>
+                <span v-if="!user.is_admin && user.order_count !== undefined" class="meta-item">订单数: {{ user.order_count || 0 }}</span>
+              </div>
+              <div v-if="user.roles && user.roles.length > 0" class="user-roles">
+                <span v-for="role in user.roles.filter(r => r !== 'admin')" :key="role" class="role-badge" :class="role">
+                  {{ getRoleLabel(role) }}
+                </span>
+              </div>
+            </div>
+            <div class="user-actions">
+              <button @click="viewUser(user)" class="view-btn">查看</button>
+              <button v-if="!user.is_admin" @click="impersonateUser(user.id)" class="impersonate-btn">代登录</button>
+              <button v-if="user.is_admin" @click="manageRoles(user)" class="roles-btn">角色</button>
+              <button v-if="user.status === 'active'" @click="banUser(user.id)" class="ban-btn">
+                禁用
+              </button>
+              <button v-else @click="unbanUser(user.id)" class="unban-btn">
+                启用
+              </button>
+            </div>
           </div>
-          <div class="user-phone">{{ user.phone || user.email || 'N/A' }}</div>
-          <div v-if="user.wechat" class="user-wechat">微信号: {{ user.wechat }}</div>
-          <div class="user-meta">
-            <span v-if="!user.is_admin" class="meta-item">积分: {{ user.points || 0 }}</span>
-            <span class="meta-item">注册时间: {{ formatDate(user.creation_date) }}</span>
-            <span v-if="user.last_login_date" class="meta-item">最后登录: {{ formatDate(user.last_login_date) }}</span>
-            <span v-if="!user.is_admin && user.order_count !== undefined" class="meta-item">订单数: {{ user.order_count || 0 }}</span>
-          </div>
-          <div v-if="user.roles && user.roles.length > 0" class="user-roles">
-            <span v-for="role in user.roles.filter(r => r !== 'admin')" :key="role" class="role-badge" :class="role">
-              {{ getRoleLabel(role) }}
-            </span>
-          </div>
         </div>
-        <div class="user-actions">
-          <button @click="viewUser(user)" class="view-btn">查看</button>
-          <button v-if="!user.is_admin" @click="impersonateUser(user.id)" class="impersonate-btn">代登录</button>
-          <button v-if="user.is_admin" @click="manageRoles(user)" class="roles-btn">角色</button>
-          <button v-if="user.status === 'active'" @click="banUser(user.id)" class="ban-btn">
-            禁用
-          </button>
-          <button v-else @click="unbanUser(user.id)" class="unban-btn">
-            启用
-          </button>
+        
+        <!-- Loading more indicator -->
+        <div v-if="loadingMore" class="loading-more">
+          加载更多...
         </div>
-      </div>
+        
+        <!-- End of list indicator -->
+        <div v-else-if="!hasMore && users.length > 0" class="end-of-list">
+          已显示全部 {{ totalUsers }} 个用户
+        </div>
       </div>
     </div>
 
@@ -161,6 +173,7 @@
         </div>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -193,7 +206,13 @@ export default {
       roleAction: '',
       roleName: '',
       showBulkAssignModal: false,
-      bulkAssignSource: ''
+      bulkAssignSource: '',
+      // Pagination state
+      currentPage: 1,
+      perPage: 50,
+      totalUsers: 0,
+      hasMore: true,
+      loadingMore: false
     }
   },
   computed: {
@@ -210,21 +229,83 @@ export default {
       })
     }
   },
+  watch: {
+    searchQuery() {
+      // Reset pagination when search query changes
+      // Note: We're using client-side filtering, so no need to refetch
+      // If you want server-side search, uncomment the line below
+      // this.fetchUsers(true)
+    }
+  },
   mounted() {
     this.fetchUsers()
+    // Set up infinite scroll
+    window.addEventListener('scroll', this.handleScroll)
+  },
+  beforeUnmount() {
+    // Clean up scroll listener
+    window.removeEventListener('scroll', this.handleScroll)
   },
   methods: {
-    async fetchUsers() {
+    async fetchUsers(reset = true) {
       try {
-        this.loading = true
+        if (reset) {
+          this.loading = true
+          this.currentPage = 1
+          this.users = []
+          this.hasMore = true
+        } else {
+          this.loadingMore = true
+        }
+        
         this.error = null
-        const response = await apiClient.get('/admin/users')
-        this.users = response.data.users || []
+        const params = {
+          page: this.currentPage,
+          per_page: this.perPage
+        }
+        
+        const response = await apiClient.get('/admin/users', { params })
+        const newUsers = response.data.users || []
+        const pagination = response.data.pagination
+        
+        if (reset) {
+          this.users = newUsers
+        } else {
+          this.users = [...this.users, ...newUsers]
+        }
+        
+        // Update pagination state
+        if (pagination) {
+          this.totalUsers = pagination.total
+          this.hasMore = pagination.page < pagination.pages
+        } else {
+          // Fallback if pagination info is missing
+          this.hasMore = newUsers.length === this.perPage
+        }
+        
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to load users'
         console.error('Failed to fetch users:', error)
       } finally {
         this.loading = false
+        this.loadingMore = false
+      }
+    },
+    async loadMoreUsers() {
+      if (this.loadingMore || !this.hasMore) return
+      
+      this.currentPage++
+      await this.fetchUsers(false)
+    },
+    handleScroll() {
+      // Check if user has scrolled near the bottom
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+      const windowHeight = window.innerHeight
+      const documentHeight = document.documentElement.scrollHeight
+      
+      // Trigger when user is 300px from bottom
+      if (scrollTop + windowHeight >= documentHeight - 300) {
+        this.loadMoreUsers()
       }
     },
     getUserInitial(user) {
@@ -509,6 +590,22 @@ export default {
   text-align: center;
   padding: var(--md-spacing-xl);
   color: var(--md-on-surface-variant);
+}
+
+.loading-more {
+  text-align: center;
+  padding: var(--md-spacing-lg);
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-body-size);
+}
+
+.end-of-list {
+  text-align: center;
+  padding: var(--md-spacing-lg);
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-label-size);
+  border-top: 1px solid var(--md-outline-variant);
+  margin-top: var(--md-spacing-md);
 }
 
 .users-list {

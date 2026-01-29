@@ -21,6 +21,11 @@ class Order(BaseModel):
     shipping_fee = db.Column(Numeric(10, 2), default=0, nullable=False)
     total = db.Column(Numeric(10, 2), nullable=False)
     
+    # Admin adjustment (can be positive or negative)
+    # Negative = discount/deduction, Positive = addition/bonus
+    adjustment_amount = db.Column(Numeric(10, 2), default=0, nullable=False)
+    adjustment_notes = db.Column(db.Text, nullable=True)  # Notes explaining the adjustment
+    
     # Points accumulated for this order (1 point per dollar)
     points_earned = db.Column(db.Integer, default=0, nullable=False)
     
@@ -57,15 +62,24 @@ class Order(BaseModel):
     def to_dict(self, include_editable=True):
         data = super().to_dict()
         
+        # Calculate final total with adjustment
+        # Convert Decimal to float to avoid type errors
+        base_total = float(self.total) if self.total is not None else 0.0
+        adjustment = float(self.adjustment_amount) if self.adjustment_amount is not None else 0.0
+        final_total = float(base_total + adjustment)
+        
         data.update({
             'user_id': self.user_id,
             'group_deal_id': self.group_deal_id,
             'address_id': self.address_id,
             'order_number': self.order_number,
-            'subtotal': float(self.subtotal) if self.subtotal else None,
-            'tax': float(self.tax) if self.tax else None,
-            'shipping_fee': float(self.shipping_fee) if self.shipping_fee else None,
-            'total': float(self.total) if self.total else None,
+            'subtotal': float(self.subtotal) if self.subtotal is not None else None,
+            'tax': float(self.tax) if self.tax is not None else None,
+            'shipping_fee': float(self.shipping_fee) if self.shipping_fee is not None else None,
+            'total': float(base_total),
+            'adjustment_amount': float(adjustment),
+            'adjustment_notes': self.adjustment_notes,
+            'final_total': final_total,
             'points_earned': self.points_earned,
             'delivery_method': self.delivery_method,
             'pickup_location': self.pickup_location,
