@@ -48,6 +48,7 @@
               :disabled="updatingGroupDealStatus"
               class="status-select"
             >
+              <option value="draft">草稿</option>
               <option value="upcoming">即将开始</option>
               <option value="active">进行中</option>
               <option value="closed">已截单</option>
@@ -247,7 +248,7 @@
                 配送 ({{ filteredDeliveryOrders.length }})
               </button>
               <button 
-                :class="['tab-btn', { active: activeOrderTab === 'all' }]"
+                :class="['tab-btn', 'all-tab', { active: activeOrderTab === 'all' }]"
                 @click="activeOrderTab = 'all'">
                 全部订单 ({{ filteredAllOrders.length }})
               </button>
@@ -963,6 +964,7 @@ export default {
     },
     getStatusLabel(status) {
       const labels = {
+        'draft': '草稿',
         'upcoming': '即将开始',
         'active': '进行中',
         'closed': '已截单',
@@ -1622,6 +1624,11 @@ export default {
   font-weight: 500;
 }
 
+.status-badge.draft {
+  background: #F5F5F5;
+  color: #757575;
+}
+
 .status-badge.upcoming {
   background: #E3F2FD;
   color: #1976D2;
@@ -2084,6 +2091,11 @@ export default {
 .tab-btn.downtown-tab.active {
   border-color: #F44336;
   color: #F44336;
+}
+
+.tab-btn.all-tab.active {
+  border-color: #607D8B;
+  color: #607D8B;
 }
 
 .orders-list {

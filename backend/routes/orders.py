@@ -381,11 +381,9 @@ def create_order():
                 # Use estimation if no valid final_weight or price_per_unit is 0
                 if final_weight is None:
                     if price_per_unit > 0:
-                        # Use mid-weight for estimation
+                        # Use min-weight for conservative estimation
                         min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
-                        max_weight = float(product.pricing_data.get('max_weight', 15) if product.pricing_data else 15)
-                        mid_weight = (min_weight + max_weight) / 2
-                        total_price = price_per_unit * mid_weight
+                        total_price = price_per_unit * min_weight
                     else:
                         # price_per_unit is 0 or missing - unit_price stays as price_per_unit (0)
                         # No fallback - unit_price should always be price_per_unit from DB
@@ -930,11 +928,9 @@ def update_order(order_id):
                 # Use estimation if no valid final_weight or price_per_unit is 0
                 if final_weight is None:
                     if price_per_unit > 0:
-                        # Use mid-weight for estimation
+                        # Use min-weight for conservative estimation
                         min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
-                        max_weight = float(product.pricing_data.get('max_weight', 15) if product.pricing_data else 15)
-                        mid_weight = (min_weight + max_weight) / 2
-                        total_price = price_per_unit * mid_weight
+                        total_price = price_per_unit * min_weight
                     else:
                         # price_per_unit is 0 or missing - unit_price stays as price_per_unit (0)
                         # No fallback - unit_price should always be price_per_unit from DB

@@ -259,9 +259,91 @@ def calculate_item_commission(
         return Decimal(str(rate)) * order_item.quantity
 
 
+def build_order_grouping_for_sdr(sdr: SDR, orders: List[Order]) -> Dict:
+    """
+    Group orders for an SDR into three categories:
+    - Own customer orders
+    - Other customer orders
+    - No commission orders (谷语农庄)
+    
+    Args:
+        sdr: SDR object
+        orders: List of Order objects
+    
+    Returns:
+        Dict with grouped orders and product summaries
+    """
+    own_customer_orders = []
+    other_customer_orders = []
+    no_commission_orders = []
+    
+    # Get all products for product name lookup
+    products_cache = {}
+    
+    for order in orders:
+        user = User.query.get(order.user_id)
+        if not user:
+            continue
+        
+        # Build order summary with product details
+        order_items_summary = []
+        for item in order.items:
+            if item.product_id not in products_cache:
+                product = Product.query.get(item.product_id)
+                if product:
+                    products_cache[item.product_id] = product.name
+                else:
+                    products_cache[item.product_id] = f"Product {item.product_id}"
+            
+            product_name = products_cache[item.product_id]
+            
+            item_summary = {
+                'product_id': item.product_id,
+                'product_name': product_name,
+                'quantity': item.quantity,
+                'weight': float(item.final_weight) if item.final_weight else None,
+                'unit_price': float(item.unit_price) if item.unit_price else None,
+                'subtotal': float(item.total_price) if item.total_price else None
+            }
+            order_items_summary.append(item_summary)
+        
+        # Get user display name (prefer nickname, fallback to wechat_nickname or phone)
+        user_name = None
+        if user:
+            user_name = user.nickname or user.wechat_nickname or user.phone or f"User {user.id}"
+        
+        order_summary = {
+            'order_id': order.id,
+            'order_number': order.order_number,
+            'user_id': order.user_id,
+            'user_name': user_name,
+            'user_phone': user.phone if user else None,
+            'user_source': user.user_source if user else None,
+            'items': order_items_summary,
+            'total': float(order.total) if order.total else 0.0
+        }
+        
+        # Categorize order
+        if user.phone == '+14373406925':
+            # No commission orders (谷语农庄)
+            no_commission_orders.append(order_summary)
+        elif user.user_source == sdr.source_identifier:
+            # Own customer orders
+            own_customer_orders.append(order_summary)
+        else:
+            # Other customer orders
+            other_customer_orders.append(order_summary)
+    
+    return {
+        'own_customer_orders': own_customer_orders,
+        'other_customer_orders': other_customer_orders,
+        'no_commission_orders': no_commission_orders
+    }
+
+
 def get_commission_summary_for_group_deal(group_deal_id: int) -> Optional[Dict]:
     """
-    Get commission summary for a group deal.
+    Get commission summary for a group deal with order grouping.
     
     Args:
         group_deal_id: ID of the group deal
@@ -274,8 +356,28 @@ def get_commission_summary_for_group_deal(group_deal_id: int) -> Optional[Dict]:
     if not records:
         return None
     
+    # Get all orders for this group deal
+    orders = Order.query.filter_by(
+        group_deal_id=group_deal_id,
+        deleted_at=None
+    ).all()
+    
+    # Build enhanced records with order grouping
+    enhanced_records = []
+    for record in records:
+        record_dict = record.to_dict(include_relations=True)
+        
+        # Get SDR for this record
+        sdr = SDR.query.get(record.sdr_id)
+        if sdr:
+            # Build order grouping for this SDR
+            order_grouping = build_order_grouping_for_sdr(sdr, orders)
+            record_dict['order_grouping'] = order_grouping
+        
+        enhanced_records.append(record_dict)
+    
     return {
         'group_deal_id': group_deal_id,
-        'records': [record.to_dict(include_relations=True) for record in records],
+        'records': enhanced_records,
         'total_commission': sum(float(record.total_commission) for record in records)
     }

@@ -131,7 +131,7 @@ class UserRole(BaseModel):
     __tablename__ = 'user_roles'
     
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    role = db.Column(db.String(50), nullable=False)  # 'admin', 'user', 'moderator', etc.
+    role = db.Column(db.String(50), nullable=False)  # 'admin', 'user'
     
     def to_dict(self):
         data = super().to_dict()

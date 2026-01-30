@@ -19,7 +19,7 @@ from config import Config
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
 from schemas.product import CreateProductSchema, UpdateProductSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
-from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateDeliveryFeeConfigSchema
+from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateUserSchema
 from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
 from schemas.utils import validate_request
 from urllib.parse import quote
@@ -441,6 +441,72 @@ def get_user(user_id):
             'error': 'User not found',
             'message': str(e)
         }), 404
+
+@admin_bp.route('/users/<int:user_id>', methods=['PATCH'])
+def update_user(user_id):
+    """Update user information (admin only)"""
+    admin_user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        user = User.query.get_or_404(user_id)
+        
+        # Validate request data
+        errors = validate_request(UpdateUserSchema, request.json)
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
+        
+        data = request.json
+        
+        # Update fields if provided
+        if 'phone' in data:
+            # Check if phone is already taken by another user
+            if data['phone'] and data['phone'] != user.phone:
+                existing = User.query.filter_by(phone=data['phone']).first()
+                if existing and existing.id != user_id:
+                    return jsonify({'error': 'Phone number already in use'}), 400
+            user.phone = data['phone']
+        
+        if 'nickname' in data:
+            user.nickname = data['nickname']
+        
+        if 'email' in data:
+            # Check if email is already taken by another user
+            if data['email'] and data['email'] != user.email:
+                existing = User.query.filter_by(email=data['email']).first()
+                if existing and existing.id != user_id:
+                    return jsonify({'error': 'Email already in use'}), 400
+            user.email = data['email']
+        
+        if 'wechat' in data:
+            user.wechat = data['wechat']
+        
+        if 'points' in data:
+            user.points = data['points']
+        
+        if 'user_source' in data:
+            user.user_source = data['user_source']
+        
+        if 'status' in data:
+            user.status = data['status']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Admin {admin_user_id} updated user {user_id}')
+        
+        return jsonify({
+            'message': 'User updated successfully',
+            'user': user.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating user: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update user',
+            'message': str(e)
+        }), 500
 
 @admin_bp.route('/users/<int:user_id>/impersonate', methods=['POST'])
 def impersonate_user(user_id):

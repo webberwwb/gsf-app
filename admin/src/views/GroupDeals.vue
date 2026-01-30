@@ -159,6 +159,7 @@ export default {
     },
     getStatusLabel(status) {
       const labels = {
+        'draft': '草稿',
         'upcoming': '即将开始',
         'active': '进行中',
         'closed': '已截单',
@@ -293,6 +294,11 @@ export default {
   border-radius: var(--md-radius-xl);
   font-size: var(--md-label-size);
   font-weight: 500;
+}
+
+.status-badge.draft {
+  background: #F5F5F5;
+  color: #757575;
 }
 
 .status-badge.upcoming {

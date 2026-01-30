@@ -82,9 +82,9 @@
               </div>
             </div>
             <div class="user-actions">
-              <button @click="viewUser(user)" class="view-btn">查看</button>
+              <button @click="editUser(user)" class="edit-btn">编辑</button>
               <button v-if="!user.is_admin" @click="impersonateUser(user.id)" class="impersonate-btn">代登录</button>
-              <button v-if="user.is_admin" @click="manageRoles(user)" class="roles-btn">角色</button>
+              <button @click="manageRoles(user)" class="roles-btn">角色</button>
               <button v-if="user.status === 'active'" @click="banUser(user.id)" class="ban-btn">
                 禁用
               </button>
@@ -162,14 +162,66 @@
             <select v-model="roleName" class="role-select">
               <option value="">请选择角色</option>
               <option value="admin">管理员</option>
-              <option value="moderator">版主</option>
-              <option value="user">用户</option>
+              <option value="user">普通用户</option>
             </select>
           </div>
         </div>
         <div class="modal-footer">
           <button @click="closeRoleModal" class="cancel-btn">取消</button>
           <button @click="executeRoleAction" class="confirm-btn" :disabled="!roleAction || !roleName">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div v-if="showEditModal" class="modal-overlay" @click="closeEditModal">
+      <div class="modal-content edit-modal" @click.stop>
+        <div class="modal-header">
+          <h2>编辑用户信息</h2>
+          <button @click="closeEditModal" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="edit-form">
+            <div class="form-group">
+              <label>手机号:</label>
+              <input v-model="editForm.phone" type="text" class="form-input" placeholder="手机号" />
+            </div>
+            <div class="form-group">
+              <label>昵称:</label>
+              <input v-model="editForm.nickname" type="text" class="form-input" placeholder="昵称" />
+            </div>
+            <div class="form-group">
+              <label>邮箱:</label>
+              <input v-model="editForm.email" type="email" class="form-input" placeholder="邮箱" />
+            </div>
+            <div class="form-group">
+              <label>微信号:</label>
+              <input v-model="editForm.wechat" type="text" class="form-input" placeholder="微信号" />
+            </div>
+            <div class="form-group">
+              <label>积分:</label>
+              <input v-model.number="editForm.points" type="number" class="form-input" placeholder="积分" min="0" />
+            </div>
+            <div class="form-group">
+              <label>用户来源:</label>
+              <select v-model="editForm.user_source" class="form-input">
+                <option value="default">默认</option>
+                <option value="花泽">花泽</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>状态:</label>
+              <select v-model="editForm.status" class="form-input">
+                <option value="active">激活</option>
+                <option value="banned">禁用</option>
+                <option value="inactive">未激活</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeEditModal" class="cancel-btn">取消</button>
+          <button @click="saveUserEdit" class="confirm-btn">保存</button>
         </div>
       </div>
     </div>
@@ -207,6 +259,17 @@ export default {
       roleName: '',
       showBulkAssignModal: false,
       bulkAssignSource: '',
+      showEditModal: false,
+      editForm: {
+        phone: '',
+        nickname: '',
+        email: '',
+        wechat: '',
+        points: 0,
+        user_source: 'default',
+        status: 'active'
+      },
+      editingUser: null,
       // Pagination state
       currentPage: 1,
       perPage: 50,
@@ -356,8 +419,7 @@ export default {
     getRoleLabel(role) {
       const labels = {
         'admin': '管理员',
-        'moderator': '版主',
-        'user': '用户'
+        'user': '普通用户'
       }
       return labels[role] || role
     },
@@ -463,6 +525,86 @@ export default {
       } catch (error) {
         await this.error(error.response?.data?.message || error.response?.data?.error || '批量分配失败')
         console.error('Bulk assign error:', error)
+      }
+    },
+    editUser(user) {
+      this.editingUser = user
+      this.editForm = {
+        phone: user.phone || '',
+        nickname: user.nickname || '',
+        email: user.email || '',
+        wechat: user.wechat || '',
+        points: user.points || 0,
+        user_source: user.user_source || 'default',
+        status: user.status || 'active'
+      }
+      this.showEditModal = true
+    },
+    closeEditModal() {
+      this.showEditModal = false
+      this.editingUser = null
+      this.editForm = {
+        phone: '',
+        nickname: '',
+        email: '',
+        wechat: '',
+        points: 0,
+        user_source: 'default',
+        status: 'active'
+      }
+    },
+    async saveUserEdit() {
+      if (!this.editingUser) {
+        await this.$alert('无效的用户', {
+          type: 'warning',
+          title: '错误'
+        })
+        return
+      }
+      
+      try {
+        // Create update payload with only changed fields
+        const updateData = {}
+        
+        if (this.editForm.phone !== this.editingUser.phone) {
+          updateData.phone = this.editForm.phone || null
+        }
+        if (this.editForm.nickname !== this.editingUser.nickname) {
+          updateData.nickname = this.editForm.nickname || null
+        }
+        if (this.editForm.email !== this.editingUser.email) {
+          updateData.email = this.editForm.email || null
+        }
+        if (this.editForm.wechat !== this.editingUser.wechat) {
+          updateData.wechat = this.editForm.wechat || null
+        }
+        if (this.editForm.points !== this.editingUser.points) {
+          updateData.points = this.editForm.points
+        }
+        if (this.editForm.user_source !== this.editingUser.user_source) {
+          updateData.user_source = this.editForm.user_source
+        }
+        if (this.editForm.status !== this.editingUser.status) {
+          updateData.status = this.editForm.status
+        }
+        
+        // If no changes, just close modal
+        if (Object.keys(updateData).length === 0) {
+          await this.$alert('没有任何更改', {
+            type: 'info',
+            title: '提示'
+          })
+          this.closeEditModal()
+          return
+        }
+        
+        await apiClient.patch(`/admin/users/${this.editingUser.id}`, updateData)
+        await this.success('用户信息更新成功')
+        await this.fetchUsers()
+        this.closeEditModal()
+      } catch (error) {
+        await this.error(error.response?.data?.message || error.response?.data?.error || '更新失败')
+        console.error('Update user error:', error)
       }
     }
   }
@@ -747,11 +889,6 @@ export default {
   color: var(--md-primary);
 }
 
-.role-badge.moderator {
-  background: rgba(33, 150, 243, 0.2);
-  color: #2196F3;
-}
-
 .role-badge.user {
   background: var(--md-surface-variant);
   color: var(--md-on-surface-variant);
@@ -787,7 +924,7 @@ export default {
   gap: var(--md-spacing-sm);
 }
 
-.view-btn, .ban-btn, .unban-btn, .roles-btn, .impersonate-btn {
+.view-btn, .ban-btn, .unban-btn, .roles-btn, .impersonate-btn, .edit-btn {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border: none;
   border-radius: var(--md-radius-md);
@@ -797,6 +934,20 @@ export default {
   transition: var(--transition-fast);
   position: relative;
   overflow: hidden;
+}
+
+.edit-btn {
+  background: rgba(76, 175, 80, 0.1);
+  color: #2E7D32;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.edit-btn:hover {
+  background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
 }
 
 .roles-btn {
@@ -967,7 +1118,8 @@ export default {
   .ban-btn,
   .unban-btn,
   .roles-btn,
-  .impersonate-btn {
+  .impersonate-btn,
+  .edit-btn {
     flex: 1 1 auto;
     min-width: 80px;
   }
@@ -1006,7 +1158,8 @@ export default {
   .ban-btn,
   .unban-btn,
   .roles-btn,
-  .impersonate-btn {
+  .impersonate-btn,
+  .edit-btn {
     width: 100%;
   }
 }
@@ -1165,6 +1318,58 @@ export default {
 .confirm-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.edit-modal {
+  max-width: 600px;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.form-input {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111827;
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.form-input:hover {
+  border-color: #9ca3af;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.form-input[type="number"]::-webkit-outer-spin-button,
+.form-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 </style>
 

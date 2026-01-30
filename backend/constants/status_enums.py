@@ -86,9 +86,11 @@ class PaymentStatus(str, Enum):
 class GroupDealStatus(str, Enum):
     """
     Group Deal Status Enum
+    Manual: draft (admin-only, not visible to users)
     Auto-managed: upcoming → active → closed (by cron job based on dates)
     Manual: preparing → ready_for_pickup → completed (by admin)
     """
+    DRAFT = 'draft'                   # 草稿 - Draft (admin-only, not visible to users)
     UPCOMING = 'upcoming'             # 即将开始 - Before order_start_date (auto)
     ACTIVE = 'active'                 # 进行中 - Between order dates (auto)
     CLOSED = 'closed'                 # 已截单 - After order_end_date (auto)
@@ -100,6 +102,7 @@ class GroupDealStatus(str, Enum):
     def get_label(cls, status):
         """Get Chinese label for status"""
         labels = {
+            cls.DRAFT: '草稿',
             cls.UPCOMING: '即将开始',
             cls.ACTIVE: '进行中',
             cls.CLOSED: '已截单',
@@ -127,7 +130,7 @@ class GroupDealStatus(str, Enum):
     @classmethod
     def is_manual_managed(cls, status):
         """Check if status is manually managed by admin"""
-        return status in [cls.PREPARING, cls.READY_FOR_PICKUP, cls.COMPLETED]
+        return status in [cls.DRAFT, cls.PREPARING, cls.READY_FOR_PICKUP, cls.COMPLETED]
     
     @classmethod
     def get_auto_managed_statuses(cls):
@@ -137,7 +140,12 @@ class GroupDealStatus(str, Enum):
     @classmethod
     def get_manual_managed_statuses(cls):
         """Get list of manually managed statuses"""
-        return [cls.PREPARING.value, cls.READY_FOR_PICKUP.value, cls.COMPLETED.value]
+        return [cls.DRAFT.value, cls.PREPARING.value, cls.READY_FOR_PICKUP.value, cls.COMPLETED.value]
+    
+    @classmethod
+    def is_visible_to_users(cls, status):
+        """Check if status should be visible to regular users (non-admin)"""
+        return status != cls.DRAFT
 
 
 class UserStatus(str, Enum):

@@ -30,6 +30,28 @@ def get_user_id_optional():
     
     return user.id
 
+def get_current_user_optional():
+    """Get user object if authenticated, otherwise return None (optional auth for group deal endpoint)"""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.replace('Bearer ', '').strip()
+    else:
+        token = auth_header.strip()
+    
+    if not token:
+        return None  # Not authenticated, but that's OK for this endpoint
+    
+    auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
+    if not auth_token or not auth_token.is_valid():
+        return None  # Invalid/expired token, but that's OK for this endpoint
+    
+    # Get user
+    user = User.query.get(auth_token.user_id)
+    if not user or not user.is_active:
+        return None  # User not found or inactive
+    
+    return user
+
 products_bp = Blueprint('products', __name__)
 
 @products_bp.route('/products', methods=['GET'])
@@ -134,13 +156,23 @@ def get_product(product_id):
 
 @products_bp.route('/group-deals', methods=['GET'])
 def get_group_deals():
-    """Get all active, upcoming, and ready-for-pickup group deals"""
+    """Get all group deals. Admin users can see draft deals, regular users cannot."""
     try:
-        # Get active, upcoming, preparing, and ready_for_pickup deals (excluding soft-deleted)
-        # These statuses should be visible to users so they can see their orders
+        # Get current user to check if they're admin
+        current_user = get_current_user_optional()
+        is_admin = current_user and current_user.is_admin
+        
+        # Build query based on user role
         now = utc_now()
+        if is_admin:
+            # Admin users can see all deals including draft
+            statuses = ['draft', 'active', 'upcoming', 'preparing', 'ready_for_pickup']
+        else:
+            # Regular users can only see active, upcoming, preparing, and ready_for_pickup deals
+            statuses = ['active', 'upcoming', 'preparing', 'ready_for_pickup']
+        
         deals = GroupDeal.query.filter(
-            GroupDeal.status.in_(['active', 'upcoming', 'preparing', 'ready_for_pickup']),
+            GroupDeal.status.in_(statuses),
             GroupDeal.deleted_at.is_(None)
         ).order_by(GroupDeal.order_start_date.desc()).all()
         

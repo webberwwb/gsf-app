@@ -30,9 +30,14 @@
 <script>
 import apiClient from '../api/client'
 import { parseDateEST, getNowEST } from '../utils/date'
+import { useAuthStore } from '../stores/auth'
 
 export default {
   name: 'GroupDeals',
+  setup() {
+    const authStore = useAuthStore()
+    return { authStore }
+  },
   data() {
     return {
       loading: true,
@@ -42,6 +47,11 @@ export default {
   },
   async mounted() {
     await this.loadDeals()
+  },
+  computed: {
+    isAdmin() {
+      return this.authStore.isAdmin
+    }
   },
   methods: {
     async loadDeals() {
@@ -60,7 +70,7 @@ export default {
         
         const now = getNowEST()
         
-        // Find active deal (status = 'active' and order_end_date > now)
+        // Priority 1: Active deals (highest priority for everyone)
         const activeDeal = deals.find(deal => {
           const endDate = parseDateEST(deal.order_end_date)
           return deal.status === 'active' && endDate && endDate > now
@@ -73,8 +83,7 @@ export default {
           return
         }
         
-        // Find deals ready for pickup (status = 'ready_for_pickup')
-        // These should be visible to users so they can see their orders
+        // Priority 2: Ready for pickup deals
         const readyForPickupDeal = deals.find(deal => {
           return deal.status === 'ready_for_pickup'
         })
@@ -86,7 +95,7 @@ export default {
           return
         }
         
-        // Find next upcoming deal (status = 'upcoming' and order_start_date > now)
+        // Priority 3: Upcoming deals
         const upcomingDeals = deals
           .filter(deal => {
             const startDate = parseDateEST(deal.order_start_date)
@@ -106,7 +115,26 @@ export default {
           return
         }
         
-        // No active or upcoming deals - show placeholder
+        // Priority 4: Draft deals (admin-only, lowest priority)
+        if (this.isAdmin) {
+          const draftDeals = deals
+            .filter(deal => deal.status === 'draft')
+            .sort((a, b) => {
+              const dateA = parseDateEST(a.order_start_date)
+              const dateB = parseDateEST(b.order_start_date)
+              if (!dateA || !dateB) return 0
+              return dateB - dateA // Most recent first
+            })
+          
+          if (draftDeals.length > 0) {
+            // Redirect to most recent draft deal
+            this.redirectDealId = draftDeals[0].id
+            this.$router.replace(`/group-deals/${draftDeals[0].id}`)
+            return
+          }
+        }
+        
+        // No deals to show - display placeholder
         this.loading = false
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '加载团购信息失败'

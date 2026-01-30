@@ -164,7 +164,7 @@
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click.stop="showPriceInfo('价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                    <div class="tooltip-container" @click.stop="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -189,7 +189,7 @@
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click="showPriceInfo('价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                    <div class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -234,7 +234,7 @@
                   <div class="item-total" :class="{ estimated: !hasWeight(product) }">
                     <span v-if="hasWeight(product)">小计: {{ calculateBundledItemTotal(product) }}</span>
                     <span v-else>预估小计: {{ calculateBundledItemTotal(product) }}</span>
-                    <div v-if="!hasWeight(product)" class="tooltip-container" @click="showPriceInfo('价格基于每份重量范围估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                    <div v-if="!hasWeight(product)" class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -1046,49 +1046,42 @@ export default {
           return (parseFloat(pricePerUnit) * estimatedWeight).toFixed(2)
         }
       } else if (product.pricing_type === 'bundled_weight') {
-        // bundled_weight: products are weighed individually, not stacked
+        // bundled_weight: products sold by bundle (quantity can be > 1)
         // unit_price = price_per_unit (the rate)
-        // total_price = price_per_unit * final_weight (or estimated weight)
-        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
+        // total_price = price_per_unit * total_weight (or estimated weight * quantity)
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
         if (pricePerUnit === 0) return '0.00'
         
-        // Use actual weight if provided, otherwise use mid-weight for estimation
+        // Use actual weight if provided (total weight for all bundles), otherwise estimate
         const weight = this.getWeight(product)
         if (weight != null && weight > 0) {
+          // Weight is already total for all bundles, no quantity multiplication needed
           return (pricePerUnit * weight).toFixed(2)
         } else {
+          // For estimation, use min-weight per bundle * quantity
           const minWeight = product.pricing_data?.min_weight || 7
-          const maxWeight = product.pricing_data?.max_weight || 15
-          const midWeight = (minWeight + maxWeight) / 2
-          // For estimation, use mid-weight (no quantity multiplication)
-          return (pricePerUnit * midWeight).toFixed(2)
+          return (pricePerUnit * minWeight * quantity).toFixed(2)
         }
       }
       return '0.00'
     },
     calculateBundledItemTotal(product) {
-      // bundled_weight: products are weighed individually, not stacked
-      // Quantity is always 1 for weight-based products
+      // bundled_weight: products sold by bundle (quantity can be > 1)
+      const quantity = this.getQuantity(product)
       const pricePerUnit = product.pricing_data?.price_per_unit || 0
-      if (pricePerUnit === 0) return '$0.00'
+      if (pricePerUnit === 0 || quantity === 0) return '$0.00'
       
-      // Use actual weight if provided, otherwise show price range
+      // Use actual weight if provided (total weight), otherwise estimate using minimum weight
       const weight = this.getWeight(product)
       if (weight != null && weight > 0) {
+        // Weight is already total for all bundles, no quantity multiplication needed
         const totalPrice = pricePerUnit * weight
         return `$${totalPrice.toFixed(2)}`
       } else {
+        // For estimation, always use minimum weight (conservative estimate, no range)
         const minWeight = product.pricing_data?.min_weight || 7
-        const maxWeight = product.pricing_data?.max_weight || 15
-        // For estimation, show price range (no quantity multiplication)
-        const minPrice = pricePerUnit * minWeight
-        const maxPrice = pricePerUnit * maxWeight
-        
-        if (minPrice === maxPrice) {
-          return `$${minPrice.toFixed(2)}`
-        }
-        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
+        const estimatedPrice = pricePerUnit * minWeight * quantity
+        return `$${estimatedPrice.toFixed(2)}`
       }
     },
     calculateSubtotal() {

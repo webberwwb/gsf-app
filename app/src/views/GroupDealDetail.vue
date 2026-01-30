@@ -1,6 +1,6 @@
 <template>
   <div class="deal-detail-page">
-    <header class="page-header">
+    <header class="page-header" :class="{ 'admin-draft-header': isAdmin && deal && deal.status === 'draft' }">
       <button @click="$router.back()" class="back-btn">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
@@ -8,6 +8,9 @@
       </button>
       <div class="header-center">
         <h1>团购详情</h1>
+        <span v-if="isAdmin && deal && deal.status === 'draft'" class="admin-draft-badge">
+          仅管理员可见
+        </span>
       </div>
       <div class="header-spacer"></div>
     </header>
@@ -16,7 +19,16 @@
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else-if="deal" class="deal-content">
       <!-- Deal Info Section -->
-      <div class="deal-info-section">
+      <div class="deal-info-section" :class="{ 'admin-draft-section': isAdmin && deal.status === 'draft' }">
+        <div v-if="isAdmin && deal.status === 'draft'" class="admin-warning-banner">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="warning-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div class="warning-content">
+            <strong>草稿状态 - 仅管理员可见</strong>
+            <p>此团购处于草稿状态，普通用户无法看到此页面。请在管理后台将状态更改为"即将开始"或"进行中"以向用户开放。</p>
+          </div>
+        </div>
         <div class="deal-header">
           <h2>{{ deal.title }}</h2>
           <span :class="['deal-badge', deal.status]">
@@ -157,7 +169,7 @@
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click.stop="showPriceInfo('价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                    <div class="tooltip-container" @click.stop="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -182,7 +194,7 @@
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click="showPriceInfo('价格基于中等重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                    <div class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -211,7 +223,7 @@
                   </div>
                   <div class="item-total estimated">
                     <span>预估小计: {{ calculateBundledItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click="showPriceInfo('价格基于每份重量范围估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                    <div class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -295,6 +307,9 @@ export default {
   computed: {
     isAuthenticated() {
       return this.authStore.isAuthenticated
+    },
+    isAdmin() {
+      return this.authStore.isAdmin
     }
   },
   async mounted() {
@@ -420,6 +435,7 @@ export default {
     },
     getStatusLabel(status) {
       const labels = {
+        'draft': '草稿',
         'upcoming': '即将开始',
         'active': '进行中',
         'closed': '已截单',
@@ -496,39 +512,31 @@ export default {
         const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
         return (parseFloat(pricePerUnit) * estimatedWeight).toFixed(2)
       } else if (product.pricing_type === 'bundled_weight') {
-        // bundled_weight: products are weighed individually, not stacked
+        // bundled_weight: products sold by bundle (quantity can be > 1)
         // unit_price = price_per_unit (the rate)
-        // total_price = price_per_unit * final_weight (or estimated weight)
-        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
+        // total_price = price_per_unit * min_weight * quantity (for estimation)
         const pricePerUnit = product.pricing_data?.price_per_unit || 0
         const minWeight = product.pricing_data?.min_weight || 7
-        const maxWeight = product.pricing_data?.max_weight || 15
-        const midWeight = (minWeight + maxWeight) / 2
         
         if (pricePerUnit === 0) return '0.00'
         
-        // Return single estimated price using mid-weight (no quantity multiplication)
-        return (pricePerUnit * midWeight).toFixed(2)
+        // Return estimated price using min-weight, multiplied by quantity
+        return (pricePerUnit * minWeight * quantity).toFixed(2)
       }
       return '0.00'
     },
     calculateBundledItemTotal(product) {
-      // bundled_weight: products are weighed individually, not stacked
-      // Quantity is always 1 for weight-based products
+      // bundled_weight: products sold by bundle (quantity can be > 1)
+      // Always estimate using minimum weight (no range)
+      const quantity = this.getQuantity(product)
       const pricePerUnit = product.pricing_data?.price_per_unit || 0
       const minWeight = product.pricing_data?.min_weight || 7
-      const maxWeight = product.pricing_data?.max_weight || 15
       
-      if (pricePerUnit === 0) return '$0.00'
+      if (pricePerUnit === 0 || quantity === 0) return '$0.00'
       
-      // Show price range (no quantity multiplication)
-      const minPrice = pricePerUnit * minWeight
-      const maxPrice = pricePerUnit * maxWeight
-      
-      if (minPrice === maxPrice) {
-        return `$${minPrice.toFixed(2)}`
-      }
-      return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
+      // Always use minimum weight for estimation (conservative estimate)
+      const estimatedPrice = pricePerUnit * minWeight * quantity
+      return `$${estimatedPrice.toFixed(2)}`
     },
     calculateTotal() {
       if (!this.deal || !this.deal.products) return '0.00'
@@ -582,12 +590,10 @@ export default {
             isEstimated = true
           } else if (product.pricing_type === 'bundled_weight') {
             // quantity = number of packages
-            // Use mid-weight (average) for estimation
+            // Use min-weight for conservative estimation
             const pricePerUnit = product.pricing_data?.price_per_unit || 0
             const minWeight = product.pricing_data?.min_weight || 7
-            const maxWeight = product.pricing_data?.max_weight || 15
-            const midWeight = (minWeight + maxWeight) / 2
-            estimatedPrice = parseFloat(pricePerUnit) * midWeight * quantity
+            estimatedPrice = parseFloat(pricePerUnit) * minWeight * quantity
             isEstimated = true
           }
           
@@ -804,6 +810,72 @@ export default {
   background: #FFF3E0;
   color: #F57C00;
   box-shadow: 0 2px 4px rgba(245, 124, 0, 0.3);
+}
+
+.deal-badge.draft {
+  background: #E0E0E0;
+  color: #616161;
+  box-shadow: 0 2px 4px rgba(97, 97, 97, 0.2);
+}
+
+.page-header.admin-draft-header {
+  background: linear-gradient(135deg, #9C27B0 0%, #673AB7 100%);
+}
+
+.admin-draft-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: var(--md-radius-xl);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-left: var(--md-spacing-sm);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.deal-info-section.admin-draft-section {
+  border: 2px dashed #9C27B0;
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.03) 0%, rgba(103, 58, 183, 0.03) 100%);
+}
+
+.admin-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--md-spacing-md);
+  padding: var(--md-spacing-md);
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.1) 0%, rgba(103, 58, 183, 0.1) 100%);
+  border: 2px solid #9C27B0;
+  border-radius: var(--md-radius-md);
+  margin-bottom: var(--md-spacing-lg);
+}
+
+.warning-icon {
+  width: 24px;
+  height: 24px;
+  color: #9C27B0;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.warning-content {
+  flex: 1;
+}
+
+.warning-content strong {
+  display: block;
+  color: #6A1B9A;
+  font-size: var(--md-body-size);
+  margin-bottom: var(--md-spacing-xs);
+}
+
+.warning-content p {
+  color: #7B1FA2;
+  font-size: var(--md-label-size);
+  line-height: 1.5;
+  margin: 0;
 }
 
 .deal-description {

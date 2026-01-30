@@ -19,9 +19,10 @@ class GroupDeal(BaseModel):
     pickup_date = db.Column(db.DateTime, nullable=False)
     
     # Deal status (see constants.status_enums.GroupDealStatus for valid values and workflow)
+    # Manual: draft (admin-only, not visible to users)
     # Auto-managed: upcoming → active → closed (by cron job based on dates)
     # Manual: preparing → ready_for_pickup → completed (by admin)
-    status = db.Column(db.String(50), default=GroupDealStatus.UPCOMING.value, nullable=False)
+    status = db.Column(db.String(50), default=GroupDealStatus.DRAFT.value, nullable=False)
     
     # Soft delete
     deleted_at = db.Column(db.DateTime, nullable=True, index=True)

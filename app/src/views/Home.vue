@@ -100,6 +100,42 @@
         </div>
       </section>
 
+      <!-- Draft Deals Section (Admin Only) -->
+      <section v-if="!loading && isAdmin && draftDeals.length > 0" class="deals-section admin-only-section">
+        <h2 class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          草稿团购
+          <span class="admin-badge">仅管理员可见</span>
+        </h2>
+        <div class="deals-list">
+          <div
+            v-for="deal in draftDeals"
+            :key="deal.id"
+            class="deal-card draft"
+            @click="viewDeal(deal)"
+          >
+            <div class="deal-header">
+              <h3>{{ deal.title }}</h3>
+              <span class="deal-badge draft">草稿</span>
+            </div>
+            <p class="deal-description">{{ deal.description || '精选优质农产品' }}</p>
+            <div class="deal-dates">
+              <span class="date-item">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                计划开始: {{ formatDateTime(deal.order_start_date) }}
+              </span>
+            </div>
+            <div class="admin-note">
+              ⚠️ 此团购处于草稿状态，仅管理员可见
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Hot Products Section (Browse Only) -->
       <section v-if="!loading && products.length > 0" class="products-section">
         <h2 class="section-title">
@@ -188,11 +224,16 @@
 import apiClient from '../api/client'
 import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN, parseDateEST, getNowEST } from '../utils/date'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
+import { useAuthStore } from '../stores/auth'
 
 export default {
   name: 'Home',
   components: {
     ProductDetailModal
+  },
+  setup() {
+    const authStore = useAuthStore()
+    return { authStore }
   },
   data() {
     return {
@@ -201,8 +242,14 @@ export default {
       deals: [],
       activeDeals: [],
       upcomingDeals: [],
+      draftDeals: [],
       showProductModal: false,
       selectedProduct: null
+    }
+  },
+  computed: {
+    isAdmin() {
+      return this.authStore.isAdmin
     }
   },
   async mounted() {
@@ -225,7 +272,7 @@ export default {
         this.products = (productsRes.data.products || []).filter(product => product.is_active === true)
         this.deals = dealsRes.data.deals || []
         
-        // Separate active and upcoming deals
+        // Separate active, upcoming, and draft deals
         // Use EST for date comparisons since backend dates are in EST
         const now = getNowEST()
         this.activeDeals = this.deals.filter(deal => {
@@ -237,6 +284,11 @@ export default {
           const startDate = parseDateEST(deal.order_start_date)
           return deal.status === 'upcoming' && startDate && startDate > now
         })
+        
+        // Draft deals (admin-only)
+        this.draftDeals = this.deals.filter(deal => {
+          return deal.status === 'draft'
+        })
       } catch (error) {
         console.error('Failed to load data:', error)
         // Ensure we still show something even if loading fails
@@ -244,6 +296,7 @@ export default {
         this.deals = []
         this.activeDeals = []
         this.upcomingDeals = []
+        this.draftDeals = []
       } finally {
         this.loading = false
       }
@@ -600,6 +653,50 @@ export default {
 .deal-badge.upcoming {
   background: var(--md-primary-variant);
   color: var(--md-on-surface);
+}
+
+.deal-badge.draft {
+  background: #E0E0E0;
+  color: #616161;
+  box-shadow: 0 2px 4px rgba(97, 97, 97, 0.2);
+}
+
+.admin-only-section {
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.05) 0%, rgba(103, 58, 183, 0.05) 100%);
+  border: 2px dashed #9C27B0;
+  border-radius: var(--md-radius-lg);
+  padding: var(--md-spacing-lg);
+  position: relative;
+}
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  background: linear-gradient(135deg, #9C27B0 0%, #673AB7 100%);
+  color: white;
+  border-radius: var(--md-radius-xl);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-left: var(--md-spacing-sm);
+  box-shadow: 0 2px 6px rgba(156, 39, 176, 0.3);
+}
+
+.deal-card.draft {
+  border: 2px solid #E0E0E0;
+  background: rgba(224, 224, 224, 0.05);
+}
+
+.admin-note {
+  margin-top: var(--md-spacing-sm);
+  padding: var(--md-spacing-sm);
+  background: rgba(156, 39, 176, 0.1);
+  border-left: 3px solid #9C27B0;
+  border-radius: var(--md-radius-sm);
+  font-size: 0.875rem;
+  color: #6A1B9A;
+  font-weight: 500;
 }
 
 .deal-description {

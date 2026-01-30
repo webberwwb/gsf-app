@@ -33,7 +33,7 @@ class UpdateSupplierSchema(Schema):
 
 class AssignRoleSchema(Schema):
     """Schema for assigning a role to a user"""
-    role = fields.String(required=True, validate=validate.OneOf(['admin', 'moderator', 'user']))
+    role = fields.String(required=True, validate=validate.OneOf(['admin', 'user']))
     
     class Meta:
         unknown = EXCLUDE
@@ -77,6 +77,20 @@ class UpdateDeliveryFeeConfigSchema(Schema):
     threshold_2_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
     threshold_2_fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
     threshold_3_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    
+    class Meta:
+        unknown = EXCLUDE
+
+
+class UpdateUserSchema(Schema):
+    """Schema for updating user information (admin only)"""
+    phone = fields.String(allow_none=True, validate=validate.Length(max=20))
+    nickname = fields.String(allow_none=True, validate=validate.Length(max=255))
+    email = fields.String(allow_none=True, validate=validate.Email())
+    wechat = fields.String(allow_none=True, validate=validate.Length(max=255))
+    points = fields.Integer(allow_none=True, validate=validate.Range(min=0))
+    user_source = fields.String(allow_none=True, validate=validate.Length(max=50))
+    status = fields.String(allow_none=True, validate=validate.OneOf(['active', 'banned', 'inactive']))
     
     class Meta:
         unknown = EXCLUDE

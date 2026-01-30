@@ -17,6 +17,9 @@ export const useAuthStore = defineStore('auth', {
     },
     hasWechat: (state) => {
       return !!(state.user && state.user.wechat && state.user.wechat.trim().length > 0)
+    },
+    isAdmin: (state) => {
+      return !!(state.user && state.user.is_admin)
     }
   },
   

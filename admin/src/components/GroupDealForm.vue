@@ -78,6 +78,7 @@
         <div class="form-group">
           <label for="status">状态</label>
           <select id="status" v-model="formData.status" class="form-input">
+            <option value="draft">草稿</option>
             <option value="upcoming">即将开始</option>
             <option value="active">进行中</option>
             <option value="closed">已截单</option>
@@ -185,7 +186,7 @@ export default {
         order_start_date: '',
         order_end_date: '',
         pickup_date: '',
-        status: 'upcoming'
+        status: 'draft'
       },
       availableProducts: [],
       selectedProducts: [],
@@ -217,7 +218,7 @@ export default {
         order_start_date: '',
         order_end_date: '',
         pickup_date: '',
-        status: 'upcoming'
+        status: 'draft'
       }
       this.selectedProducts = []
       this.error = null
@@ -238,7 +239,7 @@ export default {
           order_start_date: this.formatDateTimeLocal(this.deal.order_start_date),
           order_end_date: this.formatDateTimeLocal(this.deal.order_end_date),
           pickup_date: this.formatDateOnly(this.deal.pickup_date),
-          status: this.deal.status || 'upcoming'
+          status: this.deal.status || 'draft'
         }
         
         // Load selected products

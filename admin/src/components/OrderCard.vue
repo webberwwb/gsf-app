@@ -41,7 +41,8 @@
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
-        <span class="value">{{ order.user?.nickname || order.user?.phone || 'N/A' }}</span>
+        <span class="value">{{ order.user?.nickname || 'N/A' }}</span>
+        <span v-if="order.user?.phone" class="phone-badge">{{ order.user.phone }}</span>
         <span v-if="order.user?.wechat" class="wechat-badge">微信: {{ order.user.wechat }}</span>
         <button 
           v-if="order.user && !order.user.is_admin" 
@@ -539,6 +540,16 @@ export default {
   color: var(--md-primary);
   font-weight: 600;
   font-size: 1rem;
+}
+
+.phone-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #E3F2FD;
+  color: #1565C0;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .wechat-badge {

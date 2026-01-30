@@ -106,6 +106,104 @@
               </div>
             </div>
 
+            <!-- Order Grouping for Validation -->
+            <div v-if="record.order_grouping" class="order-grouping-section">
+              <h4>订单分组验证</h4>
+              
+              <!-- Own Customer Orders -->
+              <div v-if="record.order_grouping.own_customer_orders && record.order_grouping.own_customer_orders.length > 0" class="order-group own-customer-group">
+                <div class="group-header">
+                  <h5>自己客户订单 ({{ record.order_grouping.own_customer_orders.length }})</h5>
+                  <span class="group-badge own">提成: ${{ record.own_customer_commission.toFixed(2) }}</span>
+                </div>
+                <div class="orders-list">
+                  <div v-for="order in record.order_grouping.own_customer_orders" :key="order.order_id" class="order-card">
+                    <div class="order-header">
+                      <span class="order-number">订单: {{ order.order_number }}</span>
+                      <span class="order-total">${{ order.total.toFixed(2) }}</span>
+                    </div>
+                    <div class="order-user">
+                      <span class="user-name">{{ order.user_name || 'N/A' }}</span>
+                      <span class="user-phone">{{ order.user_phone || 'N/A' }}</span>
+                      <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
+                    </div>
+                    <div class="order-items">
+                      <div v-for="item in order.items" :key="item.product_id" class="order-item">
+                        <span class="item-name">{{ item.product_name }}</span>
+                        <span class="item-details">
+                          <span v-if="item.quantity">数量: {{ item.quantity }}</span>
+                          <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
+                          <span class="item-subtotal">${{ item.subtotal ? item.subtotal.toFixed(2) : '0.00' }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Other Customer Orders -->
+              <div v-if="record.order_grouping.other_customer_orders && record.order_grouping.other_customer_orders.length > 0" class="order-group other-customer-group">
+                <div class="group-header">
+                  <h5>一般客户订单 ({{ record.order_grouping.other_customer_orders.length }})</h5>
+                  <span class="group-badge general">提成: ${{ record.general_customer_commission.toFixed(2) }}</span>
+                </div>
+                <div class="orders-list">
+                  <div v-for="order in record.order_grouping.other_customer_orders" :key="order.order_id" class="order-card">
+                    <div class="order-header">
+                      <span class="order-number">订单: {{ order.order_number }}</span>
+                      <span class="order-total">${{ order.total.toFixed(2) }}</span>
+                    </div>
+                    <div class="order-user">
+                      <span class="user-name">{{ order.user_name || 'N/A' }}</span>
+                      <span class="user-phone">{{ order.user_phone || 'N/A' }}</span>
+                      <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
+                    </div>
+                    <div class="order-items">
+                      <div v-for="item in order.items" :key="item.product_id" class="order-item">
+                        <span class="item-name">{{ item.product_name }}</span>
+                        <span class="item-details">
+                          <span v-if="item.quantity">数量: {{ item.quantity }}</span>
+                          <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
+                          <span class="item-subtotal">${{ item.subtotal ? item.subtotal.toFixed(2) : '0.00' }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- No Commission Orders -->
+              <div v-if="record.order_grouping.no_commission_orders && record.order_grouping.no_commission_orders.length > 0" class="order-group no-commission-group">
+                <div class="group-header">
+                  <h5>无提成订单 - 谷语农庄 ({{ record.order_grouping.no_commission_orders.length }})</h5>
+                  <span class="group-badge no-commission">无提成</span>
+                </div>
+                <div class="orders-list">
+                  <div v-for="order in record.order_grouping.no_commission_orders" :key="order.order_id" class="order-card">
+                    <div class="order-header">
+                      <span class="order-number">订单: {{ order.order_number }}</span>
+                      <span class="order-total">${{ order.total.toFixed(2) }}</span>
+                    </div>
+                    <div class="order-user">
+                      <span class="user-name">{{ order.user_name || 'N/A' }}</span>
+                      <span class="user-phone">{{ order.user_phone || 'N/A' }}</span>
+                      <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
+                    </div>
+                    <div class="order-items">
+                      <div v-for="item in order.items" :key="item.product_id" class="order-item">
+                        <span class="item-name">{{ item.product_name }}</span>
+                        <span class="item-details">
+                          <span v-if="item.quantity">数量: {{ item.quantity }}</span>
+                          <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
+                          <span class="item-subtotal">${{ item.subtotal ? item.subtotal.toFixed(2) : '0.00' }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Manual Adjustment Section -->
             <div class="manual-adjustment-section">
               <h4>手动调整</h4>
@@ -1003,6 +1101,203 @@ export default {
 
   .final-total-value-large {
     font-size: 20px;
+  }
+}
+
+/* Order Grouping Section */
+.order-grouping-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 2px solid #e5e7eb;
+}
+
+.order-grouping-section h4 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.order-group {
+  margin-bottom: 24px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.own-customer-group {
+  border-color: rgba(156, 39, 176, 0.3);
+  background: rgba(156, 39, 176, 0.02);
+}
+
+.other-customer-group {
+  border-color: rgba(123, 31, 162, 0.3);
+  background: rgba(123, 31, 162, 0.02);
+}
+
+.no-commission-group {
+  border-color: rgba(107, 114, 128, 0.3);
+  background: rgba(107, 114, 128, 0.02);
+}
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.group-header h5 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.group-badge {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.group-badge.own {
+  background: rgba(156, 39, 176, 0.1);
+  color: #9c27b0;
+}
+
+.group-badge.general {
+  background: rgba(123, 31, 162, 0.1);
+  color: #7b1fa2;
+}
+
+.group-badge.no-commission {
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+}
+
+.orders-list {
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.order-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.order-card:last-child {
+  margin-bottom: 0;
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.order-number {
+  font-weight: 600;
+  color: #111827;
+  font-size: 14px;
+}
+
+.order-total {
+  font-weight: 600;
+  color: #9c27b0;
+  font-size: 14px;
+}
+
+.order-user {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.user-name {
+  font-weight: 500;
+  color: #374151;
+  font-size: 13px;
+}
+
+.user-phone {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.user-source {
+  color: #6b7280;
+  font-size: 12px;
+  padding: 2px 8px;
+  background: rgba(156, 39, 176, 0.1);
+  border-radius: 4px;
+}
+
+.order-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  background: #f9fafb;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.item-name {
+  font-weight: 500;
+  color: #111827;
+}
+
+.item-details {
+  display: flex;
+  gap: 12px;
+  color: #6b7280;
+}
+
+.item-subtotal {
+  font-weight: 600;
+  color: #374151;
+  min-width: 60px;
+  text-align: right;
+}
+
+@media (max-width: 767px) {
+  .order-grouping-section {
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+
+  .group-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .order-user {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .item-details {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
   }
 }
 </style>

@@ -64,10 +64,12 @@ export function getPaymentStatusLabel(status) {
 
 /**
  * Group Deal Status Enum
+ * Manual: draft (admin-only, not visible to users)
  * Auto-managed: upcoming → active → closed (by cron job based on dates)
  * Manual: preparing → ready_for_pickup → completed (by admin)
  */
 export const GroupDealStatus = {
+  DRAFT: 'draft',                   // 草稿 - Draft (admin-only, not visible to users)
   UPCOMING: 'upcoming',             // 即将开始 - Before order_start_date (auto)
   ACTIVE: 'active',                 // 进行中 - Between order dates (auto)
   CLOSED: 'closed',                 // 已截单 - After order_end_date (auto)
@@ -77,6 +79,7 @@ export const GroupDealStatus = {
 }
 
 export const GroupDealStatusLabels = {
+  [GroupDealStatus.DRAFT]: '草稿',
   [GroupDealStatus.UPCOMING]: '即将开始',
   [GroupDealStatus.ACTIVE]: '进行中',
   [GroupDealStatus.CLOSED]: '已截单',
@@ -99,10 +102,15 @@ export function isGroupDealAutoManaged(status) {
 
 export function isGroupDealManualManaged(status) {
   return [
+    GroupDealStatus.DRAFT,
     GroupDealStatus.PREPARING,
     GroupDealStatus.READY_FOR_PICKUP,
     GroupDealStatus.COMPLETED
   ].includes(status)
+}
+
+export function isGroupDealVisibleToUsers(status) {
+  return status !== GroupDealStatus.DRAFT
 }
 
 export const GroupDealAutoManagedStatuses = [
@@ -112,6 +120,7 @@ export const GroupDealAutoManagedStatuses = [
 ]
 
 export const GroupDealManualManagedStatuses = [
+  GroupDealStatus.DRAFT,
   GroupDealStatus.PREPARING,
   GroupDealStatus.READY_FOR_PICKUP,
   GroupDealStatus.COMPLETED

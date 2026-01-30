@@ -194,6 +194,14 @@
                     <button @click="cancelAddAddress" class="cancel-form-btn">×</button>
                   </div>
                   <div class="form-group">
+                    <label>收货人姓名 *</label>
+                    <input v-model="newAddress.recipient_name" type="text" placeholder="收货人姓名" class="form-input" required>
+                  </div>
+                  <div class="form-group">
+                    <label>联系电话 *</label>
+                    <input v-model="newAddress.phone" type="tel" placeholder="联系电话" class="form-input" required>
+                  </div>
+                  <div class="form-group">
                     <label>地址第一行 *</label>
                     <input v-model="newAddress.address_line1" type="text" placeholder="街道地址" class="form-input" required>
                   </div>
@@ -495,6 +503,8 @@ export default {
       savingAddress: false,
       addressError: null,
       newAddress: {
+        recipient_name: '',
+        phone: '',
         address_line1: '',
         address_line2: '',
         city: '',
@@ -514,9 +524,11 @@ export default {
   },
   computed: {
     isAddressValid() {
-      return this.newAddress.address_line1 && 
-             this.newAddress.city && 
-             this.newAddress.postal_code
+      return this.newAddress.recipient_name?.trim() && 
+             this.newAddress.phone?.trim() && 
+             this.newAddress.address_line1?.trim() && 
+             this.newAddress.city?.trim() && 
+             this.newAddress.postal_code?.trim()
     },
     finalTotal() {
       if (!this.order) return 0
@@ -700,6 +712,8 @@ export default {
       this.savingAddress = false
       this.addressError = null
       this.newAddress = {
+        recipient_name: '',
+        phone: '',
         address_line1: '',
         address_line2: '',
         city: '',
@@ -1107,6 +1121,8 @@ export default {
       this.showAddAddressForm = false
       this.addressError = null
       this.newAddress = {
+        recipient_name: '',
+        phone: '',
         address_line1: '',
         address_line2: '',
         city: '',
@@ -1114,7 +1130,34 @@ export default {
       }
     },
     async saveNewAddress() {
-      if (!this.isAddressValid) return
+      // Validate required fields with friendly error messages
+      const validationErrors = []
+      
+      if (!this.newAddress.recipient_name?.trim()) {
+        validationErrors.push('收货人姓名不能为空')
+      }
+      
+      if (!this.newAddress.phone?.trim()) {
+        validationErrors.push('联系电话不能为空')
+      }
+      
+      if (!this.newAddress.address_line1?.trim()) {
+        validationErrors.push('地址第一行不能为空')
+      }
+      
+      if (!this.newAddress.city?.trim()) {
+        validationErrors.push('城市不能为空')
+      }
+      
+      if (!this.newAddress.postal_code?.trim()) {
+        validationErrors.push('邮编不能为空')
+      }
+      
+      if (validationErrors.length > 0) {
+        this.addressError = validationErrors.join('；')
+        return
+      }
+      
       if (!this.order?.user_id) {
         this.addressError = '无法获取用户信息'
         return
@@ -1124,7 +1167,17 @@ export default {
       this.addressError = null
       
       try {
-        const response = await apiClient.post(`/admin/users/${this.order.user_id}/addresses`, this.newAddress)
+        // Prepare payload with trimmed required fields
+        const payload = {
+          recipient_name: this.newAddress.recipient_name.trim(),
+          phone: this.newAddress.phone.trim(),
+          address_line1: this.newAddress.address_line1.trim(),
+          address_line2: this.newAddress.address_line2?.trim() || null,
+          city: this.newAddress.city.trim(),
+          postal_code: this.newAddress.postal_code.trim()
+        }
+        
+        const response = await apiClient.post(`/admin/users/${this.order.user_id}/addresses`, payload)
         const savedAddress = response.data.address
         
         // Add to addresses list
@@ -1136,6 +1189,8 @@ export default {
         // Reset form
         this.showAddAddressForm = false
         this.newAddress = {
+          recipient_name: '',
+          phone: '',
           address_line1: '',
           address_line2: '',
           city: '',
