@@ -67,7 +67,7 @@ def get_products():
         show_all = request.headers.get('Authorization') is not None
         
         # Get query parameters
-        sort_by = request.args.get('sort', 'created_at')
+        sort_by = request.args.get('sort', 'custom')
         days = request.args.get('days', 30, type=int)
         
         # Build base query
@@ -99,6 +99,8 @@ def get_products():
             )
         elif sort_by == 'name':
             query = query.order_by(Product.name.asc())
+        elif sort_by == 'custom':
+            query = query.order_by(Product.sort_order.asc(), Product.created_at.desc())
         else:
             query = query.order_by(Product.created_at.desc())
         
@@ -189,6 +191,8 @@ def get_group_deals():
                     product_dict = product.to_dict()
                     product_dict['deal_stock_limit'] = dp.deal_stock_limit
                     products_data.append(product_dict)
+            # Sort products by custom sort_order
+            products_data.sort(key=lambda p: (p.get('sort_order', 0), p.get('id', 0)))
             deal_dict['products'] = products_data
             deals_data.append(deal_dict)
         
@@ -220,6 +224,9 @@ def get_group_deal(deal_id):
                 product_dict = product.to_dict()
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 products_data.append(product_dict)
+        
+        # Sort products by custom sort_order
+        products_data.sort(key=lambda p: (p.get('sort_order', 0), p.get('id', 0)))
         
         deal_dict['products'] = products_data
         

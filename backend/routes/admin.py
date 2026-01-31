@@ -17,7 +17,7 @@ from utils.commission import calculate_commission_for_group_deal, get_commission
 from datetime import datetime, timedelta, timezone, date
 from config import Config
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
-from schemas.product import CreateProductSchema, UpdateProductSchema
+from schemas.product import CreateProductSchema, UpdateProductSchema, BulkUpdateSortOrderSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
 from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateUserSchema
 from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
@@ -362,6 +362,48 @@ def delete_product(product_id):
         current_app.logger.error(f'Error deleting product: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to delete product',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/products/sort-order', methods=['PUT'])
+def update_product_sort_orders():
+    """Update product sort orders in bulk"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Validate request data
+        schema = BulkUpdateSortOrderSchema()
+        data = schema.load(request.json)
+        
+        # Update each product's sort_order
+        updated_count = 0
+        for item in data['products']:
+            product = Product.query.get(item['product_id'])
+            if product:
+                product.sort_order = item['sort_order']
+                updated_count += 1
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated sort order for {updated_count} products')
+        
+        return jsonify({
+            'message': f'Successfully updated sort order for {updated_count} products',
+            'updated_count': updated_count
+        }), 200
+        
+    except ValidationError as e:
+        return jsonify({
+            'error': 'Invalid request data',
+            'message': str(e.messages)
+        }), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating product sort orders: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update product sort orders',
             'message': str(e)
         }), 500
 
@@ -1299,7 +1341,7 @@ def get_admin_products():
     
     try:
         # Get query parameters
-        sort_by = request.args.get('sort', 'created_at')  # 'created_at', 'popularity', 'name'
+        sort_by = request.args.get('sort', 'custom')  # 'custom', 'created_at', 'popularity', 'name'
         days = request.args.get('days', 30, type=int)  # Days for popularity calculation
         
         # Base query
@@ -1326,6 +1368,8 @@ def get_admin_products():
             )
         elif sort_by == 'name':
             query = query.order_by(Product.name.asc())
+        elif sort_by == 'custom':
+            query = query.order_by(Product.sort_order.asc(), Product.created_at.desc())
         else:
             query = query.order_by(Product.created_at.desc())
         
@@ -3357,12 +3401,12 @@ def get_delivery_fee_config():
             return jsonify({
                 'config': {
                     'id': None,
-                    'base_fee': 7.99,
-                    'threshold_1_amount': 58.00,
-                    'threshold_1_fee': 5.99,
-                    'threshold_2_amount': 128.00,
-                    'threshold_2_fee': 3.99,
-                    'threshold_3_amount': 150.00,
+                    'tiers': [
+                        {'threshold': 0, 'fee': 7.99},
+                        {'threshold': 58.00, 'fee': 5.99},
+                        {'threshold': 128.00, 'fee': 3.99},
+                        {'threshold': 150.00, 'fee': 0}
+                    ],
                     'is_active': True
                 }
             }), 200
@@ -3391,29 +3435,27 @@ def update_delivery_fee_config():
         return error_response, status_code
     
     try:
+        # Convert Decimal values to float for JSON storage
+        tiers = []
+        for tier in validated_data['tiers']:
+            tiers.append({
+                'threshold': float(tier['threshold']),
+                'fee': float(tier['fee'])
+            })
+        
         # Get or create active config
         config = DeliveryFeeConfig.query.filter_by(is_active=True).first()
         
         if not config:
             # Create new config
             config = DeliveryFeeConfig(
-                base_fee=validated_data['base_fee'],
-                threshold_1_amount=validated_data['threshold_1_amount'],
-                threshold_1_fee=validated_data['threshold_1_fee'],
-                threshold_2_amount=validated_data['threshold_2_amount'],
-                threshold_2_fee=validated_data['threshold_2_fee'],
-                threshold_3_amount=validated_data['threshold_3_amount'],
+                tiers=tiers,
                 is_active=True
             )
             db.session.add(config)
         else:
             # Update existing config
-            config.base_fee = validated_data['base_fee']
-            config.threshold_1_amount = validated_data['threshold_1_amount']
-            config.threshold_1_fee = validated_data['threshold_1_fee']
-            config.threshold_2_amount = validated_data['threshold_2_amount']
-            config.threshold_2_fee = validated_data['threshold_2_fee']
-            config.threshold_3_amount = validated_data['threshold_3_amount']
+            config.tiers = tiers
         
         db.session.commit()
         

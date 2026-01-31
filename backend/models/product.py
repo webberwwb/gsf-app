@@ -37,6 +37,9 @@ class Product(BaseModel):
     # If False, product price won't be included in subtotal calculation for free shipping
     counts_toward_free_shipping = db.Column(db.Boolean, default=True, nullable=False)
     
+    # Custom sort order (lower numbers appear first)
+    sort_order = db.Column(db.Integer, default=0, nullable=False, index=True)
+    
     # Relationships
     group_deal_products = db.relationship('GroupDealProduct', backref='product', lazy=True)
     order_items = db.relationship('OrderItem', backref='product', lazy=True)
@@ -136,7 +139,8 @@ class Product(BaseModel):
             'is_available': self.is_available,
             'supplier_id': self.supplier_id,
             'supplier': self.supplier.to_dict() if self.supplier else None,
-            'counts_toward_free_shipping': self.counts_toward_free_shipping
+            'counts_toward_free_shipping': self.counts_toward_free_shipping,
+            'sort_order': self.sort_order
         })
         return data
 

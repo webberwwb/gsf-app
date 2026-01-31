@@ -1,5 +1,5 @@
 """Admin request/response schemas"""
-from marshmallow import Schema, fields, validate, EXCLUDE
+from marshmallow import Schema, fields, validate, EXCLUDE, ValidationError
 from constants.status_enums import OrderStatus, PaymentStatus
 
 
@@ -69,14 +69,39 @@ class MergeOrdersSchema(Schema):
         unknown = EXCLUDE
 
 
+class DeliveryFeeTierSchema(Schema):
+    """Schema for a single delivery fee tier"""
+    threshold = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    
+    class Meta:
+        unknown = EXCLUDE
+
+
+def validate_tiers(tiers):
+    """Validate that tiers are in ascending order by threshold"""
+    if not tiers or len(tiers) < 1:
+        raise ValidationError('At least one tier is required')
+    
+    # Check if first tier has threshold of 0 (base fee)
+    if tiers[0].get('threshold') != 0:
+        raise ValidationError('First tier must have threshold of 0 (base fee)')
+    
+    # Validate ascending order
+    for i in range(1, len(tiers)):
+        if tiers[i].get('threshold', 0) <= tiers[i-1].get('threshold', 0):
+            raise ValidationError('Tiers must be in ascending order by threshold amount')
+    
+    return True
+
+
 class UpdateDeliveryFeeConfigSchema(Schema):
-    """Schema for updating delivery fee configuration"""
-    base_fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
-    threshold_1_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
-    threshold_1_fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
-    threshold_2_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
-    threshold_2_fee = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
-    threshold_3_amount = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    """Schema for updating delivery fee configuration with dynamic tiers"""
+    tiers = fields.List(
+        fields.Nested(DeliveryFeeTierSchema),
+        required=True,
+        validate=[validate.Length(min=1), validate_tiers]
+    )
     
     class Meta:
         unknown = EXCLUDE

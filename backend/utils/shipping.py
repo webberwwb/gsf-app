@@ -30,7 +30,7 @@ def get_shipping_fee_for_subtotal(subtotal, config=None):
     if config is None:
         config = get_delivery_fee_config()
     
-    if not config:
+    if not config or not config.tiers:
         # Fallback to default values if no config found
         if subtotal >= Decimal('150.00'):
             return Decimal('0.00')
@@ -41,23 +41,25 @@ def get_shipping_fee_for_subtotal(subtotal, config=None):
         else:
             return Decimal('7.99')
     
-    # Convert config values to Decimal
-    threshold_3 = Decimal(str(config.threshold_3_amount))
-    threshold_2 = Decimal(str(config.threshold_2_amount))
-    threshold_1 = Decimal(str(config.threshold_1_amount))
-    base_fee = Decimal(str(config.base_fee))
-    fee_1 = Decimal(str(config.threshold_1_fee))
-    fee_2 = Decimal(str(config.threshold_2_fee))
+    # Get tiers sorted by threshold (should already be sorted, but ensure it)
+    tiers = sorted(config.tiers, key=lambda t: t.get('threshold', 0))
     
-    # Apply thresholds in descending order
-    if subtotal >= threshold_3:
-        return Decimal('0.00')  # Free delivery
-    elif subtotal >= threshold_2:
-        return fee_2
-    elif subtotal >= threshold_1:
-        return fee_1
+    # Find the appropriate tier (highest threshold that's <= subtotal)
+    applicable_fee = None
+    for tier in tiers:
+        threshold = Decimal(str(tier.get('threshold', 0)))
+        if subtotal >= threshold:
+            applicable_fee = Decimal(str(tier.get('fee', 0)))
+        else:
+            # Since tiers are sorted, we can break early
+            break
+    
+    # If we found a tier, use it; otherwise use the first tier (base fee)
+    if applicable_fee is not None:
+        return applicable_fee
     else:
-        return base_fee
+        # This shouldn't happen if tiers[0] has threshold 0, but handle it anyway
+        return Decimal(str(tiers[0].get('fee', 0))) if tiers else Decimal('7.99')
 
 # GTA cities (case-insensitive matching)
 GTA_CITIES = {

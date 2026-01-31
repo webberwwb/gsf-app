@@ -2,10 +2,17 @@
   <div class="products-page">
     <div class="page-header-actions">
       <select v-model="sortBy" @change="fetchProducts" class="sort-select">
+        <option value="custom">自定义排序</option>
         <option value="created_at">按创建时间</option>
         <option value="popularity">按销量排序</option>
         <option value="name">按名称排序</option>
       </select>
+      <button v-if="sortBy === 'custom' && hasUnsavedChanges" @click="saveSortOrder" class="save-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        保存排序
+      </button>
       <button @click="openAddModal" class="add-btn">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -21,8 +28,28 @@
       <button @click="openAddModal" class="add-first-btn">添加第一个商品</button>
     </div>
     <div v-else class="products-grid">
-      <div v-for="product in products" :key="product.id" class="product-card">
+      <div 
+        v-for="(product, index) in products" 
+        :key="product.id" 
+        class="product-card"
+        :draggable="sortBy === 'custom'"
+        @dragstart="handleDragStart(index, $event)"
+        @dragover.prevent="handleDragOver(index, $event)"
+        @dragenter="handleDragEnter(index)"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop(index, $event)"
+        @dragend="handleDragEnd"
+        :class="{ 
+          'draggable': sortBy === 'custom',
+          'drag-over': dragOverIndex === index && draggedIndex !== index
+        }"
+      >
         <div class="product-image">
+          <div v-if="sortBy === 'custom'" class="drag-handle" title="拖动排序">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
+            </svg>
+          </div>
           <img v-if="product.image" :src="product.image" :alt="product.name" />
           <div v-else class="image-placeholder">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -119,7 +146,10 @@ export default {
       products: [],
       showAddModal: false,
       editingProduct: null,
-      sortBy: 'created_at' // 'created_at', 'popularity', 'name'
+      sortBy: 'custom', // 'custom', 'created_at', 'popularity', 'name'
+      draggedIndex: null,
+      dragOverIndex: null,
+      hasUnsavedChanges: false
     }
   },
   mounted() {
@@ -210,6 +240,70 @@ export default {
       // null or undefined means unlimited stock, only 0 means out of stock
       const inventory = product.stock_limit !== undefined && product.stock_limit !== null ? product.stock_limit : null
       return inventory === 0
+    },
+    handleDragStart(index, event) {
+      this.draggedIndex = index
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/html', event.target.innerHTML)
+      event.target.style.opacity = '0.4'
+    },
+    handleDragOver(index, event) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      return false
+    },
+    handleDragEnter(index) {
+      this.dragOverIndex = index
+    },
+    handleDragLeave() {
+      // Don't clear dragOverIndex here as it causes flickering
+    },
+    handleDrop(index, event) {
+      event.stopPropagation()
+      event.preventDefault()
+      
+      if (this.draggedIndex !== null && this.draggedIndex !== index) {
+        // Reorder the products array
+        const draggedProduct = this.products[this.draggedIndex]
+        const newProducts = [...this.products]
+        
+        // Remove from old position
+        newProducts.splice(this.draggedIndex, 1)
+        
+        // Insert at new position
+        newProducts.splice(index, 0, draggedProduct)
+        
+        this.products = newProducts
+        this.hasUnsavedChanges = true
+      }
+      
+      this.dragOverIndex = null
+      return false
+    },
+    handleDragEnd(event) {
+      event.target.style.opacity = '1'
+      this.draggedIndex = null
+      this.dragOverIndex = null
+    },
+    async saveSortOrder() {
+      try {
+        // Prepare the data for bulk update
+        const sortOrderData = {
+          products: this.products.map((product, index) => ({
+            product_id: product.id,
+            sort_order: index
+          }))
+        }
+        
+        await apiClient.put('/admin/products/sort-order', sortOrderData)
+        this.hasUnsavedChanges = false
+        
+        // Show success message (you can add a toast notification here if you have one)
+        console.log('Sort order saved successfully')
+      } catch (error) {
+        await this.showError(error.response?.data?.message || error.response?.data?.error || '保存排序失败')
+        console.error('Save sort order error:', error)
+      }
     }
   }
 }
@@ -276,6 +370,33 @@ export default {
   transform: translateY(-2px);
 }
 
+.save-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--md-elevation-2);
+}
+
+.save-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.save-btn:hover {
+  background: #45a049;
+  box-shadow: var(--md-elevation-3);
+  transform: translateY(-2px);
+}
+
 .loading, .error {
   text-align: center;
   padding: var(--md-spacing-xl);
@@ -300,6 +421,15 @@ export default {
 .product-card:hover {
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
+}
+
+.product-card.draggable {
+  cursor: move;
+}
+
+.product-card.drag-over {
+  border: 2px dashed var(--md-primary);
+  background: rgba(255, 140, 0, 0.05);
 }
 
 .product-image {
@@ -362,6 +492,27 @@ export default {
 .image-placeholder svg {
   width: 32px;
   height: 32px;
+}
+
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 6px;
+  border-radius: var(--md-radius-sm);
+  z-index: 10;
+  cursor: move;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.drag-handle svg {
+  width: 20px;
+  height: 20px;
 }
 
 .sold-out-badge {

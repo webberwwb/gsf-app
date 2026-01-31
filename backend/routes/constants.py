@@ -60,31 +60,26 @@ def get_delivery_fee_config_public():
         if not config:
             # Return default values if no config exists
             return jsonify({
-                'base_fee': 7.99,
-                'threshold_1_amount': 58.00,
-                'threshold_1_fee': 5.99,
-                'threshold_2_amount': 128.00,
-                'threshold_2_fee': 3.99,
-                'threshold_3_amount': 150.00
+                'tiers': [
+                    {'threshold': 0, 'fee': 7.99},
+                    {'threshold': 58.00, 'fee': 5.99},
+                    {'threshold': 128.00, 'fee': 3.99},
+                    {'threshold': 150.00, 'fee': 0}
+                ]
             }), 200
         
         return jsonify({
-            'base_fee': float(config.base_fee) if config.base_fee else 7.99,
-            'threshold_1_amount': float(config.threshold_1_amount) if config.threshold_1_amount else 58.00,
-            'threshold_1_fee': float(config.threshold_1_fee) if config.threshold_1_fee else 5.99,
-            'threshold_2_amount': float(config.threshold_2_amount) if config.threshold_2_amount else 128.00,
-            'threshold_2_fee': float(config.threshold_2_fee) if config.threshold_2_fee else 3.99,
-            'threshold_3_amount': float(config.threshold_3_amount) if config.threshold_3_amount else 150.00
+            'tiers': config.tiers if config.tiers else []
         }), 200
     except Exception as e:
         # Return defaults on error
         return jsonify({
-            'base_fee': 7.99,
-            'threshold_1_amount': 58.00,
-            'threshold_1_fee': 5.99,
-            'threshold_2_amount': 128.00,
-            'threshold_2_fee': 3.99,
-            'threshold_3_amount': 150.00
+            'tiers': [
+                {'threshold': 0, 'fee': 7.99},
+                {'threshold': 58.00, 'fee': 5.99},
+                {'threshold': 128.00, 'fee': 3.99},
+                {'threshold': 150.00, 'fee': 0}
+            ]
         }), 200
 
 

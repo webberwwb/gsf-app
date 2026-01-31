@@ -29,12 +29,12 @@ export async function fetchShippingConfig() {
       configFetchPromise = null
       // Return default config on error
       return {
-        base_fee: 7.99,
-        threshold_1_amount: 58.00,
-        threshold_1_fee: 5.99,
-        threshold_2_amount: 128.00,
-        threshold_2_fee: 3.99,
-        threshold_3_amount: 150.00
+        tiers: [
+          { threshold: 0, fee: 7.99 },
+          { threshold: 58.00, fee: 5.99 },
+          { threshold: 128.00, fee: 3.99 },
+          { threshold: 150.00, fee: 0 }
+        ]
       }
     })
 
@@ -44,11 +44,11 @@ export async function fetchShippingConfig() {
 /**
  * Calculate shipping fee based on subtotal and config
  * @param {number} subtotal - Order subtotal (excluding products that don't count toward free shipping)
- * @param {object} config - Shipping fee configuration
+ * @param {object} config - Shipping fee configuration with tiers array
  * @returns {number} Shipping fee amount
  */
 export function calculateShippingFee(subtotal, config) {
-  if (!config) {
+  if (!config || !config.tiers || config.tiers.length === 0) {
     // Fallback to default calculation
     if (subtotal >= 150) return 0
     if (subtotal >= 128) return 3.99
@@ -56,23 +56,55 @@ export function calculateShippingFee(subtotal, config) {
     return 7.99
   }
 
-  const threshold3 = config.threshold_3_amount || 150
-  const threshold2 = config.threshold_2_amount || 128
-  const threshold1 = config.threshold_1_amount || 58
-  const baseFee = config.base_fee || 7.99
-  const fee1 = config.threshold_1_fee || 5.99
-  const fee2 = config.threshold_2_fee || 3.99
-
-  // Apply thresholds in descending order
-  if (subtotal >= threshold3) {
-    return 0 // Free delivery
-  } else if (subtotal >= threshold2) {
-    return fee2
-  } else if (subtotal >= threshold1) {
-    return fee1
-  } else {
-    return baseFee
+  // Get tiers sorted by threshold (should already be sorted)
+  const tiers = [...config.tiers].sort((a, b) => a.threshold - b.threshold)
+  
+  // Find the appropriate tier (highest threshold that's <= subtotal)
+  let applicableFee = null
+  for (const tier of tiers) {
+    if (subtotal >= tier.threshold) {
+      applicableFee = tier.fee
+    } else {
+      // Since tiers are sorted, we can break early
+      break
+    }
   }
+  
+  // If we found a tier, use it; otherwise use the first tier (base fee)
+  if (applicableFee !== null) {
+    return applicableFee
+  } else {
+    return tiers[0]?.fee || 7.99
+  }
+}
+
+/**
+ * Get the next shipping tier threshold that would give a better rate
+ * @param {number} subtotal - Current order subtotal
+ * @param {object} config - Shipping fee configuration with tiers array
+ * @returns {object|null} Next tier info with {threshold, fee, savings} or null if at best tier
+ */
+export function getNextShippingTier(subtotal, config) {
+  if (!config || !config.tiers || config.tiers.length === 0) {
+    return null
+  }
+
+  const currentFee = calculateShippingFee(subtotal, config)
+  const tiers = [...config.tiers].sort((a, b) => a.threshold - b.threshold)
+  
+  // Find the next tier with a lower fee
+  for (const tier of tiers) {
+    if (tier.threshold > subtotal && tier.fee < currentFee) {
+      return {
+        threshold: tier.threshold,
+        fee: tier.fee,
+        savings: currentFee - tier.fee,
+        amountNeeded: tier.threshold - subtotal
+      }
+    }
+  }
+  
+  return null
 }
 
 /**

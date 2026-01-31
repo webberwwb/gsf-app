@@ -230,27 +230,6 @@
                 </svg>
               </div>
             </div>
-
-            <div 
-              @click="selectedPickupLocation = 'northyork'"
-              :class="['pickup-location-card', { active: selectedPickupLocation === 'northyork' }]"
-            >
-              <div class="location-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div class="location-content">
-                <h5>North York</h5>
-                <p>Yorkdale附近</p>
-              </div>
-              <div class="location-check">
-                <svg v-if="selectedPickupLocation === 'northyork'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -584,31 +563,37 @@ export default {
     },
     deliveryPolicyText() {
       const config = this.checkoutStore.shippingConfig
-      if (!config) {
+      if (!config || !config.tiers || config.tiers.length === 0) {
         return '团购商品价格超过$150免运费 (不计入免运的商品除外）'
       }
       
-      const baseFee = config.base_fee || 7.99
-      const threshold1 = config.threshold_1_amount || 58.00
-      const fee1 = config.threshold_1_fee || 5.99
-      const threshold2 = config.threshold_2_amount || 128.00
-      const fee2 = config.threshold_2_fee || 3.99
-      const threshold3 = config.threshold_3_amount || 150.00
+      // Get tiers sorted by threshold
+      const tiers = [...config.tiers].sort((a, b) => a.threshold - b.threshold)
       
       // Build policy text in a readable format
       const parts = []
       
-      // Base fee
-      parts.push(`订单小计 < $${threshold1.toFixed(2)}: 运费 $${baseFee.toFixed(2)}`)
-      
-      // Threshold 1
-      parts.push(`$${threshold1.toFixed(2)} ≤ 订单小计 < $${threshold2.toFixed(2)}: 运费 $${fee1.toFixed(2)}`)
-      
-      // Threshold 2
-      parts.push(`$${threshold2.toFixed(2)} ≤ 订单小计 < $${threshold3.toFixed(2)}: 运费 $${fee2.toFixed(2)}`)
-      
-      // Free shipping
-      parts.push(`订单小计 ≥ $${threshold3.toFixed(2)}: 免运费`)
+      for (let i = 0; i < tiers.length; i++) {
+        const tier = tiers[i]
+        const nextTier = i < tiers.length - 1 ? tiers[i + 1] : null
+        
+        if (i === 0) {
+          // Base fee
+          if (nextTier) {
+            parts.push(`订单小计 < $${nextTier.threshold.toFixed(2)}: 运费 $${tier.fee.toFixed(2)}`)
+          } else {
+            parts.push(`运费 $${tier.fee.toFixed(2)}`)
+          }
+        } else if (nextTier) {
+          // Middle tiers
+          const feeText = tier.fee === 0 ? '免运费' : `运费 $${tier.fee.toFixed(2)}`
+          parts.push(`$${tier.threshold.toFixed(2)} ≤ 订单小计 < $${nextTier.threshold.toFixed(2)}: ${feeText}`)
+        } else {
+          // Last tier
+          const feeText = tier.fee === 0 ? '免运费' : `运费 $${tier.fee.toFixed(2)}`
+          parts.push(`订单小计 ≥ $${tier.threshold.toFixed(2)}: ${feeText}`)
+        }
+      }
       
       return `运费规则: ${parts.join('; ')} (不计入免运的商品除外）`
     }

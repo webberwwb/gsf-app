@@ -9,107 +9,63 @@
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else class="config-form-container">
       <form @submit.prevent="saveConfig" class="config-form">
-        <div class="form-section">
-          <h2>基础运费</h2>
-          <div class="form-group">
-            <label>基础运费 (订单小计 < 58)</label>
-            <div class="input-with-unit">
-              <input 
-                v-model.number="formData.base_fee" 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                required 
-                placeholder="7.99"
-              />
-              <span class="unit">$</span>
-            </div>
-            <small class="form-hint">订单小计低于第一个门槛时使用此运费</small>
-          </div>
+        <div class="tiers-header">
+          <h2>运费档次</h2>
+          <button type="button" @click="addTier" class="add-tier-btn">
+            + 添加档次
+          </button>
         </div>
 
-        <div class="form-section">
-          <h2>运费门槛 1</h2>
-          <div class="form-group">
-            <label>订单小计门槛</label>
-            <div class="input-with-unit">
-              <input 
-                v-model.number="formData.threshold_1_amount" 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                required 
-                placeholder="58.00"
-              />
-              <span class="unit">$</span>
+        <div class="tiers-list">
+          <div v-for="(tier, index) in formData.tiers" :key="index" class="tier-item">
+            <div class="tier-header">
+              <h3>{{ getTierTitle(index) }}</h3>
+              <button 
+                v-if="canRemoveTier(index)" 
+                type="button" 
+                @click="removeTier(index)" 
+                class="remove-tier-btn"
+                title="删除此档次"
+              >
+                ✕
+              </button>
             </div>
-            <small class="form-hint">订单小计达到此金额时使用门槛1的运费</small>
-          </div>
-          <div class="form-group">
-            <label>运费</label>
-            <div class="input-with-unit">
-              <input 
-                v-model.number="formData.threshold_1_fee" 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                required 
-                placeholder="5.99"
-              />
-              <span class="unit">$</span>
+            
+            <div class="tier-fields">
+              <div class="form-group">
+                <label>订单小计门槛</label>
+                <div class="input-with-unit">
+                  <input 
+                    v-model.number="tier.threshold" 
+                    type="number" 
+                    step="0.01" 
+                    min="0" 
+                    required
+                    :disabled="index === 0"
+                    placeholder="0.00"
+                  />
+                  <span class="unit">$</span>
+                </div>
+                <small v-if="index === 0" class="form-hint">基础运费 (门槛固定为 $0)</small>
+                <small v-else class="form-hint">订单小计达到此金额时使用此档次的运费</small>
+              </div>
+              
+              <div class="form-group">
+                <label>运费</label>
+                <div class="input-with-unit">
+                  <input 
+                    v-model.number="tier.fee" 
+                    type="number" 
+                    step="0.01" 
+                    min="0" 
+                    required 
+                    placeholder="0.00"
+                  />
+                  <span class="unit">$</span>
+                </div>
+                <small v-if="tier.fee === 0 && index > 0" class="form-hint">设为 $0 即免运费</small>
+              </div>
             </div>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <h2>运费门槛 2</h2>
-          <div class="form-group">
-            <label>订单小计门槛</label>
-            <div class="input-with-unit">
-              <input 
-                v-model.number="formData.threshold_2_amount" 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                required 
-                placeholder="128.00"
-              />
-              <span class="unit">$</span>
-            </div>
-            <small class="form-hint">订单小计达到此金额时使用门槛2的运费</small>
-          </div>
-          <div class="form-group">
-            <label>运费</label>
-            <div class="input-with-unit">
-              <input 
-                v-model.number="formData.threshold_2_fee" 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                required 
-                placeholder="3.99"
-              />
-              <span class="unit">$</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <h2>免运费门槛</h2>
-          <div class="form-group">
-            <label>订单小计门槛</label>
-            <div class="input-with-unit">
-              <input 
-                v-model.number="formData.threshold_3_amount" 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                required 
-                placeholder="150.00"
-              />
-              <span class="unit">$</span>
-            </div>
-            <small class="form-hint">订单小计达到此金额时免运费</small>
           </div>
         </div>
 
@@ -122,34 +78,32 @@
       </form>
 
       <div class="rules-preview">
-        <h3>运费规则预览</h3>
-        <div class="rules-list">
-          <div class="rule-item">
-            <span class="rule-condition">订单小计 < ${{ formatPrice(formData.threshold_1_amount) }}</span>
-            <span class="rule-fee">运费: ${{ formatPrice(formData.base_fee) }}</span>
-          </div>
-          <div class="rule-item">
-            <span class="rule-condition">${{ formatPrice(formData.threshold_1_amount) }} ≤ 订单小计 < ${{ formatPrice(formData.threshold_2_amount) }}</span>
-            <span class="rule-fee">运费: ${{ formatPrice(formData.threshold_1_fee) }}</span>
-          </div>
-          <div class="rule-item">
-            <span class="rule-condition">${{ formatPrice(formData.threshold_2_amount) }} ≤ 订单小计 < ${{ formatPrice(formData.threshold_3_amount) }}</span>
-            <span class="rule-fee">运费: ${{ formatPrice(formData.threshold_2_fee) }}</span>
-          </div>
-          <div class="rule-item free-shipping">
-            <span class="rule-condition">订单小计 ≥ ${{ formatPrice(formData.threshold_3_amount) }}</span>
-            <span class="rule-fee">免运费</span>
+        <h2>规则预览</h2>
+        <div class="preview-content">
+          <div v-for="(tier, index) in sortedTiers" :key="index" class="preview-item">
+            <div class="preview-condition">
+              <span v-if="index === 0">订单小计 &lt; {{ formatPrice(getNextThreshold(index)) }}</span>
+              <span v-else-if="index === sortedTiers.length - 1">
+                订单小计 ≥ {{ formatPrice(tier.threshold) }}
+              </span>
+              <span v-else>
+                {{ formatPrice(tier.threshold) }} ≤ 订单小计 &lt; {{ formatPrice(getNextThreshold(index)) }}
+              </span>
+            </div>
+            <div class="preview-fee">
+              <span v-if="tier.fee === 0" class="free-fee">免运费</span>
+              <span v-else>运费: ${{ formatPrice(tier.fee) }}</span>
+            </div>
           </div>
         </div>
-        <p class="note">注意：不计入免运的商品价格不会计入订单小计计算</p>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import apiClient from '../api/client'
-import { useModal } from '../composables/useModal'
+import apiClient from '@/api/client'
+import { useModal } from '@/composables/useModal'
 
 export default {
   name: 'ShippingFeeManagement',
@@ -163,20 +117,57 @@ export default {
       error: null,
       saving: false,
       formData: {
-        base_fee: 7.99,
-        threshold_1_amount: 58.00,
-        threshold_1_fee: 5.99,
-        threshold_2_amount: 128.00,
-        threshold_2_fee: 3.99,
-        threshold_3_amount: 150.00
+        tiers: [
+          { threshold: 0, fee: 7.99 },
+          { threshold: 58.00, fee: 5.99 },
+          { threshold: 128.00, fee: 3.99 },
+          { threshold: 150.00, fee: 0 }
+        ]
       },
       originalData: null
+    }
+  },
+  computed: {
+    sortedTiers() {
+      // Return a sorted copy of tiers for preview
+      return [...this.formData.tiers].sort((a, b) => a.threshold - b.threshold)
     }
   },
   async mounted() {
     await this.fetchConfig()
   },
   methods: {
+    getTierTitle(index) {
+      if (index === 0) {
+        return '基础运费'
+      }
+      return `运费档次 ${index}`
+    },
+    canRemoveTier(index) {
+      // Can't remove the base tier (index 0), and need at least 1 tier
+      return index > 0 && this.formData.tiers.length > 1
+    },
+    addTier() {
+      // Add a new tier with threshold higher than the last one
+      const lastTier = this.sortedTiers[this.sortedTiers.length - 1]
+      const newThreshold = lastTier ? lastTier.threshold + 10 : 0
+      
+      this.formData.tiers.push({
+        threshold: newThreshold,
+        fee: 0
+      })
+    },
+    removeTier(index) {
+      if (this.canRemoveTier(index)) {
+        this.formData.tiers.splice(index, 1)
+      }
+    },
+    getNextThreshold(index) {
+      if (index < this.sortedTiers.length - 1) {
+        return this.sortedTiers[index + 1].threshold
+      }
+      return null
+    },
     formatPrice(value) {
       // Handle empty or invalid values gracefully
       if (value === null || value === undefined || value === '' || isNaN(value)) {
@@ -189,15 +180,11 @@ export default {
       this.error = null
       try {
         const response = await apiClient.get('/admin/delivery-fee-config')
-        if (response.data.config) {
-          this.formData = {
-            base_fee: response.data.config.base_fee || 7.99,
-            threshold_1_amount: response.data.config.threshold_1_amount || 58.00,
-            threshold_1_fee: response.data.config.threshold_1_fee || 5.99,
-            threshold_2_amount: response.data.config.threshold_2_amount || 128.00,
-            threshold_2_fee: response.data.config.threshold_2_fee || 3.99,
-            threshold_3_amount: response.data.config.threshold_3_amount || 150.00
-          }
+        if (response.data.config && response.data.config.tiers) {
+          this.formData.tiers = response.data.config.tiers.map(tier => ({
+            threshold: tier.threshold || 0,
+            fee: tier.fee || 0
+          }))
           this.originalData = JSON.parse(JSON.stringify(this.formData))
         }
       } catch (error) {
@@ -208,18 +195,43 @@ export default {
       }
     },
     async saveConfig() {
-      // Validate thresholds are in ascending order
-      if (this.formData.threshold_1_amount >= this.formData.threshold_2_amount ||
-          this.formData.threshold_2_amount >= this.formData.threshold_3_amount) {
-        this.showError('门槛金额必须按升序排列')
+      // Validate tiers are in ascending order
+      const sortedTiers = [...this.formData.tiers].sort((a, b) => a.threshold - b.threshold)
+      
+      // Check for duplicate thresholds
+      const thresholds = sortedTiers.map(t => t.threshold)
+      const uniqueThresholds = new Set(thresholds)
+      if (thresholds.length !== uniqueThresholds.size) {
+        this.showError('门槛金额不能重复')
         return
+      }
+      
+      // Check if first tier has threshold 0
+      if (sortedTiers[0].threshold !== 0) {
+        this.showError('第一个档次必须是基础运费(门槛为 $0)')
+        return
+      }
+
+      // Validate ascending order
+      for (let i = 1; i < sortedTiers.length; i++) {
+        if (sortedTiers[i].threshold <= sortedTiers[i-1].threshold) {
+          this.showError('门槛金额必须按升序排列')
+          return
+        }
       }
 
       this.saving = true
       this.error = null
       try {
-        const response = await apiClient.put('/admin/delivery-fee-config', this.formData)
+        // Send sorted tiers to backend
+        const response = await apiClient.put('/admin/delivery-fee-config', {
+          tiers: sortedTiers
+        })
+        
+        // Update form with sorted tiers
+        this.formData.tiers = sortedTiers
         this.originalData = JSON.parse(JSON.stringify(this.formData))
+        
         await this.confirm('运费配置已成功更新')
         // Optionally refresh the config
         await this.fetchConfig()
@@ -236,12 +248,12 @@ export default {
         this.formData = JSON.parse(JSON.stringify(this.originalData))
       } else {
         this.formData = {
-          base_fee: 7.99,
-          threshold_1_amount: 58.00,
-          threshold_1_fee: 5.99,
-          threshold_2_amount: 128.00,
-          threshold_2_fee: 3.99,
-          threshold_3_amount: 150.00
+          tiers: [
+            { threshold: 0, fee: 7.99 },
+            { threshold: 58.00, fee: 5.99 },
+            { threshold: 128.00, fee: 3.99 },
+            { threshold: 150.00, fee: 0 }
+          ]
         }
       }
     }
@@ -295,33 +307,96 @@ export default {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.form-section {
-  margin-bottom: 32px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #e0e0e0;
+.tiers-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
 }
 
-.form-section:last-of-type {
-  border-bottom: none;
-}
-
-.form-section h2 {
-  font-size: 18px;
+.tiers-header h2 {
+  font-size: 20px;
   font-weight: 600;
   color: #1a1a1a;
+  margin: 0;
+}
+
+.add-tier-btn {
+  padding: 8px 16px;
+  background: #ff9800;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.add-tier-btn:hover {
+  background: #f57c00;
+}
+
+.tiers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.tier-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.tier-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 16px;
 }
 
+.tier-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.remove-tier-btn {
+  padding: 4px 8px;
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.2s;
+}
+
+.remove-tier-btn:hover {
+  background: #d32f2f;
+}
+
+.tier-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
 .form-group {
-  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .form-group label {
-  display: block;
+  font-size: 14px;
   font-weight: 500;
   color: #333;
   margin-bottom: 8px;
-  font-size: 14px;
 }
 
 .input-with-unit {
@@ -332,7 +407,7 @@ export default {
 
 .input-with-unit input {
   flex: 1;
-  padding: 10px 40px 10px 12px;
+  padding: 10px 32px 10px 12px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 14px;
@@ -341,10 +416,15 @@ export default {
 
 .input-with-unit input:focus {
   outline: none;
-  border-color: #2196f3;
+  border-color: #ff9800;
 }
 
-.unit {
+.input-with-unit input:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.input-with-unit .unit {
   position: absolute;
   right: 12px;
   color: #666;
@@ -353,51 +433,51 @@ export default {
 }
 
 .form-hint {
-  display: block;
   margin-top: 4px;
-  color: #999;
   font-size: 12px;
+  color: #666;
+  font-style: italic;
 }
 
 .form-actions {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  margin-top: 32px;
-  padding-top: 24px;
+  padding-top: 20px;
   border-top: 1px solid #e0e0e0;
 }
 
 .reset-btn, .save-btn {
   padding: 10px 24px;
+  border: none;
   border-radius: 4px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  border: none;
 }
 
 .reset-btn {
-  background: #f5f5f5;
+  background: white;
   color: #666;
+  border: 1px solid #ddd;
 }
 
 .reset-btn:hover {
-  background: #e0e0e0;
+  background: #f5f5f5;
 }
 
 .save-btn {
-  background: #2196f3;
+  background: #ff9800;
   color: white;
 }
 
-.save-btn:hover:not(:disabled) {
-  background: #1976d2;
+.save-btn:hover {
+  background: #f57c00;
 }
 
 .save-btn:disabled {
-  opacity: 0.6;
+  background: #ccc;
   cursor: not-allowed;
 }
 
@@ -411,64 +491,54 @@ export default {
   top: 24px;
 }
 
-.rules-preview h3 {
-  font-size: 18px;
+.rules-preview h2 {
+  font-size: 20px;
   font-weight: 600;
   color: #1a1a1a;
   margin-bottom: 16px;
 }
 
-.rules-list {
+.preview-content {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.rule-item {
+.preview-item {
   padding: 12px;
-  background: #f9f9f9;
-  border-radius: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  border-left: 4px solid #ff9800;
 }
 
-.rule-item.free-shipping {
-  background: #e8f5e9;
-  border: 1px solid #4caf50;
+.preview-condition {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 4px;
+  font-weight: 500;
 }
 
-.rule-condition {
-  font-size: 13px;
-  color: #666;
-}
-
-.rule-fee {
-  font-size: 15px;
+.preview-fee {
+  font-size: 16px;
+  color: #f57c00;
   font-weight: 600;
-  color: #1a1a1a;
 }
 
-.rule-item.free-shipping .rule-fee {
-  color: #2e7d32;
+.free-fee {
+  color: #ff9800;
 }
 
-.note {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #e0e0e0;
-  font-size: 12px;
-  color: #999;
-  line-height: 1.5;
-}
-
-@media (max-width: 1024px) {
+@media (max-width: 968px) {
   .config-form-container {
     grid-template-columns: 1fr;
   }
-
+  
   .rules-preview {
     position: static;
+  }
+  
+  .tier-fields {
+    grid-template-columns: 1fr;
   }
 }
 </style>

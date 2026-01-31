@@ -44,6 +44,7 @@ class CreateProductSchema(Schema):
     is_active = fields.Boolean(missing=True)
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(missing=True)
+    sort_order = fields.Integer(missing=0, validate=validate.Range(min=0))
     
     @post_load
     def validate_pricing_data(self, data, **kwargs):
@@ -105,6 +106,7 @@ class UpdateProductSchema(Schema):
     is_active = fields.Boolean(allow_none=True)
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(allow_none=True)
+    sort_order = fields.Integer(allow_none=True, validate=validate.Range(min=0))
     
     @post_load
     def validate_pricing_data(self, data, **kwargs):
@@ -139,6 +141,23 @@ class UpdateProductSchema(Schema):
                 raise ValidationError('pricing_data.max_weight must be greater than or equal to min_weight')
         
         return data
+    
+    class Meta:
+        unknown = EXCLUDE
+
+
+class UpdateProductSortOrderSchema(Schema):
+    """Schema for updating product sort orders in bulk"""
+    product_id = fields.Integer(required=True, validate=validate.Range(min=1))
+    sort_order = fields.Integer(required=True, validate=validate.Range(min=0))
+    
+    class Meta:
+        unknown = EXCLUDE
+
+
+class BulkUpdateSortOrderSchema(Schema):
+    """Schema for bulk updating product sort orders"""
+    products = fields.List(fields.Nested(UpdateProductSortOrderSchema), required=True, validate=validate.Length(min=1))
     
     class Meta:
         unknown = EXCLUDE
