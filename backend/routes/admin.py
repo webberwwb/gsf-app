@@ -28,6 +28,7 @@ import uuid
 import secrets
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload, selectinload
 from decimal import Decimal
 from utils.shipping import calculate_shipping_fee
 from utils.stock_management import restore_stock
@@ -1596,9 +1597,15 @@ def get_admin_orders():
         user_source_filter = request.args.get('user_source', '').strip()
         search = request.args.get('search', '').strip()
         
-        # Build query - join with User for phone search
+        # Build query - join with User for phone search and eager load relationships
         # Filter out soft-deleted orders (deleted_at IS NULL)
-        query = Order.query.join(User, Order.user_id == User.id).filter(Order.deleted_at.is_(None))
+        # Use eager loading to prevent N+1 queries
+        query = Order.query.options(
+            joinedload(Order.user),  # Eager load user (already joined)
+            selectinload(Order.items).selectinload(OrderItem.product),  # Eager load items and their products
+            selectinload(Order.address),  # Eager load address if exists
+            joinedload(Order.group_deal)  # Eager load group deal (many-to-one via backref)
+        ).join(User, Order.user_id == User.id).filter(Order.deleted_at.is_(None))
         
         # Apply search filter (order number or phone)
         if search:
@@ -1637,53 +1644,45 @@ def get_admin_orders():
         
         orders = pagination.items
         
-        # Build response with order details
+        # Build response with order details (all relationships already loaded)
         orders_data = []
         for order in orders:
             order_dict = order.to_dict()
             
-            # Get user info
-            user = User.query.get(order.user_id)
-            if user:
+            # Get user info (already loaded via joinedload)
+            if order.user:
                 order_dict['user'] = {
-                    'id': user.id,
-                    'nickname': user.nickname,
-                    'phone': user.phone,
-                    'email': user.email,
-                    'wechat': user.wechat,
-                    'user_source': user.user_source or 'default'
+                    'id': order.user.id,
+                    'nickname': order.user.nickname,
+                    'phone': order.user.phone,
+                    'email': order.user.email,
+                    'wechat': order.user.wechat,
+                    'user_source': order.user.user_source or 'default'
                 }
             
-            # Get group deal info (excluding soft-deleted)
-            group_deal = GroupDeal.query.filter(
-                GroupDeal.id == order.group_deal_id,
-                GroupDeal.deleted_at.is_(None)
-            ).first()
-            if group_deal:
+            # Get group deal info (already loaded via joinedload)
+            if order.group_deal and order.group_deal.deleted_at is None:
                 order_dict['group_deal'] = {
-                    'id': group_deal.id,
-                    'title': group_deal.title,
-                    'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None
+                    'id': order.group_deal.id,
+                    'title': order.group_deal.title,
+                    'pickup_date': order.group_deal.pickup_date.isoformat() if order.group_deal.pickup_date else None
                 }
             
-            # Get address info if delivery order
-            if order.address_id:
-                address = Address.query.get(order.address_id)
-                if address:
-                    order_dict['address'] = address.to_dict()
+            # Get address info (already loaded via selectinload)
+            if order.address:
+                order_dict['address'] = order.address.to_dict()
             
-            # Get order items with product details
+            # Get order items with product details (already loaded via selectinload)
             items_data = []
             for item in order.items:
                 item_dict = item.to_dict()
-                product = Product.query.get(item.product_id)
-                if product:
+                if item.product:
                     item_dict['product'] = {
-                        'id': product.id,
-                        'name': product.name,
-                        'image': product.image,
-                        'pricing_type': product.pricing_type,
-                        'pricing_data': product.pricing_data
+                        'id': item.product.id,
+                        'name': item.product.name,
+                        'image': item.product.image,
+                        'pricing_type': item.product.pricing_type,
+                        'pricing_data': item.product.pricing_data
                     }
                 items_data.append(item_dict)
             

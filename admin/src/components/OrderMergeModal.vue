@@ -344,11 +344,7 @@ export default {
       return map[method] || method
     },
     getPickupLocationText(location) {
-      const map = {
-        'markham': 'Markham',
-        'northyork': 'North York'
-      }
-      return map[location] || location
+      return location === 'markham' ? 'Markham' : (location || 'N/A')
     },
     formatAddress(address) {
       if (!address) return ''

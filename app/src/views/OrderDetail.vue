@@ -120,7 +120,8 @@
               </div>
 
               <!-- Stock Info -->
-              <div v-if="product.deal_stock_limit !== undefined && product.deal_stock_limit !== null" class="stock-info" :class="{ 'out-of-stock': isOutOfStock(product) }">
+              <!-- Only show stock when it's less than 10 (or out of stock) -->
+              <div v-if="product.deal_stock_limit !== undefined && product.deal_stock_limit !== null && product.deal_stock_limit < 10" class="stock-info" :class="{ 'out-of-stock': isOutOfStock(product) }">
                 <span v-if="isOutOfStock(product)">缺货</span>
                 <span v-else>库存: {{ product.deal_stock_limit }} 件</span>
               </div>

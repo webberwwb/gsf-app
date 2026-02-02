@@ -26,12 +26,13 @@
       </div>
       <div class="modal-body">
         <div v-if="order" class="order-detail-content">
+          <!-- Customer & Order Status Section -->
           <div class="order-info-section">
             <div class="section-header">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              <h3>订单信息</h3>
+              <h3>客户信息</h3>
             </div>
             <div class="info-row">
               <div class="info-item-user">
@@ -51,15 +52,21 @@
                   代登录
                 </button>
               </div>
-              <div class="info-item-price">
-                <span class="value price">${{ parseFloat(order.final_total || order.total || 0).toFixed(2) }}</span>
-                <span v-if="order.final_total !== order.total" class="price-note">(含调整)</span>
-              </div>
             </div>
-            <div class="info-row">
+          </div>
+
+          <!-- Order Status & Payment Section -->
+          <div class="order-info-section">
+            <div class="section-header">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <h3>订单状态与支付</h3>
+            </div>
+            <div class="info-row compact-row">
               <div class="info-item-order-status">
                 <label class="order-status-label">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                   订单状态:
@@ -75,11 +82,9 @@
                   <option value="cancelled">已取消</option>
                 </select>
               </div>
-            </div>
-            <div class="info-row">
               <div class="info-item-payment-method">
                 <label class="payment-method-label">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                   支付方式:
@@ -91,18 +96,21 @@
                 </select>
               </div>
             </div>
-            <!-- Mark as Paid Button (for EMT orders) -->
-            <div class="info-row" v-if="order && localPaymentMethod === 'etransfer' && order.payment_status === 'unpaid'">
-              <button @click="handleMarkAsPaid" class="mark-paid-btn">
+            <!-- Payment Action Buttons -->
+            <div class="info-row payment-actions">
+              <button 
+                v-if="order && localPaymentMethod === 'etransfer' && order.payment_status === 'unpaid'"
+                @click="handleMarkAsPaid" 
+                class="mark-paid-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 标记为已付款
               </button>
-            </div>
-            <!-- Mark as Unpaid Button (for paid orders) -->
-            <div class="info-row" v-if="order && order.payment_status === 'paid'">
-              <button @click="handleMarkAsUnpaid" class="mark-unpaid-btn">
+              <button 
+                v-if="order && order.payment_status === 'paid'"
+                @click="handleMarkAsUnpaid" 
+                class="mark-unpaid-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -111,7 +119,7 @@
             </div>
           </div>
 
-          <!-- Delivery Method Section -->
+          <!-- Delivery & Shipping Section -->
           <div class="order-info-section">
             <div class="section-header">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -132,17 +140,11 @@
               </div>
             </div>
             
-            <!-- Pickup Location Selection -->
+            <!-- Pickup Location (Markham only) -->
             <div v-if="localDeliveryMethod === 'pickup'" class="info-row">
-              <div class="pickup-location-selector">
+              <div class="pickup-location-info">
                 <label class="field-label">取货点:</label>
-                <select v-model="localPickupLocation" class="pickup-location-select">
-                  <option value="">请选择取货点</option>
-                  <option value="markham">Markham</option>
-                  <option value="northyork">North York</option>
-                  <option value="scarborough">Scarborough</option>
-                  <option value="downtown">Downtown</option>
-                </select>
+                <span class="pickup-location-value">Markham</span>
               </div>
             </div>
             
@@ -226,6 +228,26 @@
                   </div>
                   <div v-if="addressError" class="address-error">{{ addressError }}</div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Order Notes Section -->
+          <div class="order-info-section">
+            <div class="section-header">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h3>订单备注</h3>
+            </div>
+            <div class="info-row">
+              <div class="order-notes-field">
+                <textarea
+                  v-model="localOrderNotes"
+                  class="order-notes-textarea"
+                  placeholder="订单备注（可选）"
+                  rows="3"
+                ></textarea>
               </div>
             </div>
           </div>
@@ -359,20 +381,29 @@
             </div>
           </div>
 
-          <!-- Order Adjustments Section -->
-          <!-- Order Totals Summary -->
-          <div class="order-totals-summary">
-            <div class="total-row">
-              <span class="total-label">商品小计:</span>
-              <span class="total-value">${{ parseFloat(order?.subtotal || 0).toFixed(2) }}</span>
+          <!-- Pricing & Adjustments Section -->
+          <div class="order-info-section pricing-section">
+            <div class="section-header">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3>价格与调整</h3>
             </div>
-            <div class="total-row">
-              <span class="total-label">税费:</span>
-              <span class="total-value">${{ parseFloat(order?.tax || 0).toFixed(2) }}</span>
-            </div>
-            <div class="total-row">
-              <span class="total-label">运费:</span>
-              <span class="total-value">${{ parseFloat(order?.shipping_fee || 0).toFixed(2) }}</span>
+            
+            <!-- Order Totals -->
+            <div class="totals-breakdown">
+              <div class="total-row">
+                <span class="total-label">商品小计:</span>
+                <span class="total-value">${{ parseFloat(order?.subtotal || 0).toFixed(2) }}</span>
+              </div>
+              <div class="total-row">
+                <span class="total-label">税费:</span>
+                <span class="total-value">${{ parseFloat(order?.tax || 0).toFixed(2) }}</span>
+              </div>
+              <div class="total-row">
+                <span class="total-label">运费:</span>
+                <span class="total-value">${{ parseFloat(order?.shipping_fee || 0).toFixed(2) }}</span>
+              </div>
             </div>
             
             <!-- Adjustment Section -->
@@ -407,21 +438,21 @@
                   rows="2"
                 ></textarea>
               </div>
+              <div class="adjustments-actions">
+                <button
+                  @click="handleSaveAdjustments"
+                  class="save-adjustments-btn"
+                  :disabled="savingAdjustment"
+                >
+                  {{ savingAdjustment ? '保存中...' : '保存调整' }}
+                </button>
+              </div>
             </div>
             
+            <!-- Final Total -->
             <div class="total-row final-total-row">
               <span class="total-label">最终总额:</span>
               <span class="total-value-large">${{ finalTotal.toFixed(2) }}</span>
-            </div>
-            
-            <div class="adjustments-actions">
-              <button
-                @click="handleSaveAdjustments"
-                class="save-adjustments-btn"
-                :disabled="savingAdjustment"
-              >
-                {{ savingAdjustment ? '保存中...' : '保存调整' }}
-              </button>
             </div>
           </div>
 
@@ -497,6 +528,7 @@ export default {
       localDeliveryMethod: '',
       localPickupLocation: '',
       localAddressId: null,
+      localOrderNotes: '',
       userAddresses: [],
       loadingAddresses: false,
       showAddAddressForm: false,
@@ -680,8 +712,12 @@ export default {
       
       // Initialize delivery method and location
       this.localDeliveryMethod = this.order.delivery_method || 'pickup'
-      this.localPickupLocation = this.order.pickup_location || ''
+      // Always set to markham for pickup orders
+      this.localPickupLocation = this.order.delivery_method === 'pickup' ? 'markham' : ''
       this.localAddressId = this.order.address_id || null
+      
+      // Initialize order notes
+      this.localOrderNotes = this.order.notes || ''
       
       // Load user addresses if delivery method is delivery
       if (this.localDeliveryMethod === 'delivery' && this.order.user_id) {
@@ -706,6 +742,7 @@ export default {
       this.localDeliveryMethod = ''
       this.localPickupLocation = ''
       this.localAddressId = null
+      this.localOrderNotes = ''
       this.userAddresses = []
       this.loadingAddresses = false
       this.showAddAddressForm = false
@@ -803,6 +840,11 @@ export default {
       }
       if (updatedOrder.adjustment_notes !== undefined) {
         this.localAdjustmentNotes = updatedOrder.adjustment_notes || ''
+      }
+      
+      // Update order notes
+      if (updatedOrder.notes !== undefined) {
+        this.localOrderNotes = updatedOrder.notes || ''
       }
       
       // Update lastOrderId to prevent reinitialization
@@ -960,10 +1002,9 @@ export default {
         return
       }
       
-      // Validate delivery settings
-      if (this.localDeliveryMethod === 'pickup' && !this.localPickupLocation) {
-        this.$emit('update-error', '请选择取货点')
-        return
+      // Pickup location is always markham for pickup orders
+      if (this.localDeliveryMethod === 'pickup') {
+        this.localPickupLocation = 'markham'
       }
       
       if (this.localDeliveryMethod === 'delivery' && !this.localAddressId) {
@@ -987,11 +1028,16 @@ export default {
       }
       
       if (this.localDeliveryMethod === 'pickup') {
-        updateData.pickup_location = this.localPickupLocation
+        updateData.pickup_location = 'markham'
       } else if (this.localDeliveryMethod === 'delivery') {
         updateData.address_id = this.localAddressId
         // Force payment method to etransfer for delivery
         updateData.payment_method = 'etransfer'
+      }
+      
+      // Include order notes
+      if (this.localOrderNotes !== undefined) {
+        updateData.notes = this.localOrderNotes || ''
       }
       
       this.$emit('update', this.order.id, updateData)
@@ -1355,23 +1401,25 @@ export default {
 .modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--md-spacing-md);
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
   background: #FAFAFA;
 }
 
 .adjustments-actions {
-  margin-top: var(--md-spacing-md);
+  margin-top: var(--md-spacing-sm);
   display: flex;
   justify-content: flex-end;
+  padding-top: var(--md-spacing-xs);
+  border-top: 1px solid rgba(255, 140, 0, 0.15);
 }
 
 .save-adjustments-btn {
-  padding: 10px 20px;
+  padding: 6px 16px;
   background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -1387,42 +1435,40 @@ export default {
   cursor: not-allowed;
 }
 
-/* Order Totals Summary */
-.order-totals-summary {
-  background: rgba(255, 140, 0, 0.05);
-  border: 2px solid rgba(255, 140, 0, 0.2);
-  border-radius: 8px;
-  padding: 16px;
-  margin-top: var(--md-spacing-md);
+/* Totals Breakdown */
+.totals-breakdown {
+  margin-bottom: var(--md-spacing-sm);
+  padding-bottom: var(--md-spacing-sm);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .total-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .total-row.final-total-row {
-  padding-top: 12px;
+  padding-top: var(--md-spacing-sm);
   border-top: 2px solid rgba(255, 140, 0, 0.3);
-  margin-top: 12px;
+  margin-top: var(--md-spacing-sm);
 }
 
 /* Adjustment Section */
 .adjustment-section {
-  margin: 12px 0;
-  padding: 12px 0;
-  background: rgba(255, 255, 255, 0.5);
+  margin: var(--md-spacing-sm) 0;
+  padding: var(--md-spacing-sm);
+  background: rgba(255, 255, 255, 0.7);
   border-radius: 8px;
-  border: 1px solid rgba(255, 140, 0, 0.15);
+  border: 1px solid rgba(255, 140, 0, 0.2);
 }
 
 .adjustment-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: var(--md-spacing-xs);
 }
 
 .adjustment-input-wrapper {
@@ -1466,12 +1512,12 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 0;
-  margin-top: 4px;
+  padding: 4px 0;
+  margin-top: var(--md-spacing-xs);
 }
 
 .adjustment-notes-wrapper {
-  margin-top: 8px;
+  margin-top: var(--md-spacing-xs);
 }
 
 .adjustment-textarea-inline {
@@ -1735,27 +1781,51 @@ export default {
 .order-detail-content {
   display: flex;
   flex-direction: column;
-  gap: var(--md-spacing-md);
+  gap: var(--md-spacing-sm);
   overflow: visible;
 }
 
 .order-info-section,
 .order-items-section {
   background: #FFFFFF;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: var(--md-spacing-md);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.08), 0px 1px 2px rgba(0, 0, 0, 0.06);
   overflow: visible;
+  margin-bottom: var(--md-spacing-sm);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.order-items-section .section-header {
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.pricing-section {
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.03) 0%, rgba(255, 140, 0, 0.08) 100%);
+  border: 2px solid rgba(255, 140, 0, 0.15);
 }
 
 .section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--md-spacing-xs);
   margin-bottom: var(--md-spacing-sm);
   padding-bottom: var(--md-spacing-xs);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(255, 140, 0, 0.2);
+}
+
+.section-header svg {
+  width: 18px;
+  height: 18px;
+  color: #E65100;
+  flex-shrink: 0;
+}
+
+.section-header h3 {
+  font-size: 0.9375rem;
+  color: rgba(0, 0, 0, 0.87);
+  margin: 0;
+  font-weight: 600;
 }
 
 .add-item-btn {
@@ -1784,24 +1854,27 @@ export default {
   color: #E65100;
 }
 
-.order-info-section h3,
-.order-items-section h3 {
-  font-size: 1rem;
-  color: rgba(0, 0, 0, 0.87);
-  margin: 0;
-  font-weight: 600;
-}
 
 .info-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--md-spacing-md);
   margin-top: var(--md-spacing-sm);
+  padding: var(--md-spacing-xs) 0;
 }
 
 .info-row:first-of-type {
   margin-top: 0;
+}
+
+.payment-actions {
+  display: flex;
+  gap: var(--md-spacing-xs);
+  flex-wrap: wrap;
+  margin-top: var(--md-spacing-sm);
+  padding-top: var(--md-spacing-sm);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .info-item-user {
@@ -1891,14 +1964,20 @@ export default {
 
 .payment-method-select {
   flex: 1;
-  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  padding: 6px var(--md-spacing-sm);
   border: 1px solid var(--md-outline);
   border-radius: var(--md-radius-md);
-  font-size: var(--md-body-size);
+  font-size: 0.875rem;
   background: var(--md-surface);
   color: var(--md-on-surface);
   cursor: pointer;
   max-width: 200px;
+}
+
+.compact-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--md-spacing-sm);
 }
 
 .payment-method-select:focus {
@@ -1926,10 +2005,10 @@ export default {
 
 .order-status-select {
   flex: 1;
-  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  padding: 6px var(--md-spacing-sm);
   border: 1px solid var(--md-outline);
   border-radius: var(--md-radius-md);
-  font-size: var(--md-body-size);
+  font-size: 0.875rem;
   background: var(--md-surface);
   color: var(--md-on-surface);
   cursor: pointer;
@@ -1945,19 +2024,19 @@ export default {
 .mark-paid-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  gap: 4px;
+  padding: 6px 12px;
   border: 1px solid rgba(46, 125, 50, 0.2);
-  border-radius: 20px;
-  font-size: 13px;
+  border-radius: 16px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.1px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: #E8F5E9;
   color: #2E7D32;
-  min-height: 36px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  min-height: 32px;
+  box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.1);
   position: relative;
   overflow: hidden;
   outline: none;
@@ -2003,19 +2082,19 @@ export default {
 .mark-unpaid-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  gap: 4px;
+  padding: 6px 12px;
   border: 1px solid rgba(229, 57, 53, 0.2);
-  border-radius: 20px;
-  font-size: 13px;
+  border-radius: 16px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.1px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: #FFEBEE;
   color: #C62828;
-  min-height: 36px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  min-height: 32px;
+  box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.1);
   position: relative;
   overflow: hidden;
   outline: none;
@@ -2129,8 +2208,9 @@ export default {
 .items-list {
   display: flex;
   flex-direction: column;
-  gap: var(--md-spacing-md);
+  gap: var(--md-spacing-xs);
   overflow: visible;
+  margin-top: var(--md-spacing-sm);
 }
 
 .order-item-row {
@@ -2138,9 +2218,9 @@ export default {
   justify-content: space-between;
   align-items: flex-start;
   padding: var(--md-spacing-sm);
-  background: #F5F5F5;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #FAFAFA;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   transition: all 0.2s;
   gap: var(--md-spacing-sm);
   position: relative;
@@ -2149,8 +2229,9 @@ export default {
 }
 
 .order-item-row:hover {
-  background: #EEEEEE;
-  border-color: rgba(0, 0, 0, 0.1);
+  background: #F5F5F5;
+  border-color: rgba(255, 140, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 2002;
 }
 
@@ -2178,7 +2259,7 @@ export default {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
   margin-top: var(--md-spacing-xs);
-  gap: var(--md-spacing-md);
+  gap: var(--md-spacing-sm);
 }
 
 .quantity-controls {
@@ -2255,9 +2336,9 @@ export default {
 .weight-input-group {
   display: flex;
   align-items: center;
-  gap: var(--md-spacing-sm);
-  margin-top: var(--md-spacing-sm);
-  padding-top: var(--md-spacing-sm);
+  gap: var(--md-spacing-xs);
+  margin-top: var(--md-spacing-xs);
+  padding-top: var(--md-spacing-xs);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
@@ -2342,7 +2423,7 @@ export default {
   border-width: 2px;
 }
 
-.pickup-location-selector {
+.pickup-location-info {
   display: flex;
   align-items: center;
   gap: var(--md-spacing-sm);
@@ -2356,21 +2437,14 @@ export default {
   white-space: nowrap;
 }
 
-.pickup-location-select {
-  flex: 1;
-  padding: var(--md-spacing-sm) var(--md-spacing-md);
-  border: 1px solid var(--md-outline);
-  border-radius: var(--md-radius-md);
-  font-size: var(--md-body-size);
-  background: var(--md-surface);
-  color: var(--md-on-surface);
-  cursor: pointer;
-}
-
-.pickup-location-select:focus {
-  outline: none;
-  border-color: var(--md-primary);
-  border-width: 2px;
+.pickup-location-value {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.87);
+  padding: 6px 12px;
+  background: rgba(255, 140, 0, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 140, 0, 0.2);
 }
 
 /* Address Management */
@@ -2606,6 +2680,38 @@ export default {
   color: #C62828;
   border-radius: var(--md-radius-sm);
   font-size: 0.8125rem;
+}
+
+.order-notes-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-xs);
+}
+
+.order-notes-textarea {
+  width: 100%;
+  padding: var(--md-spacing-sm);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-family: var(--md-font-family);
+  resize: vertical;
+  min-height: 60px;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  transition: all 0.2s;
+}
+
+.order-notes-textarea:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  border-width: 2px;
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+}
+
+.order-notes-textarea::placeholder {
+  color: var(--md-on-surface-variant);
 }
 
 /* Product Info Icon and Tooltip */

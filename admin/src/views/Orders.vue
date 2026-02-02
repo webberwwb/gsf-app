@@ -62,12 +62,6 @@
           <option value="delivery">配送</option>
         </select>
         
-        <select v-model="pickupLocationFilter" v-if="deliveryMethodFilter === 'pickup'" class="filter-select">
-          <option value="">全部自取点</option>
-          <option value="markham">Markham</option>
-          <option value="northyork">North York</option>
-        </select>
-        
         <select v-model="userSourceFilter" class="filter-select">
           <option value="">全部获客渠道</option>
           <option value="花泽">花泽</option>
@@ -242,7 +236,6 @@ export default {
       paymentFilter: '',
       paymentMethodFilter: '',
       deliveryMethodFilter: '',
-      pickupLocationFilter: '',
       userSourceFilter: '',
       currentPage: 1,
       showQRScanner: false,
@@ -280,14 +273,6 @@ export default {
       this.fetchOrders()
     },
     deliveryMethodFilter() {
-      this.currentPage = 1
-      // Reset pickup location filter when delivery method changes
-      if (this.deliveryMethodFilter !== 'pickup') {
-        this.pickupLocationFilter = ''
-      }
-      this.fetchOrders()
-    },
-    pickupLocationFilter() {
       this.currentPage = 1
       this.fetchOrders()
     },
@@ -345,9 +330,6 @@ export default {
         }
         if (this.deliveryMethodFilter) {
           params.delivery_method = this.deliveryMethodFilter
-        }
-        if (this.pickupLocationFilter) {
-          params.pickup_location = this.pickupLocationFilter
         }
         if (this.userSourceFilter) {
           params.user_source = this.userSourceFilter

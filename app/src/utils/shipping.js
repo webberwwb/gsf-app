@@ -31,8 +31,6 @@ export async function fetchShippingConfig() {
       return {
         tiers: [
           { threshold: 0, fee: 7.99 },
-          { threshold: 58.00, fee: 5.99 },
-          { threshold: 128.00, fee: 3.99 },
           { threshold: 150.00, fee: 0 }
         ]
       }
@@ -51,8 +49,6 @@ export function calculateShippingFee(subtotal, config) {
   if (!config || !config.tiers || config.tiers.length === 0) {
     // Fallback to default calculation
     if (subtotal >= 150) return 0
-    if (subtotal >= 128) return 3.99
-    if (subtotal >= 58) return 5.99
     return 7.99
   }
 

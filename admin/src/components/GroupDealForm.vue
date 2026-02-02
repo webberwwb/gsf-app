@@ -132,7 +132,8 @@
                 <div class="form-group-inline">
                   <label>库存限制</label>
                   <input
-                    v-model.number="selectedProduct.deal_stock_limit"
+                    :value="selectedProduct.deal_stock_limit === null || selectedProduct.deal_stock_limit === undefined ? '' : selectedProduct.deal_stock_limit"
+                    @input="handleStockLimitInput(index, $event)"
                     type="number"
                     min="0"
                     placeholder="留空表示无限制"
@@ -293,6 +294,22 @@ export default {
     removeProduct(index) {
       this.selectedProducts.splice(index, 1)
     },
+    handleStockLimitInput(index, event) {
+      const value = event.target.value
+      // Convert empty string to null (unlimited), otherwise parse as number
+      if (value === '' || value === null || value === undefined) {
+        this.selectedProducts[index].deal_stock_limit = null
+      } else {
+        const numValue = parseInt(value, 10)
+        // Only set if it's a valid number and >= 0
+        if (!isNaN(numValue) && numValue >= 0) {
+          this.selectedProducts[index].deal_stock_limit = numValue
+        } else if (numValue < 0) {
+          // Don't allow negative numbers
+          this.selectedProducts[index].deal_stock_limit = 0
+        }
+      }
+    },
     async submitForm() {
       this.submitting = true
       this.error = null
@@ -308,10 +325,17 @@ export default {
           order_end_date: this.formData.order_end_date ? this.formData.order_end_date + ':00' : null,
           pickup_date: this.formData.pickup_date || null,
           status: this.formData.status,
-          products: this.selectedProducts.map(p => ({
-            product_id: p.id,
-            deal_stock_limit: p.deal_stock_limit !== undefined && p.deal_stock_limit !== null ? p.deal_stock_limit : null
-          }))
+          products: this.selectedProducts.map(p => {
+            // Convert empty string, NaN, undefined, or null to null (unlimited)
+            const stockLimit = p.deal_stock_limit
+            const finalStockLimit = (stockLimit === '' || stockLimit === null || stockLimit === undefined || isNaN(stockLimit)) 
+              ? null 
+              : stockLimit
+            return {
+              product_id: p.id,
+              deal_stock_limit: finalStockLimit
+            }
+          })
         }
 
         if (this.editingDeal) {

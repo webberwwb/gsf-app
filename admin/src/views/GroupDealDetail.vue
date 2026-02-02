@@ -205,6 +205,24 @@
                 </svg>
               </button>
             </div>
+            <div class="view-mode-toggle">
+              <button 
+                :class="['view-mode-btn', { active: viewMode === 'card' }]"
+                @click="viewMode = 'card'"
+                title="卡片视图">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+              <button 
+                :class="['view-mode-btn', { active: viewMode === 'list' }]"
+                @click="viewMode = 'list'"
+                title="列表视图">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
             <button @click="findDuplicates" class="duplicates-btn" :disabled="loadingDuplicates">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px;">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -222,22 +240,13 @@
           <div class="order-tabs-container">
             <div class="order-tabs">
               <button 
-                :class="['tab-btn', 'markham-tab', { active: activeOrderTab === 'markham' }]"
-                @click="activeOrderTab = 'markham'">
+                :class="['tab-btn', 'pickup-tab', { active: activeOrderTab === 'pickup' }]"
+                @click="activeOrderTab = 'pickup'">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                万锦取货 ({{ filteredMarkhamPickupOrders.length }})
-              </button>
-              <button 
-                :class="['tab-btn', 'northyork-tab', { active: activeOrderTab === 'northyork' }]"
-                @click="activeOrderTab = 'northyork'">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                北约克取货 ({{ filteredNorthyorkPickupOrders.length }})
+                自取 ({{ filteredPickupOrders.length }})
               </button>
               <button 
                 :class="['tab-btn', 'delivery-tab', { active: activeOrderTab === 'delivery' }]"
@@ -267,7 +276,7 @@
           </div>
 
           <!-- Orders List -->
-          <div class="orders-list">
+          <div v-if="viewMode === 'card'" class="orders-list">
             <OrderCard
               v-for="order in filteredOrders"
               :key="order.id"
@@ -278,6 +287,15 @@
               @mark-packing-complete="handleMarkPackingComplete"
             />
           </div>
+          
+          <!-- Orders List View -->
+          <GroupDealOrderListView
+            v-else
+            :orders="filteredOrders"
+            :loading="false"
+            @order-click="viewOrderDetail"
+            @mark-packing-complete="handleMarkPackingComplete"
+          />
         </div>
         </template>
       </div>
@@ -370,6 +388,7 @@ import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import { useOrdersStore } from '../stores/orders'
 import OrderCard from '../components/OrderCard.vue'
+import GroupDealOrderListView from '../components/GroupDealOrderListView.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
 import OrderMergeModal from '../components/OrderMergeModal.vue'
 import CommissionBreakdownModal from '../components/CommissionBreakdownModal.vue'
@@ -378,6 +397,7 @@ export default {
   name: 'GroupDealDetail',
   components: {
     OrderCard,
+    GroupDealOrderListView,
     OrderDetailModal,
     OrderMergeModal,
     CommissionBreakdownModal
@@ -399,7 +419,7 @@ export default {
       updateError: null,
       markingComplete: false,
       updatingGroupDealStatus: false,
-      activeOrderTab: 'markham',
+      activeOrderTab: 'pickup',
       selectedProductFilters: [],
       searchQuery: '',
       showCompletedOrders: true,
@@ -413,7 +433,9 @@ export default {
       // Bulk update
       loadingBulkUpdate: false,
       // Commission
-      showCommissionModal: false
+      showCommissionModal: false,
+      // View mode
+      viewMode: 'card' // 'card' or 'list'
     }
   },
   computed: {
@@ -438,17 +460,8 @@ export default {
         case 'delivery':
           orders = this.deliveryOrders
           break
-        case 'markham':
-          orders = this.markhamPickupOrders
-          break
-        case 'northyork':
-          orders = this.northyorkPickupOrders
-          break
-        case 'scarborough':
-          orders = this.scarboroughPickupOrders
-          break
-        case 'downtown':
-          orders = this.downtownPickupOrders
+        case 'pickup':
+          orders = this.pickupOrders
           break
         default:
           orders = this.orders
@@ -515,40 +528,14 @@ export default {
     filteredDeliveryOrders() {
       return this.applyProductFilter(this.deliveryOrders)
     },
-    filteredMarkhamPickupOrders() {
-      return this.applyProductFilter(this.markhamPickupOrders)
-    },
-    filteredNorthyorkPickupOrders() {
-      return this.applyProductFilter(this.northyorkPickupOrders)
-    },
-    filteredScarboroughPickupOrders() {
-      return this.applyProductFilter(this.scarboroughPickupOrders)
-    },
-    filteredDowntownPickupOrders() {
-      return this.applyProductFilter(this.downtownPickupOrders)
+    filteredPickupOrders() {
+      return this.applyProductFilter(this.pickupOrders)
     },
     deliveryOrders() {
       return this.orders.filter(order => order.delivery_method === 'delivery')
     },
-    markhamPickupOrders() {
-      return this.orders.filter(order => 
-        order.delivery_method === 'pickup' && order.pickup_location === 'markham'
-      )
-    },
-    northyorkPickupOrders() {
-      return this.orders.filter(order => 
-        order.delivery_method === 'pickup' && order.pickup_location === 'northyork'
-      )
-    },
-    scarboroughPickupOrders() {
-      return this.orders.filter(order => 
-        order.delivery_method === 'pickup' && order.pickup_location === 'scarborough'
-      )
-    },
-    downtownPickupOrders() {
-      return this.orders.filter(order => 
-        order.delivery_method === 'pickup' && order.pickup_location === 'downtown'
-      )
+    pickupOrders() {
+      return this.orders.filter(order => order.delivery_method === 'pickup')
     },
     statistics() {
       // Use all orders from store, not filtered ones
@@ -2073,24 +2060,9 @@ export default {
   color: #4CAF50;
 }
 
-.tab-btn.markham-tab.active {
+.tab-btn.pickup-tab.active {
   border-color: #FF8C00;
   color: #FF8C00;
-}
-
-.tab-btn.northyork-tab.active {
-  border-color: #2196F3;
-  color: #2196F3;
-}
-
-.tab-btn.scarborough-tab.active {
-  border-color: #9C27B0;
-  color: #9C27B0;
-}
-
-.tab-btn.downtown-tab.active {
-  border-color: #F44336;
-  color: #F44336;
 }
 
 .tab-btn.all-tab.active {
@@ -2099,10 +2071,18 @@ export default {
 }
 
 .orders-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--md-spacing-md);
+  margin-top: var(--md-spacing-md);
 }
+
+@media (max-width: 1024px) {
+  .orders-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 /* Orders header with duplicate button */
 .orders-header {
@@ -2188,6 +2168,46 @@ export default {
 .clear-search-btn svg {
   width: 14px;
   height: 14px;
+}
+
+/* View Mode Toggle */
+.view-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 24px;
+  padding: 4px;
+}
+
+.view-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.view-mode-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.view-mode-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.view-mode-btn.active {
+  background: var(--md-primary);
+  color: white;
+  box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.3);
 }
 
 /* Duplicates button */

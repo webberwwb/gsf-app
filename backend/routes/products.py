@@ -133,6 +133,10 @@ def get_products():
         else:
             products_data = [product.to_dict() for product in products]
         
+        # Move out of stock items to the bottom (on top of existing sort)
+        # Out of stock = stock_limit is 0 (not None, which means unlimited)
+        products_data.sort(key=lambda p: (p.get('stock_limit') == 0 if p.get('stock_limit') is not None else False, 0))
+        
         return jsonify({
             'products': products_data
         }), 200
@@ -191,8 +195,13 @@ def get_group_deals():
                     product_dict = product.to_dict()
                     product_dict['deal_stock_limit'] = dp.deal_stock_limit
                     products_data.append(product_dict)
-            # Sort products by custom sort_order
-            products_data.sort(key=lambda p: (p.get('sort_order', 0), p.get('id', 0)))
+            # Sort products by custom sort_order, then move out of stock items to bottom
+            # Out of stock = deal_stock_limit is 0 (not None, which means unlimited)
+            products_data.sort(key=lambda p: (
+                p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
+                p.get('sort_order', 0),
+                p.get('id', 0)
+            ))
             deal_dict['products'] = products_data
             deals_data.append(deal_dict)
         
@@ -225,8 +234,13 @@ def get_group_deal(deal_id):
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 products_data.append(product_dict)
         
-        # Sort products by custom sort_order
-        products_data.sort(key=lambda p: (p.get('sort_order', 0), p.get('id', 0)))
+        # Sort products by custom sort_order, then move out of stock items to bottom
+        # Out of stock = deal_stock_limit is 0 (not None, which means unlimited)
+        products_data.sort(key=lambda p: (
+            p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
+            p.get('sort_order', 0),
+            p.get('id', 0)
+        ))
         
         deal_dict['products'] = products_data
         

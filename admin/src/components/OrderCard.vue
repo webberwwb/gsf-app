@@ -1,5 +1,5 @@
 <template>
-  <div class="order-card" @click="$emit('click', order)">
+  <div class="order-card" @click="handleCardClick">
     <!-- Delete Icon - Bottom Right -->
     <button 
       v-if="showDelete"
@@ -56,7 +56,8 @@
         </button>
       </div>
       <div class="order-info-price">
-        <span class="value price">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
+        <span class="value price">${{ parseFloat(order.final_total || order.total || 0).toFixed(2) }}</span>
+        <span v-if="order.final_total && order.final_total !== order.total" class="price-note-small">(含调整)</span>
       </div>
     </div>
     
@@ -66,19 +67,6 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         </svg>
         <span class="value">{{ order.group_deal.title }}</span>
-      </div>
-    </div>
-    
-    <div class="order-info-row">
-      <div class="order-info-delivery">
-        <svg v-if="order.delivery_method === 'pickup'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span class="value">{{ order.delivery_method === 'pickup' ? '自取' : '配送' }}</span>
       </div>
     </div>
     
@@ -99,7 +87,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-        <span class="value">自取点: {{ order.pickup_location || 'N/A' }}</span>
+        <span class="value">{{ order.pickup_location || 'N/A' }}</span>
       </div>
     </div>
     
@@ -114,14 +102,23 @@
     </div>
     
     <!-- Order Items/Products -->
-    <div class="order-items-section" v-if="order.items && order.items.length > 0">
-      <div class="items-header">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-        </svg>
-        <span>商品明细</span>
+    <div class="order-items-section" :class="{ 'items-expanded': showOrderItems }" v-if="order.items && order.items.length > 0">
+      <div class="items-header" @click.stop="toggleOrderItems">
+        <div class="items-header-left">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+          </svg>
+          <span>商品明细 ({{ order.items.length }})</span>
+        </div>
+        <button class="toggle-items-btn" @click.stop="toggleOrderItems">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
-      <div class="items-list">
+      
+      <div v-if="showOrderItems">
+        <div class="items-list">
         <div 
           v-for="item in order.items" 
           :key="item.id"
@@ -179,63 +176,64 @@
         <span class="subtotal-label">小计:</span>
         <span class="subtotal-amount">${{ calculateSubtotal().toFixed(2) }}</span>
       </div>
+      </div>
     </div>
     
-    <div class="order-actions" @click.stop v-if="showActions">
-      <!-- Payment Status Toggle -->
-      <button 
-        v-if="order.status !== 'cancelled' && order.payment_status === 'unpaid'"
-        @click="$emit('update-payment', order)" 
-        class="action-btn payment-btn">
-        标记为已付款
-      </button>
-      
-      <!-- Shipping Status Toggle for Delivery Orders -->
-      <button 
-        v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'delivery' && order.status === 'preparing'"
-        @click="$emit('mark-shipped', order)" 
-        class="action-btn shipping-btn">
-        标记为已发货
-      </button>
-      
-      <!-- Pickup Status Toggle for Pickup Orders -->
-      <button 
-        v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'pickup' && (order.status === 'preparing' || order.status === 'ready_for_pickup')"
-        @click="$emit('mark-shipped', order)" 
-        class="action-btn pickup-btn">
-        标记为已取货
-      </button>
-      
-      <!-- Order Status Updates -->
-      <button 
-        v-if="order.status === 'confirmed'"
-        @click="$emit('update-status', order.id, 'preparing')" 
-        class="action-btn preparing-btn">
-        开始配货
-      </button>
-      
-      <button 
-        v-if="order.status === 'preparing' && order.delivery_method === 'pickup'"
-        @click="$emit('update-status', order.id, 'ready_for_pickup')" 
-        class="action-btn ready-btn">
-        通知取货
-      </button>
-      
-      <button 
-        v-if="order.status === 'preparing' && order.delivery_method === 'delivery'"
-        @click="$emit('update-status', order.id, 'out_for_delivery')" 
-        class="action-btn delivery-btn">
-        开始配送
-      </button>
-      
-      <!-- Cancel Order -->
-      <button 
-        v-if="order.status !== 'completed' && order.status !== 'cancelled'"
-        @click="$emit('cancel', order.id)" 
-        class="action-btn cancel-btn">
-        取消订单
-      </button>
-    </div>
+        <div class="order-actions" @click.stop v-if="showActions">
+          <!-- Payment Status Toggle -->
+          <button 
+            v-if="order.status !== 'cancelled' && order.payment_status === 'unpaid'"
+            @click="$emit('update-payment', order)" 
+            class="action-btn payment-btn">
+            标记为已付款
+          </button>
+          
+          <!-- Shipping Status Toggle for Delivery Orders -->
+          <button 
+            v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'delivery' && order.status === 'preparing'"
+            @click="$emit('mark-shipped', order)" 
+            class="action-btn shipping-btn">
+            标记为已发货
+          </button>
+          
+          <!-- Pickup Status Toggle for Pickup Orders -->
+          <button 
+            v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'pickup' && (order.status === 'preparing' || order.status === 'ready_for_pickup')"
+            @click="$emit('mark-shipped', order)" 
+            class="action-btn pickup-btn">
+            标记为已取货
+          </button>
+          
+          <!-- Order Status Updates -->
+          <button 
+            v-if="order.status === 'confirmed'"
+            @click="$emit('update-status', order.id, 'preparing')" 
+            class="action-btn preparing-btn">
+            开始配货
+          </button>
+          
+          <button 
+            v-if="order.status === 'preparing' && order.delivery_method === 'pickup'"
+            @click="$emit('update-status', order.id, 'ready_for_pickup')" 
+            class="action-btn ready-btn">
+            通知取货
+          </button>
+          
+          <button 
+            v-if="order.status === 'preparing' && order.delivery_method === 'delivery'"
+            @click="$emit('update-status', order.id, 'out_for_delivery')" 
+            class="action-btn delivery-btn">
+            开始配送
+          </button>
+          
+          <!-- Cancel Order -->
+          <button 
+            v-if="order.status !== 'completed' && order.status !== 'cancelled'"
+            @click="$emit('cancel', order.id)" 
+            class="action-btn cancel-btn">
+            取消订单
+          </button>
+        </div>
   </div>
 </template>
 
@@ -264,7 +262,18 @@ export default {
     }
   },
   emits: ['click', 'delete', 'update-payment', 'mark-shipped', 'update-status', 'cancel', 'mark-packing-complete'],
+  data() {
+    return {
+      showOrderItems: false
+    }
+  },
   methods: {
+    toggleOrderItems() {
+      this.showOrderItems = !this.showOrderItems
+    },
+    handleCardClick() {
+      this.$emit('click', this.order)
+    },
     getStatusText(status) {
       const statusMap = {
         'submitted': '已提交订单',
@@ -349,7 +358,7 @@ export default {
   border-radius: 16px;
   padding: var(--md-spacing-md);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
   overflow: visible;
   cursor: pointer;
@@ -360,6 +369,7 @@ export default {
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
 }
+
 
 .delete-icon-btn {
   position: absolute;
@@ -483,7 +493,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--md-spacing-sm);
+  margin-bottom: 6px;
   gap: var(--md-spacing-md);
 }
 
@@ -540,6 +550,13 @@ export default {
   color: var(--md-primary);
   font-weight: 600;
   font-size: 1rem;
+}
+
+.price-note-small {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.5);
+  margin-left: 4px;
+  font-weight: normal;
 }
 
 .phone-badge {
@@ -723,8 +740,8 @@ export default {
 }
 
 .order-items-section {
-  margin-top: var(--md-spacing-md);
-  padding-top: var(--md-spacing-md);
+  margin-top: 0;
+  padding-top: 0;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
   overflow: visible;
 }
@@ -732,17 +749,64 @@ export default {
 .items-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-bottom: var(--md-spacing-sm);
   font-size: 0.875rem;
   font-weight: 600;
   color: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.items-header:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.items-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .items-header svg {
   width: 16px;
   height: 16px;
   color: rgba(0, 0, 0, 0.6);
+}
+
+.toggle-items-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.6);
+  transition: all 0.2s;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+
+.toggle-items-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--md-primary);
+}
+
+.toggle-items-btn svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.2s;
+  transform: rotate(-90deg);
+}
+
+.order-items-section.items-expanded .toggle-items-btn svg {
+  transform: rotate(0deg);
 }
 
 .items-list {
