@@ -125,7 +125,7 @@
             </div>
 
             <!-- Notes -->
-            <div v-if="hasConflict('notes')" class="conflict-section">
+            <div v-if="hasAnyNotes()" class="conflict-section">
               <label class="conflict-label">备注:</label>
               <div class="conflict-options">
                 <label 
@@ -280,7 +280,10 @@ export default {
         this.mergeData.keep_delivery_method = firstOrder.delivery_method
         this.mergeData.keep_address_id = firstOrder.address_id
         this.mergeData.keep_pickup_location = firstOrder.pickup_location
-        this.mergeData.keep_notes = firstOrder.notes || ''
+        
+        // For notes: find the first order with notes, or default to empty string
+        const orderWithNotes = this.orders.find(o => o.notes)
+        this.mergeData.keep_notes = orderWithNotes ? orderWithNotes.notes : ''
       }
     },
     hasConflict(field) {
@@ -292,6 +295,10 @@ export default {
         }
       })
       return values.size > 1
+    },
+    hasAnyNotes() {
+      // Check if any order has notes
+      return this.orders.some(order => order.notes && order.notes.trim() !== '')
     },
     handleDeliveryMethodChange() {
       // Clear related fields when delivery method changes

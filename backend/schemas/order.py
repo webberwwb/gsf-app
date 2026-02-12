@@ -95,6 +95,7 @@ class AdminUpdateOrderSchema(Schema):
     delivery_method = fields.String(allow_none=True, validate=validate.OneOf(DeliveryMethod.get_all_values()))
     address_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     pickup_location = fields.String(allow_none=True, validate=validate.Length(max=100))
+    notes = fields.String(allow_none=True, validate=validate.Length(max=500))
     
     class Meta:
         unknown = EXCLUDE

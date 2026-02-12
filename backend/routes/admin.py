@@ -2322,6 +2322,7 @@ def update_admin_order(order_id):
     delivery_method = validated_data.get('delivery_method')
     address_id = validated_data.get('address_id')
     pickup_location = validated_data.get('pickup_location')
+    notes = validated_data.get('notes')
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
@@ -2487,6 +2488,10 @@ def update_admin_order(order_id):
         if pickup_location is not None:
             if effective_delivery_method == DeliveryMethod.PICKUP.value:
                 order.pickup_location = pickup_location
+        
+        # Update notes if provided
+        if notes is not None:
+            order.notes = notes if notes else None
         
         # Recalculate order totals (after delivery method and address updates)
         from decimal import Decimal
