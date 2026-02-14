@@ -914,10 +914,44 @@ export default {
   gap: var(--md-spacing-md);
 }
 
+/* Laptop screens - tighter spacing */
+@media (max-width: 1366px) {
+  .page-header-actions {
+    gap: var(--md-spacing-sm);
+  }
+}
+
 .search-group {
   display: flex;
   gap: var(--md-spacing-sm);
   align-items: center;
+}
+
+/* Laptop screens - wrap earlier */
+@media (max-width: 1366px) {
+  .search-group {
+    flex-wrap: wrap;
+  }
+  
+  .search-input {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  
+  .search-btn,
+  .clear-btn,
+  .qr-scanner-btn,
+  .duplicates-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: var(--md-spacing-xs) var(--md-spacing-md);
+    font-size: 0.8125rem;
+  }
+  
+  .qr-scanner-btn svg {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 .search-input {
@@ -1034,6 +1068,13 @@ export default {
   flex-wrap: wrap;
 }
 
+/* Laptop screens - reduce filter select width */
+@media (max-width: 1366px) {
+  .filter-group {
+    gap: var(--md-spacing-sm);
+  }
+}
+
 .filter-select {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border: 1px solid var(--md-outline);
@@ -1043,6 +1084,15 @@ export default {
   color: var(--md-on-surface);
   cursor: pointer;
   min-width: 150px;
+}
+
+/* Laptop screens - smaller filters */
+@media (max-width: 1366px) {
+  .filter-select {
+    min-width: 130px;
+    padding: var(--md-spacing-xs) var(--md-spacing-sm);
+    font-size: 0.875rem;
+  }
 }
 
 .filter-select:focus {

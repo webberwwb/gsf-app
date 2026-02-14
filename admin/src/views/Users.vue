@@ -1372,5 +1372,47 @@ export default {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* Laptop Responsive Styles */
+@media (max-width: 1366px) {
+  .page-header-actions {
+    gap: var(--md-spacing-sm);
+    flex-wrap: wrap;
+  }
+  
+  .search-input {
+    padding: var(--md-spacing-xs) var(--md-spacing-sm);
+    font-size: 0.875rem;
+  }
+  
+  .add-btn {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    font-size: 0.875rem;
+  }
+  
+  .user-card {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .user-avatar {
+    width: 50px;
+    height: 50px;
+    font-size: 1.125rem;
+  }
+  
+  .user-name {
+    font-size: 1.125rem;
+  }
+  
+  .user-actions {
+    flex-wrap: wrap;
+  }
+  
+  .view-btn, .ban-btn, .unban-btn, .roles-btn, .impersonate-btn, .edit-btn {
+    padding: 6px 12px;
+    font-size: 0.8125rem;
+  }
+}
+
 </style>
 

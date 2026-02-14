@@ -259,12 +259,16 @@ export default {
     showActions: {
       type: Boolean,
       default: true
+    },
+    itemsExpandedByDefault: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['click', 'delete', 'update-payment', 'mark-shipped', 'update-status', 'cancel', 'mark-packing-complete'],
   data() {
     return {
-      showOrderItems: false
+      showOrderItems: this.itemsExpandedByDefault
     }
   },
   methods: {
@@ -364,6 +368,14 @@ export default {
   cursor: pointer;
 }
 
+/* Laptop screens - more compact */
+@media (max-width: 1366px) {
+  .order-card {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    border-radius: 12px;
+  }
+}
+
 .order-card:hover {
   background: #FFFFFF;
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
@@ -414,6 +426,25 @@ export default {
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
+/* Laptop screens - stack header on narrow screens */
+@media (max-width: 1366px) {
+  .order-header {
+    flex-wrap: wrap;
+    gap: var(--md-spacing-xs);
+    margin-bottom: var(--md-spacing-xs);
+    padding-bottom: var(--md-spacing-xs);
+  }
+  
+  .order-id {
+    font-size: 0.875rem;
+  }
+  
+  .header-right {
+    flex-wrap: wrap;
+    gap: var(--md-spacing-xs);
+  }
+}
+
 .order-id {
   font-size: 0.9375rem;
   font-weight: 600;
@@ -432,11 +463,27 @@ export default {
   gap: var(--md-spacing-sm);
 }
 
+/* Laptop screens - smaller badges */
+@media (max-width: 1366px) {
+  .status-badges {
+    gap: 4px;
+  }
+}
+
 .order-status, .payment-status {
   padding: 4px 10px;
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
+}
+
+/* Laptop screens - even smaller badges */
+@media (max-width: 1366px) {
+  .order-status, .payment-status {
+    padding: 3px 8px;
+    font-size: 0.6875rem;
+    border-radius: 10px;
+  }
 }
 
 .status-submitted {
@@ -495,6 +542,22 @@ export default {
   align-items: center;
   margin-bottom: 6px;
   gap: var(--md-spacing-md);
+}
+
+/* Laptop screens - more compact rows */
+@media (max-width: 1366px) {
+  .order-info-row {
+    margin-bottom: 4px;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .order-info-row .value {
+    font-size: 0.8125rem;
+  }
+  
+  .order-info-row .value.price {
+    font-size: 0.9375rem;
+  }
 }
 
 .order-info-user,
@@ -569,6 +632,14 @@ export default {
   font-weight: 500;
 }
 
+/* Laptop screens - hide or simplify badges on small screens */
+@media (max-width: 1366px) {
+  .phone-badge,
+  .wechat-badge {
+    display: none;
+  }
+}
+
 .wechat-badge {
   margin-left: 8px;
   padding: 2px 8px;
@@ -614,6 +685,14 @@ export default {
   margin-top: var(--md-spacing-sm);
 }
 
+/* Laptop screens - smaller action buttons */
+@media (max-width: 1366px) {
+  .order-actions {
+    gap: 6px;
+    margin-top: var(--md-spacing-xs);
+  }
+}
+
 .action-btn {
   padding: 10px 24px;
   border: 1px solid rgba(0, 0, 0, 0.12);
@@ -629,6 +708,16 @@ export default {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-transform: none;
   outline: none;
+}
+
+/* Laptop screens - more compact buttons */
+@media (max-width: 1366px) {
+  .action-btn {
+    padding: 6px 16px;
+    font-size: 0.8125rem;
+    min-height: 32px;
+    border-radius: 16px;
+  }
 }
 
 .action-btn::before {
@@ -896,6 +985,17 @@ export default {
   font-weight: 500;
 }
 
+/* Laptop screens - hide text, show icon only */
+@media (max-width: 1366px) {
+  .quick-action-btn-header {
+    padding: 6px 10px;
+  }
+  
+  .quick-action-text {
+    display: none;
+  }
+}
+
 .quick-action-btn-header svg {
   width: 16px;
   height: 16px;
@@ -1060,5 +1160,41 @@ export default {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Laptop Responsive Styles */
+@media (max-width: 1366px) {
+  .order-header {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .impersonate-btn-small {
+    font-size: 0.6875rem;
+    padding: 3px 8px;
+  }
+}
+
+/* Tablet Responsive Styles */
+@media (max-width: 1024px) {
+  .order-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .phone-badge,
+  .wechat-badge {
+    display: inline-block;
+  }
+  
+  .order-info-user {
+    flex-wrap: wrap;
+  }
+}
+
 </style>
 

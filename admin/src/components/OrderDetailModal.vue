@@ -1158,15 +1158,42 @@ export default {
       }
     },
     async loadUserAddresses() {
-      if (!this.order?.user_id) return
+      console.log('[loadUserAddresses] Called with order:', this.order)
+      console.log('[loadUserAddresses] order.user_id:', this.order?.user_id)
+      
+      if (!this.order?.user_id) {
+        console.error('[loadUserAddresses] No user_id found in order')
+        // Show error to user
+        if (this.error) {
+          await this.error('无法加载地址：订单中未找到用户信息')
+        }
+        return
+      }
       
       this.loadingAddresses = true
+      this.userAddresses = [] // Clear previous addresses
+      
       try {
+        console.log(`[loadUserAddresses] Fetching addresses for user ${this.order.user_id}`)
         const response = await apiClient.get(`/admin/users/${this.order.user_id}/addresses`)
+        console.log('[loadUserAddresses] Response:', response.data)
         this.userAddresses = response.data.addresses || []
+        
+        if (this.userAddresses.length === 0) {
+          console.log('[loadUserAddresses] No addresses found for user')
+        } else {
+          console.log(`[loadUserAddresses] Loaded ${this.userAddresses.length} addresses`)
+        }
       } catch (error) {
-        console.error('Failed to load user addresses:', error)
+        console.error('[loadUserAddresses] Failed to load user addresses:', error)
+        console.error('[loadUserAddresses] Error response:', error.response)
         this.userAddresses = []
+        
+        // Show error to user
+        if (this.error) {
+          const errorMsg = error.response?.data?.message || error.response?.data?.error || '加载地址失败'
+          await this.error(`加载地址失败: ${errorMsg}`)
+        }
       } finally {
         this.loadingAddresses = false
       }
@@ -1188,6 +1215,11 @@ export default {
       }
     },
     async saveNewAddress() {
+      console.log('[saveNewAddress] Called')
+      console.log('[saveNewAddress] newAddress:', this.newAddress)
+      console.log('[saveNewAddress] order:', this.order)
+      console.log('[saveNewAddress] order.user_id:', this.order?.user_id)
+      
       // Validate required fields with friendly error messages
       const validationErrors = []
       
@@ -1213,11 +1245,13 @@ export default {
       
       if (validationErrors.length > 0) {
         this.addressError = validationErrors.join('；')
+        console.error('[saveNewAddress] Validation errors:', this.addressError)
         return
       }
       
       if (!this.order?.user_id) {
         this.addressError = '无法获取用户信息'
+        console.error('[saveNewAddress] No user_id in order')
         return
       }
       
@@ -1235,8 +1269,13 @@ export default {
           postal_code: this.newAddress.postal_code.trim()
         }
         
+        console.log('[saveNewAddress] Payload:', payload)
+        console.log(`[saveNewAddress] POST /admin/users/${this.order.user_id}/addresses`)
+        
         const response = await apiClient.post(`/admin/users/${this.order.user_id}/addresses`, payload)
         const savedAddress = response.data.address
+        
+        console.log('[saveNewAddress] Address saved successfully:', savedAddress)
         
         // Add to addresses list
         this.userAddresses.unshift(savedAddress)
@@ -1257,8 +1296,16 @@ export default {
         
         await this.success('地址已添加')
       } catch (error) {
-        this.addressError = error.response?.data?.message || error.response?.data?.error || '保存地址失败'
-        console.error('Failed to save address:', error)
+        const errorMsg = error.response?.data?.message || error.response?.data?.error || '保存地址失败'
+        this.addressError = errorMsg
+        console.error('[saveNewAddress] Failed to save address:', error)
+        console.error('[saveNewAddress] Error response:', error.response)
+        console.error('[saveNewAddress] Error data:', error.response?.data)
+        
+        // Also show error modal
+        if (this.error) {
+          await this.error(`保存地址失败: ${errorMsg}`)
+        }
       } finally {
         this.savingAddress = false
       }

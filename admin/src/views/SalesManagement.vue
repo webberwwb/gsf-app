@@ -806,6 +806,31 @@ export default {
   cursor: not-allowed;
 }
 
+@media (max-width: 1366px) {
+  .sales-management-page {
+    padding: var(--md-spacing-md);
+  }
+  
+  .sdr-card {
+    padding: var(--md-spacing-md);
+  }
+  
+  .sdr-name {
+    font-size: 1.125rem;
+  }
+  
+  .commission-config-btn,
+  .edit-sdr-btn,
+  .create-sdr-btn {
+    padding: 8px 16px;
+    font-size: 0.875rem;
+  }
+  
+  .sdr-actions {
+    gap: 6px;
+  }
+}
+
 @media (max-width: 767px) {
   .sales-management-page {
     padding: var(--md-spacing-md);

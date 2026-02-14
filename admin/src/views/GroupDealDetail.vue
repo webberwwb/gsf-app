@@ -283,6 +283,7 @@
               :order="order"
               :show-delete="false"
               :show-actions="false"
+              :items-expanded-by-default="true"
               @click="viewOrderDetail(order)"
               @mark-packing-complete="handleMarkPackingComplete"
             />
@@ -1004,6 +1005,10 @@ export default {
         // Fetch full order details
         const response = await apiClient.get(`/admin/orders/${order.id}`)
         this.selectedOrder = response.data.order
+        
+        console.log('[viewOrderDetail] Fetched order:', this.selectedOrder)
+        console.log('[viewOrderDetail] Order user_id:', this.selectedOrder.user_id)
+        console.log('[viewOrderDetail] Order user:', this.selectedOrder.user)
         
         // Use products from already-loaded group deal (no need for another API call)
         // Products are already available in this.groupDeal.products from fetchGroupDealDetail()
@@ -2548,6 +2553,36 @@ export default {
   }
   50% {
     opacity: 1;
+  }
+}
+
+/* Laptop Responsive Styles */
+@media (max-width: 1366px) {
+  .group-deal-detail-page {
+    padding: var(--md-spacing-md);
+  }
+  
+  .header-actions {
+    gap: 6px;
+  }
+  
+  .edit-btn,
+  .delete-btn,
+  .view-orders-btn {
+    padding: 8px 16px;
+    font-size: 0.875rem;
+  }
+  
+  .product-card {
+    padding: var(--md-spacing-md);
+  }
+  
+  .product-image {
+    height: 140px;
+  }
+  
+  .product-name {
+    font-size: 1rem;
   }
 }
 

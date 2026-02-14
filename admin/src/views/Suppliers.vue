@@ -598,5 +598,35 @@ export default {
 .save-btn:hover {
   background: #e67e00;
 }
+
+/* Laptop Responsive Styles */
+@media (max-width: 1366px) {
+  .page-header-actions {
+    gap: var(--md-spacing-sm);
+  }
+  
+  .add-btn {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    font-size: 0.875rem;
+  }
+  
+  .supplier-card {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .supplier-name {
+    font-size: 1.125rem;
+  }
+  
+  .supplier-actions {
+    flex-wrap: wrap;
+  }
+  
+  .edit-btn, .delete-btn {
+    padding: 6px 12px;
+    font-size: 0.8125rem;
+  }
+}
+
 </style>
 

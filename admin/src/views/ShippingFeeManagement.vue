@@ -537,6 +537,26 @@ export default {
   color: #ff9800;
 }
 
+@media (max-width: 1366px) {
+  .shipping-fee-page {
+    padding: var(--md-spacing-md);
+  }
+  
+  .add-tier-btn,
+  .save-config-btn {
+    padding: 8px 16px;
+    font-size: 0.875rem;
+  }
+  
+  .config-form-container {
+    gap: var(--md-spacing-md);
+  }
+  
+  .tier-fields {
+    gap: var(--md-spacing-sm);
+  }
+}
+
 @media (max-width: 968px) {
   .config-form-container {
     grid-template-columns: 1fr;

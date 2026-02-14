@@ -322,6 +322,31 @@ export default {
   gap: var(--md-spacing-md);
 }
 
+/* Laptop screens - more compact header */
+@media (max-width: 1366px) {
+  .page-header-actions {
+    gap: var(--md-spacing-sm);
+    flex-wrap: wrap;
+  }
+  
+  .sort-select {
+    padding: var(--md-spacing-xs) var(--md-spacing-sm);
+    font-size: 0.875rem;
+  }
+  
+  .add-btn,
+  .save-btn {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    font-size: 0.875rem;
+  }
+  
+  .add-btn svg,
+  .save-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
 .sort-select {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border: 1px solid var(--md-outline-variant);
@@ -409,6 +434,22 @@ export default {
   gap: var(--md-spacing-lg);
 }
 
+/* Laptop screens - 2-3 columns with smaller cards */
+@media (max-width: 1366px) {
+  .products-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--md-spacing-md);
+  }
+}
+
+/* Tablet screens - 2 columns */
+@media (max-width: 1024px) {
+  .products-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--md-spacing-md);
+  }
+}
+
 .product-card {
   background: #FFFFFF;
   border-radius: var(--md-radius-lg);
@@ -441,6 +482,13 @@ export default {
   justify-content: center;
   overflow: hidden;
   position: relative;
+}
+
+/* Laptop screens - smaller product images */
+@media (max-width: 1366px) {
+  .product-image {
+    height: 160px;
+  }
 }
 
 .product-image img {

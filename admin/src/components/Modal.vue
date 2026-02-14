@@ -384,5 +384,32 @@ export default {
   transform: scale(0.95);
   opacity: 0;
 }
+
+/* Laptop Responsive Styles */
+@media (max-width: 1366px) {
+  .modal-container {
+    max-width: 90%;
+    padding: var(--md-spacing-lg);
+  }
+  
+  .modal-header h2 {
+    font-size: 1.125rem;
+  }
+  
+  .modal-body {
+    padding: var(--md-spacing-md) 0;
+    font-size: 0.875rem;
+  }
+  
+  .modal-actions {
+    gap: var(--md-spacing-sm);
+  }
+  
+  .modal-btn {
+    padding: 8px 20px;
+    font-size: 0.875rem;
+  }
+}
+
 </style>
 

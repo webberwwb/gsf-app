@@ -127,6 +127,14 @@ export default {
   margin-bottom: var(--md-spacing-xl);
 }
 
+/* Laptop screens - 2 columns */
+@media (max-width: 1366px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--md-spacing-md);
+  }
+}
+
 .stat-card {
   background: #FFFFFF;
   border-radius: var(--md-radius-lg);
@@ -258,6 +266,31 @@ export default {
   font-weight: 600;
   color: var(--md-primary);
   font-size: 1.1rem;
+}
+
+/* Laptop Responsive Styles */
+@media (max-width: 1366px) {
+  .stat-card {
+    padding: var(--md-spacing-md);
+  }
+
+  .stat-icon {
+    width: 64px;
+    height: 64px;
+  }
+
+  .stat-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .stat-value {
+    font-size: 1.75rem;
+  }
+
+  .recent-section {
+    padding: var(--md-spacing-md);
+  }
 }
 
 /* Mobile Responsive Styles */

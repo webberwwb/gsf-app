@@ -141,9 +141,9 @@ export default {
   mounted() {
     this.loadUser()
     this.loadVersion()
-    // Close sidebar when route changes on mobile
+    // Close sidebar when route changes on tablets and smaller laptops
     this.$watch('$route', () => {
-      if (window.innerWidth < 768) {
+      if (window.innerWidth < 1024) {
         this.sidebarOpen = false
       }
     })
@@ -258,8 +258,17 @@ export default {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@media (max-width: 767px) {
+/* Laptop screens - smaller sidebar */
+@media (max-width: 1366px) {
   .sidebar {
+    width: 220px;
+  }
+}
+
+/* Tablet and below - hidden by default */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 260px;
     transform: translateX(-100%);
   }
   
@@ -272,7 +281,8 @@ export default {
   display: none;
 }
 
-@media (max-width: 767px) {
+/* Show overlay on tablets and below when sidebar is open */
+@media (max-width: 1024px) {
   .sidebar-overlay {
     display: block;
     position: fixed;
@@ -292,6 +302,27 @@ export default {
   align-items: center;
   gap: var(--md-spacing-md);
   position: relative;
+}
+
+/* Laptop screens - compact header */
+@media (max-width: 1366px) {
+  .sidebar-header {
+    padding: var(--md-spacing-md);
+    gap: var(--md-spacing-sm);
+  }
+  
+  .logo {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .sidebar-header h2 {
+    font-size: 1.125rem;
+  }
+  
+  .version-text {
+    font-size: 0.75rem;
+  }
 }
 
 .sidebar-close-btn {
@@ -368,6 +399,15 @@ export default {
   margin-bottom: var(--md-spacing-xs);
 }
 
+/* Laptop screens - more compact nav items */
+@media (max-width: 1366px) {
+  .nav-item {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    gap: var(--md-spacing-sm);
+    font-size: 0.875rem;
+  }
+}
+
 .nav-item svg {
   width: 20px;
   height: 20px;
@@ -387,6 +427,32 @@ export default {
 .sidebar-footer {
   padding: var(--md-spacing-md);
   border-top: 1px solid var(--md-surface-variant);
+}
+
+/* Laptop screens - compact footer */
+@media (max-width: 1366px) {
+  .sidebar-footer {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 0.875rem;
+  }
+  
+  .user-name {
+    font-size: 0.875rem;
+  }
+  
+  .user-phone {
+    font-size: 0.75rem;
+  }
+  
+  .logout-btn {
+    padding: var(--md-spacing-xs);
+    font-size: 0.75rem;
+  }
 }
 
 .user-info {
@@ -450,7 +516,15 @@ export default {
   flex-direction: column;
 }
 
-@media (max-width: 767px) {
+/* Laptop screens - adjust for smaller sidebar */
+@media (max-width: 1366px) {
+  .main-content {
+    margin-left: 220px;
+  }
+}
+
+/* Tablet and below - full width */
+@media (max-width: 1024px) {
   .main-content {
     margin-left: 0;
   }
@@ -466,6 +540,17 @@ export default {
   display: flex;
   align-items: center;
   gap: var(--md-spacing-md);
+}
+
+/* Laptop screens - compact header */
+@media (max-width: 1366px) {
+  .top-header {
+    padding: var(--md-spacing-md);
+  }
+  
+  .top-header h1 {
+    font-size: 1.25rem;
+  }
 }
 
 .hamburger-btn {
@@ -488,7 +573,8 @@ export default {
   height: 24px;
 }
 
-@media (max-width: 767px) {
+/* Show hamburger on tablets and below */
+@media (max-width: 1024px) {
   .hamburger-btn {
     display: block;
   }
@@ -505,6 +591,13 @@ export default {
 .content-area {
   flex: 1;
   padding: var(--md-spacing-lg);
+}
+
+/* Reduce padding on smaller laptops */
+@media (max-width: 1366px) {
+  .content-area {
+    padding: var(--md-spacing-md);
+  }
 }
 </style>
 

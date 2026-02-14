@@ -748,7 +748,8 @@ def get_user_addresses(user_id):
 
     try:
         user = User.query.get_or_404(user_id)
-        addresses = Address.query.filter_by(user_id=user.id, is_deleted=False).order_by(Address.created_at.desc()).all()
+        # Address model doesn't have soft delete (is_deleted field), so just filter by user_id
+        addresses = Address.query.filter_by(user_id=user.id).order_by(Address.created_at.desc()).all()
         
         return jsonify({
             'addresses': [address.to_dict() for address in addresses]

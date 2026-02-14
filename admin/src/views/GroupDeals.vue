@@ -487,5 +487,45 @@ export default {
   color: var(--md-outline);
   text-decoration: line-through;
 }
+
+/* Laptop Responsive Styles */
+@media (max-width: 1366px) {
+  .page-header-actions {
+    gap: var(--md-spacing-sm);
+  }
+  
+  .add-btn {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    font-size: 0.875rem;
+  }
+  
+  .deal-card {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .deal-title {
+    font-size: 1.125rem;
+  }
+  
+  .deal-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .view-orders-btn, .view-products-btn, .edit-btn, .delete-btn {
+    padding: 6px 12px;
+    font-size: 0.8125rem;
+  }
+  
+  .deal-products {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: var(--md-spacing-sm);
+  }
+  
+  .product-mini-card {
+    height: 120px;
+  }
+}
+
 </style>
 
