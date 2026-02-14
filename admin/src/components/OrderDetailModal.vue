@@ -424,10 +424,10 @@
               <div class="adjustment-hint">
                 <small class="field-hint">正数表示增加，负数表示扣除/折扣（如：会员折扣、损坏赔偿、额外费用等）</small>
               </div>
-              <div v-if="localAdjustmentAmount !== 0" class="adjustment-display-row">
+              <div v-if="localAdjustmentAmount !== 0 && !isNaN(localAdjustmentAmount)" class="adjustment-display-row">
                 <span class="total-label">调整金额:</span>
                 <span :class="['total-value', localAdjustmentAmount >= 0 ? 'positive' : 'negative']">
-                  {{ localAdjustmentAmount >= 0 ? '+' : '' }}${{ localAdjustmentAmount.toFixed(2) }}
+                  {{ localAdjustmentAmount >= 0 ? '+' : '' }}${{ parseFloat(localAdjustmentAmount || 0).toFixed(2) }}
                 </span>
               </div>
               <div class="adjustment-notes-wrapper">
@@ -562,12 +562,13 @@ export default {
              this.newAddress.city?.trim() && 
              this.newAddress.postal_code?.trim()
     },
-    finalTotal() {
-      if (!this.order) return 0
-      const baseTotal = parseFloat(this.order.total || 0) || 0
-      const adjustment = parseFloat(this.localAdjustmentAmount || 0) || 0
-      return Number((baseTotal + adjustment).toFixed(2))
-    }
+        finalTotal() {
+          if (!this.order) return 0
+          const baseTotal = parseFloat(this.order.total) || 0
+          // Handle empty/NaN values from number input - treat as 0
+          const adjustment = parseFloat(this.localAdjustmentAmount) || 0
+          return Number((baseTotal + adjustment).toFixed(2))
+        }
   },
   watch: {
     show(newVal) {
@@ -930,16 +931,24 @@ export default {
         this.recalculateItemPrice(index)
       }
     },
-    recalculateItemPrice(index) {
-      const item = this.editableItems[index]
-      const product = item.product
-      
-      if (!product) return
-      
-      // If weight-based product
-      if (product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight') {
+        recalculateItemPrice(index) {
+          const item = this.editableItems[index]
+          const product = item.product
+
+          if (!product) return
+
+          // Ensure quantity is a valid number (handle empty input, minimum 1)
+          const quantity = parseInt(item.quantity) || 1
+          item.quantity = Math.max(1, quantity)
+
+          // If weight-based product
+          if (product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight') {
+            // Ensure final_weight is a valid number (handle empty input)
+            const finalWeight = parseFloat(item.final_weight) || 0
+            item.final_weight = finalWeight
+        
         // Must have final_weight to calculate price
-        if (!item.final_weight || item.final_weight <= 0) {
+        if (finalWeight <= 0) {
           item.unit_price = 0
           item.total_price = 0
           return
@@ -953,27 +962,27 @@ export default {
             for (const range of ranges) {
               const min = range.min || 0
               const max = range.max
-              if (item.final_weight >= min && (max === null || max === undefined || item.final_weight < max)) {
+              if (finalWeight >= min && (max === null || max === undefined || finalWeight < max)) {
                 matchedPrice = parseFloat(range.price || 0)
                 break
               }
             }
             item.unit_price = matchedPrice
-            item.total_price = matchedPrice * item.quantity
+            item.total_price = matchedPrice * quantity
           } else {
             const basePrice = parseFloat(product.price || 0)
             item.unit_price = basePrice
-            item.total_price = basePrice * item.quantity
+            item.total_price = basePrice * quantity
           }
         } else if (product.pricing_type === 'unit_weight') {
           if (product.pricing_data && product.pricing_data.price_per_unit) {
             const pricePerUnit = parseFloat(product.pricing_data.price_per_unit || 0)
-            item.unit_price = pricePerUnit * item.final_weight
-            item.total_price = pricePerUnit * item.final_weight * item.quantity
+            item.unit_price = pricePerUnit * finalWeight
+            item.total_price = pricePerUnit * finalWeight * quantity
           } else {
             const pricePerUnit = parseFloat(product.price || 0)
-            item.unit_price = pricePerUnit * item.final_weight
-            item.total_price = pricePerUnit * item.final_weight * item.quantity
+            item.unit_price = pricePerUnit * finalWeight
+            item.total_price = pricePerUnit * finalWeight * quantity
           }
         } else if (product.pricing_type === 'bundled_weight') {
           // Bundled weight: final_weight is total weight for all packages
@@ -981,19 +990,19 @@ export default {
           // unit_price = total_price / quantity
           if (product.pricing_data && product.pricing_data.price_per_unit) {
             const pricePerUnit = parseFloat(product.pricing_data.price_per_unit || 0)
-            item.total_price = pricePerUnit * item.final_weight
-            item.unit_price = item.total_price / item.quantity
+            item.total_price = pricePerUnit * finalWeight
+            item.unit_price = item.total_price / quantity
           } else {
             const pricePerUnit = parseFloat(product.price || 0)
-            item.total_price = pricePerUnit * item.final_weight
-            item.unit_price = item.total_price / item.quantity
+            item.total_price = pricePerUnit * finalWeight
+            item.unit_price = item.total_price / quantity
           }
         }
       } else {
         // Regular pricing (per_item)
         const unitPrice = parseFloat(product.price || 0)
         item.unit_price = unitPrice
-        item.total_price = unitPrice * item.quantity
+        item.total_price = unitPrice * quantity
       }
     },
     handleUpdateOrder() {
@@ -1042,31 +1051,34 @@ export default {
       
       this.$emit('update', this.order.id, updateData)
     },
-    async handleSaveAdjustments() {
-      if (!this.order) {
-        return
-      }
+        async handleSaveAdjustments() {
+          if (!this.order) {
+            return
+          }
 
-      try {
-        this.savingAdjustment = true
+          try {
+            this.savingAdjustment = true
 
-        await apiClient.put(`/admin/orders/${this.order.id}/adjustment`, {
-          adjustment_amount: parseFloat(this.localAdjustmentAmount || 0) || 0,
-          adjustment_notes: this.localAdjustmentNotes || ''
-        })
+            // Handle empty/NaN values - treat as 0
+            const safeAdjustmentAmount = parseFloat(this.localAdjustmentAmount) || 0
 
-        await this.success('订单调整保存成功')
-        
-        // Refresh order data
-        this.$emit('order-updated', { id: this.order.id })
-        
-      } catch (err) {
-        await this.error(err.response?.data?.message || err.response?.data?.error || '保存调整失败')
-        console.error('Failed to save order adjustments:', err)
-      } finally {
-        this.savingAdjustment = false
-      }
-    },
+            await apiClient.put(`/admin/orders/${this.order.id}/adjustment`, {
+              adjustment_amount: safeAdjustmentAmount,
+              adjustment_notes: this.localAdjustmentNotes || ''
+            })
+
+            await this.success('订单调整保存成功')
+
+            // Refresh order data
+            this.$emit('order-updated', { id: this.order.id })
+
+          } catch (err) {
+            await this.error(err.response?.data?.message || err.response?.data?.error || '保存调整失败')
+            console.error('Failed to save order adjustments:', err)
+          } finally {
+            this.savingAdjustment = false
+          }
+        },
     handleOrderUpdated(order) {
       // Update local state when order is updated from parent
       if (order && order.id === this.order?.id) {

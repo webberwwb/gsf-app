@@ -579,7 +579,8 @@ export default {
           updateData.wechat = this.editForm.wechat || null
         }
         if (this.editForm.points !== this.editingUser.points) {
-          updateData.points = this.editForm.points
+          // Handle empty/NaN values - treat as 0
+          updateData.points = parseInt(this.editForm.points) || 0
         }
         if (this.editForm.user_source !== this.editingUser.user_source) {
           updateData.user_source = this.editForm.user_source

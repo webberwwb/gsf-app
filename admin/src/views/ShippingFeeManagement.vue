@@ -129,8 +129,11 @@ export default {
   },
   computed: {
     sortedTiers() {
-      // Return a sorted copy of tiers for preview
-      return [...this.formData.tiers].sort((a, b) => a.threshold - b.threshold)
+      // Return a sorted copy of tiers for preview, ensuring values are valid numbers
+      return [...this.formData.tiers].map(tier => ({
+        threshold: parseFloat(tier.threshold) || 0,
+        fee: parseFloat(tier.fee) || 0
+      })).sort((a, b) => a.threshold - b.threshold)
     }
   },
   async mounted() {
@@ -195,6 +198,12 @@ export default {
       }
     },
     async saveConfig() {
+      // Sanitize tier values first - handle empty/NaN inputs
+      this.formData.tiers = this.formData.tiers.map(tier => ({
+        threshold: parseFloat(tier.threshold) || 0,
+        fee: parseFloat(tier.fee) || 0
+      }))
+      
       // Validate tiers are in ascending order
       const sortedTiers = [...this.formData.tiers].sort((a, b) => a.threshold - b.threshold)
       

@@ -197,41 +197,46 @@ export default {
       }
       return '每只'
     },
-    async saveRules() {
-      try {
-        this.saving = true
+        async saveRules() {
+          try {
+            this.saving = true
 
-        // Prepare rules to save (only non-zero amounts)
-        const rulesToSave = []
-        Object.keys(this.rules).forEach(productId => {
-          const rule = this.rules[productId]
-          if (rule.own_customer_amount > 0 || rule.general_customer_amount > 0) {
-            rulesToSave.push({
-              product_id: parseInt(productId),
-              commission_type: rule.commission_type || 'per_item',
-              own_customer_amount: parseFloat(rule.own_customer_amount || 0),
-              general_customer_amount: parseFloat(rule.general_customer_amount || 0),
-              is_active: true
+            // Prepare rules to save (only non-zero amounts)
+            const rulesToSave = []
+            Object.keys(this.rules).forEach(productId => {
+              const rule = this.rules[productId]
+
+              // Handle empty/NaN values - treat as 0
+              const safeOwnAmount = parseFloat(rule.own_customer_amount) || 0
+              const safeGeneralAmount = parseFloat(rule.general_customer_amount) || 0
+
+              if (safeOwnAmount > 0 || safeGeneralAmount > 0) {
+                rulesToSave.push({
+                  product_id: parseInt(productId),
+                  commission_type: rule.commission_type || 'per_item',
+                  own_customer_amount: safeOwnAmount,
+                  general_customer_amount: safeGeneralAmount,
+                  is_active: true
+                })
+              }
             })
+
+            // Batch update
+            await apiClient.post(`/admin/sdrs/${this.sdr.id}/commission-rules/batch`, {
+              rules: rulesToSave
+            })
+
+            await this.success('提成配置保存成功')
+            this.$emit('saved')
+            this.$emit('close')
+
+          } catch (err) {
+            await this.error(err.response?.data?.message || err.response?.data?.error || '保存失败')
+            console.error('Failed to save commission rules:', err)
+          } finally {
+            this.saving = false
           }
-        })
-
-        // Batch update
-        await apiClient.post(`/admin/sdrs/${this.sdr.id}/commission-rules/batch`, {
-          rules: rulesToSave
-        })
-
-        await this.success('提成配置保存成功')
-        this.$emit('saved')
-        this.$emit('close')
-
-      } catch (err) {
-        await this.error(err.response?.data?.message || err.response?.data?.error || '保存失败')
-        console.error('Failed to save commission rules:', err)
-      } finally {
-        this.saving = false
-      }
-    }
+        }
   }
 }
 </script>

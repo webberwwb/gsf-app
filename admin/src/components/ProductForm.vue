@@ -572,19 +572,19 @@ export default {
         // Clean up pricing_data based on type
         if (this.formData.pricing_type === 'per_item') {
           data.pricing_data = {
-            price: parseFloat(this.formData.pricing_data.price)
+            price: parseFloat(this.formData.pricing_data.price) || 0
           }
         } else if (this.formData.pricing_type === 'weight_range') {
           // Filter out empty ranges and ensure all have prices
           data.pricing_data.ranges = this.formData.pricing_data.ranges.filter(r => r.price !== null && r.price !== '')
         } else if (this.formData.pricing_type === 'unit_weight') {
-          data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit)
+          data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit) || 0
           data.pricing_data.unit = this.formData.pricing_data.unit
         } else if (this.formData.pricing_type === 'bundled_weight') {
-          data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit)
+          data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit) || 0
           data.pricing_data.unit = this.formData.pricing_data.unit
-          data.pricing_data.min_weight = parseFloat(this.formData.pricing_data.min_weight)
-          data.pricing_data.max_weight = parseFloat(this.formData.pricing_data.max_weight)
+          data.pricing_data.min_weight = parseFloat(this.formData.pricing_data.min_weight) || 0
+          data.pricing_data.max_weight = parseFloat(this.formData.pricing_data.max_weight) || 0
         }
 
         if (this.formData.images && this.formData.images.length > 0) {

@@ -92,7 +92,7 @@
                       ${{ (parseFloat(item.product.pricing_data.price_per_unit) * parseFloat(item.final_weight)).toFixed(2) }}
                     </template>
                     <template v-else>
-                      ${{ item.total_price.toFixed(2) }}
+                      ${{ parseFloat(item.total_price || 0).toFixed(2) }}
                     </template>
                   </span>
                 </div>
@@ -179,7 +179,7 @@
           <div class="order-footer">
             <div class="order-total">
               <span class="total-label">订单总额:</span>
-              <span class="total-amount">${{ order.total.toFixed(2) }}</span>
+              <span class="total-amount">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
             </div>
             <div class="footer-right">
               <div class="payment-status">
@@ -225,15 +225,15 @@
         
         <div class="modal-body emt-modal-body">
           <div class="emt-instruction-text">
-            <p>如果使用EMT支付，请待称重完成后支付最终金额，将EMT转到 grainstoryfarm@gmail.ca</p>
+            <p>如果使用EMT支付，请待称重完成后支付最终金额，将EMT转到 grainstoryfarm@gmail.com</p>
             <p class="emt-bold-text"><strong>并在Email中备注您的下单账户电话号码</strong></p>
           </div>
           
           <div class="emt-info-lines">
             <div class="emt-info-line">
               <div class="emt-info-label">收款邮箱：</div>
-              <div class="emt-info-value">grainstoryfarm@gmail.ca</div>
-              <button @click="copyToClipboard('grainstoryfarm@gmail.ca')" class="copy-btn">
+              <div class="emt-info-value">grainstoryfarm@gmail.com</div>
+              <button @click="copyToClipboard('grainstoryfarm@gmail.com')" class="copy-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>

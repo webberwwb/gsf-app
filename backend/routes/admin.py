@@ -775,7 +775,7 @@ def create_user_address(user_id):
             return jsonify({'error': 'No data provided'}), 400
         
         # Validate required fields
-        required_fields = ['address_line1', 'city', 'postal_code']
+        required_fields = ['recipient_name', 'phone', 'address_line1', 'city', 'postal_code']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'error': f'{field} is required'}), 400
@@ -783,10 +783,16 @@ def create_user_address(user_id):
         # Create new address
         address = Address(
             user_id=user.id,
+            recipient_name=data['recipient_name'],
+            phone=data['phone'],
             address_line1=data['address_line1'],
             address_line2=data.get('address_line2', ''),
             city=data['city'],
-            postal_code=data['postal_code']
+            postal_code=data['postal_code'],
+            country=data.get('country', 'Canada'),
+            delivery_instructions=data.get('delivery_instructions'),
+            notification_email=data.get('notification_email'),
+            is_default=data.get('is_default', False)
         )
         
         db.session.add(address)
@@ -3971,7 +3977,12 @@ def update_commission_adjustment(record_id):
         
         if 'manual_adjustment' in data:
             # Can be positive (bonus) or negative (deduction)
-            record.manual_adjustment = Decimal(str(data['manual_adjustment']))
+            # Handle None and empty strings safely
+            adjustment_value = data['manual_adjustment']
+            if adjustment_value is None or adjustment_value == '':
+                record.manual_adjustment = Decimal('0')
+            else:
+                record.manual_adjustment = Decimal(str(adjustment_value))
         
         if 'adjustment_notes' in data:
             record.adjustment_notes = data['adjustment_notes']

@@ -393,27 +393,30 @@ export default {
       }
       return this.adjustmentData[recordId]
     },
-    async saveAdjustment(recordId) {
-      try {
-        this.savingAdjustment = true
+        async saveAdjustment(recordId) {
+          try {
+            this.savingAdjustment = true
 
-        const adjustmentInfo = this.getAdjustmentData(recordId)
-        
-        await apiClient.put(`/admin/commission-records/${recordId}/adjustment`, {
-          manual_adjustment: parseFloat(adjustmentInfo.amount || 0),
-          adjustment_notes: adjustmentInfo.notes || ''
-        })
+            const adjustmentInfo = this.getAdjustmentData(recordId)
 
-        await this.success('调整保存成功')
-        await this.fetchCommission()
+            // Handle empty/NaN values - treat as 0
+            const safeAdjustmentAmount = parseFloat(adjustmentInfo.amount) || 0
 
-      } catch (err) {
-        await this.error(err.response?.data?.message || err.response?.data?.error || '保存调整失败')
-        console.error('Failed to save adjustment:', err)
-      } finally {
-        this.savingAdjustment = false
-      }
-    },
+            await apiClient.put(`/admin/commission-records/${recordId}/adjustment`, {
+              manual_adjustment: safeAdjustmentAmount,
+              adjustment_notes: adjustmentInfo.notes || ''
+            })
+
+            await this.success('调整保存成功')
+            await this.fetchCommission()
+
+          } catch (err) {
+            await this.error(err.response?.data?.message || err.response?.data?.error || '保存调整失败')
+            console.error('Failed to save adjustment:', err)
+          } finally {
+            this.savingAdjustment = false
+          }
+        },
     async markAsPaid(recordId) {
       try {
         this.markingPaid = true
