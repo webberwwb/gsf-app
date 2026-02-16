@@ -114,12 +114,15 @@ body {
   color: var(--md-on-surface);
   line-height: 1.5;
   min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 #app {
   min-height: 100vh;
   /* Prevent horizontal scroll on mobile */
   overflow-x: hidden;
+  max-width: 100vw;
 }
 
 /* Material Design transitions */

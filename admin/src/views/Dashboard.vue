@@ -17,12 +17,13 @@
         </button>
       </div>
       <nav class="sidebar-nav">
-        <router-link to="/" class="nav-item" :class="{ active: $route.path === '/' }">
+        <!-- Dashboard hidden for now -->
+        <!-- <router-link to="/" class="nav-item" :class="{ active: $route.path === '/' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
           </svg>
           <span>仪表盘</span>
-        </router-link>
+        </router-link> -->
         <router-link to="/products" class="nav-item" :class="{ active: $route.path === '/products' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -114,7 +115,7 @@ export default {
   computed: {
     pageTitle() {
       const titles = {
-        '/': '仪表盘',
+        // '/': '仪表盘', // Hidden for now
         '/products': '商品管理',
         '/group-deals': '团购管理',
         '/orders': '订单管理',
@@ -274,6 +275,14 @@ export default {
   
   .sidebar.sidebar-open {
     transform: translateX(0);
+  }
+}
+
+/* Mobile - full width when open */
+@media (max-width: 767px) {
+  .sidebar {
+    width: 100%;
+    max-width: 300px;
   }
 }
 
@@ -588,6 +597,13 @@ export default {
   flex: 1;
 }
 
+/* Mobile - smaller title */
+@media (max-width: 767px) {
+  .top-header h1 {
+    font-size: 1.125rem;
+  }
+}
+
 .content-area {
   flex: 1;
   padding: var(--md-spacing-lg);
@@ -597,6 +613,13 @@ export default {
 @media (max-width: 1366px) {
   .content-area {
     padding: var(--md-spacing-md);
+  }
+}
+
+/* Mobile - reduce padding further */
+@media (max-width: 767px) {
+  .content-area {
+    padding: var(--md-spacing-sm);
   }
 }
 </style>

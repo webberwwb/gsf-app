@@ -189,6 +189,15 @@ export default {
   justify-content: center;
   background: linear-gradient(135deg, var(--md-primary-variant) 0%, var(--md-primary) 100%);
   padding: var(--md-spacing-xl);
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 767px) {
+  .login-page {
+    padding: var(--md-spacing-md);
+  }
 }
 
 .login-container {
@@ -199,6 +208,15 @@ export default {
   width: 100%;
   box-shadow: var(--md-elevation-4);
   backdrop-filter: blur(10px);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 767px) {
+  .login-container {
+    padding: var(--md-spacing-lg);
+    max-width: 100%;
+    border-radius: var(--md-radius-md);
+  }
 }
 
 .login-header {
@@ -213,6 +231,14 @@ export default {
   display: block;
   object-fit: contain;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+/* Mobile responsiveness */
+@media (max-width: 767px) {
+  .logo {
+    width: 64px;
+    height: 64px;
+  }
 }
 
 .login-header h1 {

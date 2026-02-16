@@ -2913,5 +2913,258 @@ export default {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Mobile Responsive Styles */
+@media (max-width: 767px) {
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  
+  .modal-content {
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: 16px 16px 0 0;
+    margin: 0;
+  }
+  
+  .modal-header {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    border-radius: 16px 16px 0 0;
+  }
+  
+  .header-content {
+    gap: var(--md-spacing-sm);
+  }
+  
+  .header-icon {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .header-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .modal-header h2 {
+    font-size: 1rem;
+  }
+  
+  .order-number {
+    font-size: 0.75rem;
+  }
+  
+  .header-status-badges {
+    position: absolute;
+    top: var(--md-spacing-sm);
+    right: 48px;
+  }
+  
+  .payment-status-badge-header {
+    font-size: 0.625rem;
+    padding: 2px 6px;
+  }
+  
+  .modal-body {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .order-info-section,
+  .order-items-section {
+    padding: var(--md-spacing-sm);
+    margin-bottom: var(--md-spacing-xs);
+  }
+  
+  .section-header {
+    flex-wrap: wrap;
+    gap: var(--md-spacing-xs);
+  }
+  
+  .section-header h3 {
+    font-size: 0.875rem;
+  }
+  
+  .section-header svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .add-item-btn {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    width: 100%;
+    justify-content: center;
+    margin-top: var(--md-spacing-xs);
+  }
+  
+  .info-row {
+    flex-direction: column;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .compact-row {
+    grid-template-columns: 1fr;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .info-item-order-status,
+  .info-item-payment-method {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--md-spacing-xs);
+  }
+  
+  .order-status-select,
+  .payment-method-select {
+    max-width: 100%;
+    width: 100%;
+  }
+  
+  .payment-actions {
+    flex-direction: column;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .mark-paid-btn,
+  .mark-unpaid-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .delivery-method-selector {
+    flex-direction: column;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .delivery-method-selector label {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .address-item {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .order-item-row {
+    flex-direction: column;
+    padding: var(--md-spacing-sm);
+    gap: var(--md-spacing-sm);
+  }
+  
+  .item-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .weight-input-group {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .weight-input-group label {
+    min-width: auto;
+  }
+  
+  .weight-input {
+    max-width: 100%;
+    width: 100%;
+  }
+  
+  .remove-item-btn {
+    position: absolute;
+    top: var(--md-spacing-sm);
+    right: var(--md-spacing-sm);
+  }
+  
+  .totals-breakdown {
+    font-size: 0.875rem;
+  }
+  
+  .total-row {
+    font-size: 0.8125rem;
+  }
+  
+  .total-label {
+    font-size: 0.8125rem;
+  }
+  
+  .total-value {
+    font-size: 0.875rem;
+  }
+  
+  .total-value-large {
+    font-size: 1.5rem;
+  }
+  
+  .adjustment-section {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .adjustment-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .adjustment-input-wrapper {
+    width: 100%;
+  }
+  
+  .adjustment-input-inline {
+    width: 100%;
+  }
+  
+  .modal-footer {
+    flex-direction: column;
+    gap: var(--md-spacing-sm);
+    padding: var(--md-spacing-sm);
+  }
+  
+  .update-order-btn,
+  .complete-order-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.875rem;
+  }
+  
+  .modal-overlay-inner {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .modal-content-inner {
+    max-width: 100%;
+    max-height: 90vh;
+  }
+  
+  .modal-header-inner {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .modal-header-inner h3 {
+    font-size: 1rem;
+  }
+  
+  .product-info-icon:hover .price-tooltip {
+    left: auto;
+    right: 0;
+    transform: translateY(-50%);
+  }
+  
+  .tooltip-content {
+    min-width: 220px;
+    max-width: 280px;
+  }
+  
+  .tooltip-content::after {
+    left: auto;
+    right: 12px;
+    transform: translateY(-50%) rotate(45deg);
+  }
+}
+
 </style>
 

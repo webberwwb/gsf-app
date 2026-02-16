@@ -485,4 +485,100 @@ export default {
   background: #81D4FA;
   transform: translateY(0);
 }
+
+/* Mobile Responsive Styles */
+@media (max-width: 767px) {
+  .order-list-item {
+    padding: 10px 12px 10px 38px;
+    border-radius: 10px;
+  }
+  
+  .toggle-expand-btn {
+    width: 24px;
+    height: 24px;
+    left: 6px;
+  }
+  
+  .toggle-expand-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .list-item-row {
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  
+  .order-number {
+    font-size: 0.8125rem;
+  }
+  
+  .status-badges {
+    gap: 4px;
+    width: 100%;
+  }
+  
+  .status-badge,
+  .payment-badge {
+    font-size: 0.625rem;
+    padding: 2px 6px;
+  }
+  
+  .user-info,
+  .delivery-info {
+    flex-wrap: wrap;
+  }
+  
+  .user-name {
+    font-size: 0.8125rem;
+  }
+  
+  .user-phone,
+  .user-wechat {
+    font-size: 0.6875rem;
+    padding: 1px 5px;
+  }
+  
+  .total-amount {
+    font-size: 0.875rem;
+  }
+  
+  .delivery-method {
+    font-size: 0.75rem;
+  }
+  
+  .location-text {
+    font-size: 0.6875rem;
+    width: 100%;
+  }
+  
+  .items-count {
+    font-size: 0.75rem;
+  }
+  
+  .items-list-compact {
+    padding-left: 18px;
+  }
+  
+  .item-compact {
+    font-size: 0.6875rem;
+    padding: 1px 4px;
+  }
+  
+  .notes-text {
+    font-size: 0.6875rem;
+    padding: 3px 6px;
+  }
+  
+  .quick-action-btn {
+    font-size: 0.6875rem;
+    padding: 5px 10px;
+  }
+  
+  .quick-action-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+}
 </style>

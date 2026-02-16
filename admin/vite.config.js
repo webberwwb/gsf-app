@@ -11,6 +11,7 @@ export default defineConfig({
   },
   server: {
     port: 3001,
+    strictPort: true, // Exit if port is already in use
     // Enable HMR with proper WebSocket configuration
     hmr: {
       protocol: 'ws',

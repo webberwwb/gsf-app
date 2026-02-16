@@ -13,7 +13,7 @@ import secrets
 import requests
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from decimal import Decimal
 
 auth_bp = Blueprint('auth', __name__)
@@ -642,10 +642,17 @@ def google_callback():
         # Get frontend URL from config (set in .env for local, env var for prod)
         frontend_url = Config.ADMIN_FRONTEND_URL
         
+        # Check if we're in production (Cloud Run has K_SERVICE env var)
+        is_production = os.environ.get('K_SERVICE') is not None
+        
         # Ensure we're using the correct frontend URL (never localhost in production)
-        if not frontend_url or 'localhost' in frontend_url.lower():
-            current_app.logger.error(f'Invalid ADMIN_FRONTEND_URL: {frontend_url}. Using default.')
+        if is_production and (not frontend_url or 'localhost' in frontend_url.lower()):
+            current_app.logger.error(f'Invalid ADMIN_FRONTEND_URL in production: {frontend_url}. Using default.')
             frontend_url = 'https://admin.grainstoryfarm.ca'
+        elif not is_production and not frontend_url:
+            # Default to localhost:3001 for local development
+            frontend_url = 'http://localhost:3001'
+            current_app.logger.info(f'Using default localhost URL for local development: {frontend_url}')
         
         if admin_allowed_emails:
             if email.lower() not in [e.lower() for e in admin_allowed_emails]:
@@ -705,25 +712,11 @@ def google_callback():
         db.session.commit()
         
         # Always redirect to admin frontend with token
-        # Get frontend URL from config (set in .env for local, env var for prod)
-        frontend_url = Config.ADMIN_FRONTEND_URL
+        # Get frontend URL from config (already validated above)
+        frontend_url = Config.ADMIN_FRONTEND_URL or 'http://localhost:3001'
         
         # Log for debugging
         current_app.logger.info(f'Redirecting to admin frontend: {frontend_url}/login#token={auth_token.token[:10]}...')
-        
-        # Only enforce production URL if we're running on Cloud Run (production)
-        # Allow localhost for local development
-        is_production = os.environ.get('K_SERVICE') is not None
-        if is_production:
-            # In production, never allow localhost
-            if not frontend_url or 'localhost' in frontend_url.lower():
-                current_app.logger.error(f'Invalid ADMIN_FRONTEND_URL in production: {frontend_url}. Using default.')
-                frontend_url = 'https://admin.grainstoryfarm.ca'
-        else:
-            # In local development, use localhost if ADMIN_FRONTEND_URL is not set or is production URL
-            if not frontend_url or 'grainstoryfarm.ca' in frontend_url:
-                frontend_url = 'http://localhost:3001'  # Admin frontend dev server port
-                current_app.logger.info(f'Using default localhost URL for local development: {frontend_url}')
         
         return redirect(f'{frontend_url}/login#token={auth_token.token}&user={user.id}')
         

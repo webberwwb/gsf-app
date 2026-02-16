@@ -11,8 +11,7 @@ const router = createRouter({
       children: [
         {
           path: '',
-          name: 'Dashboard',
-          component: () => import('../views/DashboardContent.vue')
+          redirect: '/group-deals'
         },
         {
           path: 'products',

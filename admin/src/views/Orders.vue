@@ -2476,9 +2476,19 @@ export default {
 
   .search-btn,
   .clear-btn,
-  .qr-scanner-btn {
-    flex: 1 1 auto;
-    min-width: 80px;
+  .qr-scanner-btn,
+  .duplicates-btn {
+    flex: 1 1 calc(50% - var(--md-spacing-xs));
+    min-width: 0;
+    padding: var(--md-spacing-sm);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+  
+  .qr-scanner-btn svg,
+  .duplicates-btn svg {
+    width: 16px;
+    height: 16px;
   }
 
   .filter-group {
@@ -2559,6 +2569,25 @@ export default {
   .page-btn {
     padding: var(--md-spacing-xs) var(--md-spacing-sm);
     font-size: var(--md-label-size);
+  }
+  
+  /* Additional mobile fixes */
+  .order-info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--md-spacing-xs);
+  }
+  
+  .info-item-payment-method,
+  .info-item-order-status {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .payment-method-select,
+  .order-status-select {
+    max-width: 100%;
+    width: 100%;
   }
 }
 

@@ -347,6 +347,21 @@ export default {
   }
 }
 
+/* Mobile - stack vertically */
+@media (max-width: 767px) {
+  .page-header-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .sort-select,
+  .add-btn,
+  .save-btn {
+    width: 100%;
+  }
+}
+
 .sort-select {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border: 1px solid var(--md-outline-variant);
@@ -447,6 +462,14 @@ export default {
   .products-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: var(--md-spacing-md);
+  }
+}
+
+/* Mobile screens - 1 column */
+@media (max-width: 767px) {
+  .products-grid {
+    grid-template-columns: 1fr;
+    gap: var(--md-spacing-sm);
   }
 }
 

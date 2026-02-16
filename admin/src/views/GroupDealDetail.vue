@@ -133,6 +133,34 @@
               <div class="stat-value">{{ statistics.totalPickedUpPickup }} / {{ statistics.totalPickup }}</div>
             </div>
           </div>
+
+          <!-- EMT Payment -->
+          <div class="stat-card">
+            <div class="stat-icon emt-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+            <div class="stat-content">
+              <div class="stat-label">EMT收款</div>
+              <div class="stat-value">{{ statistics.emtPaidCount }} / {{ statistics.emtCount }}</div>
+              <div class="stat-subvalue">${{ statistics.emtReceived.toFixed(2) }} / ${{ statistics.emtTotal.toFixed(2) }}</div>
+            </div>
+          </div>
+
+          <!-- Cash Payment -->
+          <div class="stat-card">
+            <div class="stat-icon cash-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div class="stat-content">
+              <div class="stat-label">现金收款</div>
+              <div class="stat-value">{{ statistics.cashPaidCount }} / {{ statistics.cashCount }}</div>
+              <div class="stat-subvalue">${{ statistics.cashReceived.toFixed(2) }} / ${{ statistics.cashTotal.toFixed(2) }}</div>
+            </div>
+          </div>
         </div>
 
         <!-- Product Statistics -->
@@ -555,7 +583,15 @@ export default {
           totalShippedOrPickedUp: 0,
           totalShippedDelivery: 0,
           totalPickedUpPickup: 0,
-          productCounts: []
+          productCounts: [],
+          emtTotal: 0,
+          emtReceived: 0,
+          emtCount: 0,
+          emtPaidCount: 0,
+          cashTotal: 0,
+          cashReceived: 0,
+          cashCount: 0,
+          cashPaidCount: 0
         }
       }
 
@@ -569,6 +605,17 @@ export default {
       let totalShippedOrPickedUp = 0
       let totalShippedDelivery = 0
       let totalPickedUpPickup = 0
+      
+      // Payment method tracking
+      let emtTotal = 0
+      let emtReceived = 0
+      let emtCount = 0
+      let emtPaidCount = 0
+      let cashTotal = 0
+      let cashReceived = 0
+      let cashCount = 0
+      let cashPaidCount = 0
+      
       const productCountsMap = new Map()
 
       allOrders.forEach(order => {
@@ -583,6 +630,26 @@ export default {
         } else {
           totalUnpaidOrders++
           totalUnpaidAmount += orderTotal
+        }
+        
+        // Payment method breakdown
+        const paymentMethod = order.payment_method
+        const isPaid = order.payment_status === 'paid'
+        
+        if (paymentMethod === 'emt' || paymentMethod === 'etransfer') {
+          emtTotal += orderTotal
+          emtCount++
+          if (isPaid) {
+            emtReceived += orderTotal
+            emtPaidCount++
+          }
+        } else if (paymentMethod === 'cash') {
+          cashTotal += orderTotal
+          cashCount++
+          if (isPaid) {
+            cashReceived += orderTotal
+            cashPaidCount++
+          }
         }
 
         // Delivery method and shipped/picked up status
@@ -657,7 +724,16 @@ export default {
         totalShippedOrPickedUp,
         totalShippedDelivery,
         totalPickedUpPickup,
-        productCounts
+        productCounts,
+        // Payment method breakdown
+        emtTotal,
+        emtReceived,
+        emtCount,
+        emtPaidCount,
+        cashTotal,
+        cashReceived,
+        cashCount,
+        cashPaidCount
       }
     }
   },
@@ -1799,6 +1875,16 @@ export default {
   color: #009688;
 }
 
+.stat-icon.emt-icon {
+  background: rgba(63, 81, 181, 0.1);
+  color: #3F51B5;
+}
+
+.stat-icon.cash-icon {
+  background: rgba(255, 152, 0, 0.1);
+  color: #FF9800;
+}
+
 .stat-content {
   flex: 1;
   min-width: 0;
@@ -1917,7 +2003,11 @@ export default {
   margin-right: var(--md-spacing-sm);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .product-stat-value {
@@ -2583,6 +2673,221 @@ export default {
   
   .product-name {
     font-size: 1rem;
+  }
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 767px) {
+  .group-deal-detail-page {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .back-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .commission-btn,
+  .bulk-delivery-btn,
+  .export-btn {
+    width: 100%;
+    justify-content: center;
+    font-size: 0.875rem;
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .commission-btn svg,
+  .bulk-delivery-btn svg,
+  .export-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  
+  .deal-info-card {
+    padding: var(--md-spacing-md);
+  }
+  
+  .deal-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .deal-header h2 {
+    font-size: 1.25rem;
+  }
+  
+  .status-control-group {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .status-select {
+    width: 100%;
+  }
+  
+  .deal-dates {
+    flex-direction: column;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .date-item {
+    flex-direction: column;
+    gap: var(--md-spacing-xs);
+  }
+  
+  .date-label {
+    font-size: 0.75rem;
+  }
+  
+  .date-value {
+    font-size: 0.875rem;
+  }
+  
+  .statistics-section {
+    padding: var(--md-spacing-md);
+  }
+  
+  .statistics-section h3 {
+    font-size: 1rem;
+    margin-bottom: var(--md-spacing-sm);
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .stat-card {
+    padding: var(--md-spacing-md);
+  }
+  
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .stat-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  
+  .stat-label {
+    font-size: 0.75rem;
+  }
+  
+  .stat-value {
+    font-size: 1.25rem;
+  }
+  
+  .products-section {
+    padding: var(--md-spacing-md);
+  }
+  
+  .products-section h3 {
+    font-size: 1rem;
+  }
+  
+  .products-grid-section {
+    grid-template-columns: 1fr;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .product-card {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .product-image {
+    height: 120px;
+  }
+  
+  .product-name {
+    font-size: 0.875rem;
+  }
+  
+  .orders-section {
+    padding: var(--md-spacing-md);
+  }
+  
+  .orders-section h3 {
+    font-size: 1rem;
+  }
+  
+  .filter-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: var(--md-spacing-xs);
+    padding-bottom: var(--md-spacing-xs);
+  }
+  
+  .tab-btn {
+    white-space: nowrap;
+    font-size: 0.75rem;
+    padding: var(--md-spacing-xs) var(--md-spacing-sm);
+    flex-shrink: 0;
+  }
+  
+  .orders-list-view {
+    padding: 0;
+  }
+  
+  .modal-overlay {
+    padding: var(--md-spacing-xs);
+  }
+  
+  .modal-content {
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: var(--md-radius-md);
+  }
+  
+  .modal-header {
+    padding: var(--md-spacing-md);
+  }
+  
+  .modal-header h2 {
+    font-size: 1rem;
+  }
+  
+  .modal-body {
+    padding: var(--md-spacing-md);
+  }
+}
+
+/* Extra small mobile */
+@media (max-width: 360px) {
+  .deal-header h2 {
+    font-size: 1.125rem;
+  }
+  
+  .stat-value {
+    font-size: 1.125rem;
+  }
+  
+  .commission-btn,
+  .bulk-delivery-btn,
+  .export-btn {
+    font-size: 0.8125rem;
+    padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  }
+  
+  .tab-btn {
+    font-size: 0.6875rem;
+    padding: 6px var(--md-spacing-xs);
   }
 }
 
