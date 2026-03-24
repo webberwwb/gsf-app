@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useAuthStore } from './auth'
+import apiClient from '../api/client'
 
 export const useGroupDealsStore = defineStore('groupDeals', {
   state: () => ({
@@ -41,15 +42,12 @@ export const useGroupDealsStore = defineStore('groupDeals', {
       this.error = null
       
       try {
-        const response = await fetch('http://localhost:5001/api/group-deals')
-        if (!response.ok) throw new Error('Failed to load group deals')
-        
-        const data = await response.json()
-        this.deals = Array.isArray(data) ? data : (data.deals || [])
+        const response = await apiClient.get('/group-deals')
+        this.deals = response.data.deals || []
         this.lastFetched = Date.now()
       } catch (err) {
         console.error('Error loading deals:', err)
-        this.error = '加载失败，请稍后重试'
+        this.error = err.response?.data?.message || err.response?.data?.error || '加载失败，请稍后重试'
       } finally {
         this.loading = false
       }

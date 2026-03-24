@@ -632,7 +632,6 @@ export default {
 .page-header {
   background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
   padding: var(--md-spacing-lg);
-  box-shadow: var(--md-elevation-2);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -759,30 +758,40 @@ export default {
 
 .filter-tabs {
   display: flex;
-  gap: var(--md-spacing-xs);
+  gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md);
   background: var(--md-surface);
-  border-bottom: 1px solid var(--md-outline-variant);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  position: sticky;
+  top: calc(var(--md-spacing-lg) * 2 + 24px);
+  z-index: 99;
+  box-shadow: var(--md-elevation-2);
+}
+
+.filter-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
-  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  padding: var(--md-spacing-sm) var(--md-spacing-lg);
   border: none;
-  background: transparent;
+  background: var(--md-surface-variant);
   color: var(--md-on-surface-variant);
-  font-size: var(--md-body-size);
+  font-size: var(--md-label-size);
   font-weight: 500;
   cursor: pointer;
-  border-radius: var(--md-radius-md);
+  border-radius: 20px;
   white-space: nowrap;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
 }
 
 .tab.active {
   background: var(--md-primary);
   color: white;
+  box-shadow: 0 2px 4px rgba(255, 140, 0, 0.3);
 }
 
 .orders-container {

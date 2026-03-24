@@ -177,26 +177,49 @@ def get_group_deals():
             # Regular users can see active, upcoming, closed, and completed deals (but not draft)
             statuses = ['active', 'upcoming', 'preparing', 'ready_for_pickup', 'closed', 'completed']
         
+        from sqlalchemy.orm import joinedload
+        
         deals = GroupDeal.query.filter(
             GroupDeal.status.in_(statuses),
             GroupDeal.deleted_at.is_(None)
         ).order_by(GroupDeal.order_start_date.desc()).all()
         
-        # Include products for each deal
+        # Batch load all products for all deals to avoid N+1 queries
+        deal_ids = [deal.id for deal in deals]
+        deal_products_query = GroupDealProduct.query.filter(
+            GroupDealProduct.group_deal_id.in_(deal_ids)
+        ).all()
+        
+        # Group by deal_id
+        deal_products_map = {}
+        for dp in deal_products_query:
+            if dp.group_deal_id not in deal_products_map:
+                deal_products_map[dp.group_deal_id] = []
+            deal_products_map[dp.group_deal_id].append(dp)
+        
+        # Batch load all products
+        product_ids = [dp.product_id for dp in deal_products_query]
+        products_query = Product.query.filter(
+            Product.id.in_(product_ids),
+            Product.is_active == True
+        ).all()
+        products_map = {p.id: p for p in products_query}
+        
+        # Build response
         deals_data = []
         for deal in deals:
             deal_dict = deal.to_dict()
-            # Get products for this deal
-            deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
+            deal_products = deal_products_map.get(deal.id, [])
+            
             products_data = []
             for dp in deal_products:
-                product = Product.query.get(dp.product_id)
-                if product and product.is_active:
+                product = products_map.get(dp.product_id)
+                if product:
                     product_dict = product.to_dict()
                     product_dict['deal_stock_limit'] = dp.deal_stock_limit
                     products_data.append(product_dict)
+            
             # Sort products by custom sort_order, then move out of stock items to bottom
-            # Out of stock = deal_stock_limit is 0 (not None, which means unlimited)
             products_data.sort(key=lambda p: (
                 p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
                 p.get('sort_order', 0),

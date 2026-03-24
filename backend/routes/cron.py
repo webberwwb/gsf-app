@@ -8,6 +8,7 @@ from models.order import Order
 from models.groupdeal import GroupDeal
 from models.base import est_now
 from constants.status_enums import OrderStatus, GroupDealStatus
+from datetime import timedelta
 import os
 
 cron_bp = Blueprint('cron', __name__)
@@ -31,97 +32,159 @@ def verify_cron_request():
     return True, None, None
 
 
-@cron_bp.route('/cron/auto-confirm-orders', methods=['POST'])
-def auto_confirm_orders_cron():
+@cron_bp.route('/cron/update-group-deal-statuses', methods=['POST'])
+def update_group_deal_statuses_cron():
     """
-    Daily cron job that runs at 00:00 EST to:
-    1. Auto-confirm submitted orders where order_end_date has passed
-    2. Update group deal statuses based on order dates
+    Daily cron job (00:01 EDT) to update group deal statuses:
+    1. Mark deals as CLOSED when order_end_date has passed
+    2. Mark deals as PREPARING on pickup day
+    3. Mark deals as COMPLETED when one day after pickup_date
+    
+    This uses the same status update logic as the admin endpoint to ensure
+    order statuses are cascaded correctly.
     
     Authentication: Requires X-Cron-Secret header
     """
-    # Verify request is from Cloud Scheduler
     is_valid, error_response, status_code = verify_cron_request()
     if not is_valid:
         return error_response, status_code
     
     try:
         now = est_now()
-        current_app.logger.info(f"[{now}] Running daily cron job...")
+        current_app.logger.info(f"[{now}] Running daily group deal status update...")
+        
+        deals_updated = []
+        total_orders_updated = 0
         
         # ==============================================
-        # Task 1: Auto-confirm expired orders
+        # Task 1: Mark deals as CLOSED when order_end_date passes
         # ==============================================
-        current_app.logger.info("Task 1: Auto-confirming expired orders...")
+        current_app.logger.info("Task 1: Checking for deals to mark as CLOSED...")
         
-        orders_to_confirm = db.session.query(Order).join(
-            GroupDeal, Order.group_deal_id == GroupDeal.id
-        ).filter(
-            Order.status == OrderStatus.SUBMITTED.value,
+        deals_to_close = GroupDeal.query.filter(
+            GroupDeal.status == GroupDealStatus.ACTIVE.value,
             GroupDeal.order_end_date < now,
             GroupDeal.deleted_at.is_(None)
         ).all()
         
-        confirmed_orders = []
-        for order in orders_to_confirm:
-            order.status = OrderStatus.CONFIRMED.value
-            order.updated_at = now
-            confirmed_orders.append({
-                'order_id': order.id,
-                'order_number': order.order_number,
-                'user_id': order.user_id,
-                'group_deal_id': order.group_deal_id
+        for deal in deals_to_close:
+            old_status = deal.status
+            deal.status = GroupDealStatus.CLOSED.value
+            deal.updated_at = now
+            
+            # Cascade to orders: All submitted orders become confirmed
+            orders = Order.query.filter(
+                Order.group_deal_id == deal.id,
+                Order.status == OrderStatus.SUBMITTED.value,
+                Order.status != OrderStatus.CANCELLED.value
+            ).all()
+            
+            orders_updated = 0
+            for order in orders:
+                order.status = OrderStatus.CONFIRMED.value
+                order.updated_at = now
+                orders_updated += 1
+            
+            total_orders_updated += orders_updated
+            deals_updated.append({
+                'deal_id': deal.id,
+                'title': deal.title,
+                'old_status': old_status,
+                'new_status': GroupDealStatus.CLOSED.value,
+                'orders_updated': orders_updated
             })
-            current_app.logger.info(f"  Auto-confirmed order #{order.order_number} (ID: {order.id})")
+            current_app.logger.info(f"  Closed deal '{deal.title}' (ID: {deal.id}), cascaded to {orders_updated} orders")
         
-        if len(confirmed_orders) > 0:
-            current_app.logger.info(f"✅ Auto-confirmed {len(confirmed_orders)} orders")
+        if len(deals_to_close) > 0:
+            current_app.logger.info(f"✅ Marked {len(deals_to_close)} deals as CLOSED")
         else:
-            current_app.logger.info("ℹ️  No orders to confirm")
+            current_app.logger.info("ℹ️  No deals to mark as CLOSED")
         
         # ==============================================
-        # Task 2: Update group deal statuses
+        # Task 2: Mark deals as PREPARING on pickup day
         # ==============================================
-        current_app.logger.info("Task 2: Updating group deal statuses...")
+        current_app.logger.info("Task 2: Checking for deals to mark as PREPARING...")
         
-        # Find all group deals that are not in final states (excluding soft-deleted)
-        active_deals = GroupDeal.query.filter(
-            GroupDeal.status.in_(GroupDealStatus.get_auto_managed_statuses()),
+        # Get start and end of pickup day
+        from datetime import datetime, time
+        pickup_day_start = datetime.combine(now.date(), time.min)
+        pickup_day_end = datetime.combine(now.date(), time.max)
+        
+        deals_to_prepare = GroupDeal.query.filter(
+            GroupDeal.status == GroupDealStatus.CLOSED.value,
+            GroupDeal.pickup_date >= pickup_day_start,
+            GroupDeal.pickup_date <= pickup_day_end,
             GroupDeal.deleted_at.is_(None)
         ).all()
         
-        updated_deals = []
-        for deal in active_deals:
+        for deal in deals_to_prepare:
             old_status = deal.status
-            new_status = None
+            deal.status = GroupDealStatus.PREPARING.value
+            deal.updated_at = now
             
-            # Determine new status based on dates
-            if deal.order_start_date > now:
-                # Before order start date
-                new_status = GroupDealStatus.UPCOMING.value
-            elif deal.order_start_date <= now <= deal.order_end_date:
-                # Within order window
-                new_status = GroupDealStatus.ACTIVE.value
-            elif deal.order_end_date < now:
-                # Past order end date
-                new_status = GroupDealStatus.CLOSED.value
+            # Cascade to orders: All submitted/confirmed orders become preparing
+            orders = Order.query.filter(
+                Order.group_deal_id == deal.id,
+                Order.status.in_([OrderStatus.SUBMITTED.value, OrderStatus.CONFIRMED.value]),
+                Order.status != OrderStatus.CANCELLED.value
+            ).all()
             
-            # Update if status changed
-            if new_status and new_status != old_status:
-                deal.status = new_status
-                deal.updated_at = now
-                updated_deals.append({
-                    'deal_id': deal.id,
-                    'title': deal.title,
-                    'old_status': old_status,
-                    'new_status': new_status
-                })
-                current_app.logger.info(f"  Updated deal '{deal.title}' (ID: {deal.id}): {old_status} → {new_status}")
+            orders_updated = 0
+            for order in orders:
+                order.status = OrderStatus.PREPARING.value
+                order.updated_at = now
+                orders_updated += 1
+            
+            total_orders_updated += orders_updated
+            deals_updated.append({
+                'deal_id': deal.id,
+                'title': deal.title,
+                'old_status': old_status,
+                'new_status': GroupDealStatus.PREPARING.value,
+                'orders_updated': orders_updated
+            })
+            current_app.logger.info(f"  Preparing deal '{deal.title}' (ID: {deal.id}), cascaded to {orders_updated} orders")
         
-        if len(updated_deals) > 0:
-            current_app.logger.info(f"✅ Updated {len(updated_deals)} group deal statuses")
+        if len(deals_to_prepare) > 0:
+            current_app.logger.info(f"✅ Marked {len(deals_to_prepare)} deals as PREPARING")
         else:
-            current_app.logger.info("ℹ️  No group deal statuses to update")
+            current_app.logger.info("ℹ️  No deals to mark as PREPARING")
+        
+        # ==============================================
+        # Task 3: Mark deals as COMPLETED one day after pickup_date
+        # ==============================================
+        current_app.logger.info("Task 3: Checking for deals to mark as COMPLETED...")
+        
+        one_day_ago = now - timedelta(days=1)
+        
+        deals_to_complete = GroupDeal.query.filter(
+            GroupDeal.status.in_([
+                GroupDealStatus.CLOSED.value,
+                GroupDealStatus.PREPARING.value,
+                GroupDealStatus.READY_FOR_PICKUP.value
+            ]),
+            GroupDeal.pickup_date < one_day_ago,
+            GroupDeal.deleted_at.is_(None)
+        ).all()
+        
+        for deal in deals_to_complete:
+            old_status = deal.status
+            deal.status = GroupDealStatus.COMPLETED.value
+            deal.updated_at = now
+            
+            deals_updated.append({
+                'deal_id': deal.id,
+                'title': deal.title,
+                'old_status': old_status,
+                'new_status': GroupDealStatus.COMPLETED.value,
+                'orders_updated': 0
+            })
+            current_app.logger.info(f"  Completed deal '{deal.title}' (ID: {deal.id})")
+        
+        if len(deals_to_complete) > 0:
+            current_app.logger.info(f"✅ Marked {len(deals_to_complete)} deals as COMPLETED")
+        else:
+            current_app.logger.info("ℹ️  No deals to mark as COMPLETED")
         
         # Commit all changes
         db.session.commit()
@@ -131,20 +194,19 @@ def auto_confirm_orders_cron():
         # ==============================================
         return jsonify({
             'success': True,
-            'message': f'Daily cron job completed',
-            'orders_confirmed': len(confirmed_orders),
-            'deals_updated': len(updated_deals),
-            'confirmed_orders': confirmed_orders,
-            'updated_deals': updated_deals,
+            'message': 'Hourly group deal status update completed',
+            'deals_updated': len(deals_updated),
+            'total_orders_updated': total_orders_updated,
+            'updated_deals': deals_updated,
             'timestamp': now.isoformat()
         }), 200
         
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"❌ Error in daily cron job: {e}", exc_info=True)
+        current_app.logger.error(f"❌ Error in hourly group deal status update: {e}", exc_info=True)
         return jsonify({
             'success': False,
-            'error': 'Failed to run daily cron job',
+            'error': 'Failed to update group deal statuses',
             'message': str(e)
         }), 500
 

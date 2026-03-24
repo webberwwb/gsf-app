@@ -135,7 +135,7 @@ wait_for_build $BUILD_ID $PROJECT_ID || {
 }
 
 ENV_VARS="MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca,APP_VERSION=$FRONTEND_VERSION"
-SECRETS="MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest"
+SECRETS="MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest"
 
 BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --image gcr.io/$PROJECT_ID/gsf-app-backend \
@@ -144,7 +144,7 @@ BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --allow-unauthenticated \
     --add-cloudsql-instances $PROJECT_ID:us-central1:gsf-app-mysql \
     --update-env-vars "$ENV_VARS" \
-    --remove-env-vars MYSQL_USER,MYSQL_PASSWORD,SECRET_KEY,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,GOOGLE_OAUTH_CLIENT_SECRET \
+    --remove-env-vars MYSQL_USER,MYSQL_PASSWORD,SECRET_KEY,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,GOOGLE_OAUTH_CLIENT_SECRET,CRON_SECRET \
     --update-secrets "$SECRETS" \
     --project=$PROJECT_ID \
     --format="value(status.url)")

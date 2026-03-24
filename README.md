@@ -241,6 +241,20 @@ For the app frontend, set the `VITE_API_BASE_URL` environment variable in Cloud 
 3. Download the service account key JSON file
 4. Store it securely (not in git) and reference it in your deployment scripts
 
+## Automated Tasks (Cron Jobs)
+
+The application uses Google Cloud Scheduler to run automated tasks:
+
+### Daily Group Deal Status Update
+- **Schedule:** Daily at 00:01 EDT
+- **Endpoint:** `POST /api/cron/update-group-deal-statuses`
+- **Tasks:**
+  - Marks active deals as "已截单" (CLOSED) when order_end_date passes (cascades orders: submitted → confirmed)
+  - Marks closed deals as "正在配货" (PREPARING) on pickup day (cascades orders: submitted/confirmed → preparing)
+  - Marks deals as "已完成" (COMPLETED) one day after pickup_date
+
+**Setup:** Run `backend/tasks/create-scheduler-job.sh` to deploy Cloud Scheduler job. See `backend/tasks/README.md` for details.
+
 ## API Endpoints
 
 ### Health Check
