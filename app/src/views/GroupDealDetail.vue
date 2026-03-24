@@ -68,6 +68,19 @@
         </div>
       </div>
 
+      <!-- Read-only notice for closed/completed deals -->
+      <div v-if="isDealClosed" class="deal-status-notice">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="notice-icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div class="notice-content">
+          <strong v-if="deal.status === 'completed'">团购已完成</strong>
+          <strong v-else>团购已截单</strong>
+          <p v-if="deal.status === 'completed'">此团购已完成，仅供查看历史信息</p>
+          <p v-else>订单提交已截止，仅可查看团购详情。如有已提交订单，请前往"我的订单"查看</p>
+        </div>
+      </div>
+
       <!-- Products Section -->
       <div class="products-section">
         <h3 class="section-title">可选商品</h3>
@@ -105,15 +118,141 @@
               </p>
               
               <!-- Price Display -->
-              <div class="product-price">
-                <span class="price-label">团购价:</span>
-                <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
-                  ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
-                </span>
-                <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
-                  {{ formatPriceRange(product) }}
-                </span>
-                <span v-else class="price-value">${{ formatPrice(product) }}</span>
+              <div class="product-price-container">
+                <div class="product-price">
+                  <span class="price-label">团购价:</span>
+                  <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
+                    ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                  </span>
+                  <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
+                    {{ formatPriceRange(product) }}
+                  </span>
+                  <span v-else class="price-value">${{ formatPrice(product) }}</span>
+                </div>
+                
+                <!-- Detailed Weight Range Pricing -->
+                <div v-if="product.pricing_type === 'weight_range'" class="pricing-details-inline">
+                  <div class="pricing-breakdown-compact">
+                    <div class="breakdown-header" @click="togglePricingDetails(product.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon-inline">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span class="breakdown-toggle-text">{{ isPricingExpanded(product.id) ? '收起' : '查看' }}价格明细</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="chevron-icon" :class="{ 'expanded': isPricingExpanded(product.id) }">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    <Transition name="expand">
+                      <div v-if="isPricingExpanded(product.id)" class="weight-ranges-list">
+                        <div 
+                          v-for="(range, idx) in getSortedWeightRanges(product)" 
+                          :key="idx"
+                          class="range-item"
+                        >
+                          <span class="range-weight-text">{{ formatWeightRange(range, product.pricing_data?.unit) }}</span>
+                          <span class="range-price-text">${{ parseFloat(range.price || 0).toFixed(2) }}</span>
+                        </div>
+                        <div class="pricing-note-inline">
+                          取货时按实际重量称重结算，重量可能超出上述区间
+                        </div>
+                      </div>
+                    </Transition>
+                  </div>
+                </div>
+                
+                <!-- Detailed Unit Weight Pricing -->
+                <div v-else-if="product.pricing_type === 'unit_weight'" class="pricing-details-inline">
+                  <div class="pricing-breakdown-compact">
+                    <div class="breakdown-header" @click="togglePricingDetails(product.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon-inline">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span class="breakdown-toggle-text">{{ isPricingExpanded(product.id) ? '收起' : '查看' }}价格计算</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="chevron-icon" :class="{ 'expanded': isPricingExpanded(product.id) }">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    <Transition name="expand">
+                      <div v-if="isPricingExpanded(product.id)" class="pricing-calculation">
+                        <div class="calculation-formula-inline">
+                          最终价格 = 实际重量 × ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                        </div>
+                        <div class="examples-list">
+                          <div class="example-item">
+                            <span>1 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                            <span>→</span>
+                            <span class="example-result">${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}</span>
+                          </div>
+                          <div class="example-item">
+                            <span>2 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                            <span>→</span>
+                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * 2).toFixed(2) }}</span>
+                          </div>
+                          <div class="example-item">
+                            <span>3 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                            <span>→</span>
+                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * 3).toFixed(2) }}</span>
+                          </div>
+                        </div>
+                        <div class="pricing-note-inline">
+                          取货时称重，按实际重量计算最终价格
+                        </div>
+                      </div>
+                    </Transition>
+                  </div>
+                </div>
+                
+                <!-- Detailed Bundled Weight Pricing -->
+                <div v-else-if="product.pricing_type === 'bundled_weight'" class="pricing-details-inline">
+                  <div class="pricing-breakdown-compact">
+                    <div class="breakdown-header" @click="togglePricingDetails(product.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon-inline">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span class="breakdown-toggle-text">{{ isPricingExpanded(product.id) ? '收起' : '查看' }}价格计算</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="chevron-icon" :class="{ 'expanded': isPricingExpanded(product.id) }">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    <Transition name="expand">
+                      <div v-if="isPricingExpanded(product.id)" class="pricing-calculation">
+                        <div class="bundled-info-inline">
+                          <div class="info-row">
+                            <span class="info-label-inline">每份参考重量:</span>
+                            <span class="info-value-inline">{{ product.pricing_data?.min_weight || 7 }} - {{ product.pricing_data?.max_weight || 15 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                          </div>
+                          <div class="info-row">
+                            <span class="info-label-inline">单价:</span>
+                            <span class="info-value-inline">${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                          </div>
+                        </div>
+                        <div class="calculation-formula-inline">
+                          最终价格 = 实际重量 × ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                        </div>
+                        <div class="examples-list">
+                          <div class="example-item">
+                            <span>{{ product.pricing_data?.min_weight || 7 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                            <span>→</span>
+                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.min_weight || 7)).toFixed(2) }}</span>
+                          </div>
+                          <div class="example-item">
+                            <span>{{ Math.round((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                            <span>→</span>
+                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * Math.round(((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2)).toFixed(2) }}</span>
+                          </div>
+                          <div class="example-item">
+                            <span>{{ product.pricing_data?.max_weight || 15 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                            <span>→</span>
+                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.max_weight || 15)).toFixed(2) }}</span>
+                          </div>
+                        </div>
+                        <div class="pricing-note-inline">
+                          每份重量通常在此范围内，取货时按实际重量称重结算
+                        </div>
+                      </div>
+                    </Transition>
+                  </div>
+                </div>
               </div>
               <!-- Debug: Remove after testing -->
               <!-- <div style="font-size: 10px; color: gray;">
@@ -245,8 +384,8 @@
         <span class="total-amount">${{ calculateTotal().total }}</span>
         <span v-if="hasEstimatedTotal() && !isOrderCompleted" class="estimated-note">(估算)</span>
       </div>
-      <button @click="confirmOrder" class="confirm-order-btn" :disabled="isDealClosed">
-        {{ isDealClosed ? '已截单' : '确认订单' }}
+      <button @click="confirmOrder" class="confirm-order-btn" :disabled="!isOrderEditable">
+        {{ deal.status === 'completed' ? '已完成' : (isDealClosed ? '已截单' : '确认订单') }}
       </button>
     </div>
 
@@ -296,7 +435,8 @@ export default {
       showProductModal: false,
       selectedProduct: null,
       showPriceInfoModal: false,
-      priceInfoMessage: ''
+      priceInfoMessage: '',
+      expandedPricing: {} // Track which products have expanded pricing details
     }
   },
   setup() {
@@ -327,11 +467,11 @@ export default {
   },
   computed: {
     isDealClosed() {
-      return this.deal && this.deal.status === 'closed'
+      return this.deal && (this.deal.status === 'closed' || this.deal.status === 'completed')
     },
     isOrderEditable() {
-      // Always allow editing if deal is not closed
-      return !this.isDealClosed
+      // Only allow editing if deal is active (not closed or completed)
+      return this.deal && this.deal.status === 'active'
     }
   },
   methods: {
@@ -443,6 +583,9 @@ export default {
         'completed': '已完成'
       }
       return labels[status] || status
+    },
+    isOrderCompleted() {
+      return false // This is for the deal detail page, not order completion
     },
     getQuantity(product) {
       return this.selectedItems[product.id]?.quantity || 0
@@ -651,6 +794,23 @@ export default {
         return product.image
       }
       return null
+    },
+    togglePricingDetails(productId) {
+      this.expandedPricing[productId] = !this.expandedPricing[productId]
+    },
+    isPricingExpanded(productId) {
+      return this.expandedPricing[productId] || false
+    },
+    getSortedWeightRanges(product) {
+      if (!product.pricing_data?.ranges) return []
+      return [...product.pricing_data.ranges].sort((a, b) => (a.min || 0) - (b.min || 0))
+    },
+    formatWeightRange(range, unit = 'lb') {
+      const displayUnit = unit === 'kg' ? 'lb' : 'lb'
+      if (range.max === null || range.max === undefined) {
+        return `${range.min}+ ${displayUnit}`
+      }
+      return `${range.min} - ${range.max} ${displayUnit}`
     }
   }
 }
@@ -817,6 +977,12 @@ export default {
   background: #E0E0E0;
   color: #616161;
   box-shadow: 0 2px 4px rgba(97, 97, 97, 0.2);
+}
+
+.deal-badge.completed {
+  background: #4CAF50;
+  color: white;
+  box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
 }
 
 .page-header.admin-draft-header {
@@ -1086,6 +1252,13 @@ export default {
   white-space: normal;
 }
 
+.product-price-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-sm);
+  width: 100%;
+}
+
 .product-price {
   display: flex;
   align-items: center;
@@ -1105,6 +1278,202 @@ export default {
 
 .price-value.price-range {
   white-space: nowrap;
+}
+
+.pricing-details-inline {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.pricing-breakdown-compact {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.breakdown-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.breakdown-header:hover {
+  background: #f3f4f6;
+}
+
+.breakdown-header:active {
+  background: #e5e7eb;
+}
+
+.info-icon-inline {
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.breakdown-toggle-text {
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+  flex: 1;
+}
+
+.chevron-icon {
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+  flex-shrink: 0;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chevron-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.weight-ranges-list,
+.pricing-calculation {
+  padding: 12px;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+}
+
+.range-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.range-item:last-of-type {
+  margin-bottom: 8px;
+}
+
+.range-weight-text {
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.range-price-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #FF4444;
+}
+
+.calculation-formula-inline {
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+  margin-bottom: 8px;
+  border: 1px solid #e5e7eb;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.bundled-info-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.info-label-inline {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.info-value-inline {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 600;
+}
+
+.examples-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.example-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
+.example-item span:first-child {
+  font-weight: 500;
+  min-width: 50px;
+}
+
+.example-item span:nth-child(2) {
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+.example-result {
+  font-weight: 700;
+  color: #FF4444;
+  margin-left: auto;
+  font-size: 14px;
+}
+
+.pricing-note-inline {
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #fde68a;
+  line-height: 1.4;
+}
+
+.expand-enter-active,
+.expand-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.expand-enter-to,
+.expand-leave-from {
+  opacity: 1;
+  max-height: 500px;
 }
 
 .original-price {
@@ -1459,9 +1828,46 @@ export default {
   }
 }
 
-.confirm-order-btn:hover {
+.confirm-order-btn:hover:not(:disabled) {
   background: #FF7F00;
   box-shadow: var(--md-elevation-2);
+}
+
+.deal-status-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--md-spacing-md);
+  padding: var(--md-spacing-md);
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(245, 124, 0, 0.1) 100%);
+  border: 2px solid #FF9800;
+  border-radius: var(--md-radius-md);
+  margin-bottom: var(--md-spacing-lg);
+}
+
+.deal-status-notice .notice-icon {
+  width: 24px;
+  height: 24px;
+  color: #F57C00;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.deal-status-notice .notice-content {
+  flex: 1;
+}
+
+.deal-status-notice .notice-content strong {
+  display: block;
+  color: #E65100;
+  font-size: var(--md-body-size);
+  margin-bottom: var(--md-spacing-xs);
+}
+
+.deal-status-notice .notice-content p {
+  color: #F57C00;
+  font-size: var(--md-label-size);
+  line-height: 1.5;
+  margin: 0;
 }
 </style>
 

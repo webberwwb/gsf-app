@@ -43,12 +43,12 @@
 
       <div v-if="loading" class="loading">加载中...</div>
       <div v-else-if="error" class="error">{{ error }}</div>
-      <div v-else-if="filteredUsers.length === 0" class="empty-state">
+      <div v-else-if="users.length === 0" class="empty-state">
         <p>暂无用户</p>
       </div>
       <div v-else>
         <div class="users-list">
-          <div v-for="user in filteredUsers" :key="user.id" class="user-card" :class="{ 'selected': isUserSelected(user.id) }">
+          <div v-for="user in users" :key="user.id" class="user-card" :class="{ 'selected': isUserSelected(user.id) }">
             <div class="user-checkbox" v-if="showCheckboxes">
               <input
                 type="checkbox"
@@ -275,29 +275,19 @@ export default {
       perPage: 50,
       totalUsers: 0,
       hasMore: true,
-      loadingMore: false
-    }
-  },
-  computed: {
-    filteredUsers() {
-      if (!this.searchQuery) {
-        return this.users
-      }
-      const query = this.searchQuery.toLowerCase()
-      return this.users.filter(user => {
-        const phone = (user.phone || '').toLowerCase()
-        const nickname = (user.nickname || '').toLowerCase()
-        const wechat = (user.wechat || '').toLowerCase()
-        return phone.includes(query) || nickname.includes(query) || wechat.includes(query)
-      })
+      loadingMore: false,
+      searchDebounceTimer: null
     }
   },
   watch: {
     searchQuery() {
-      // Reset pagination when search query changes
-      // Note: We're using client-side filtering, so no need to refetch
-      // If you want server-side search, uncomment the line below
-      // this.fetchUsers(true)
+      if (this.searchDebounceTimer) {
+        clearTimeout(this.searchDebounceTimer)
+      }
+      
+      this.searchDebounceTimer = setTimeout(() => {
+        this.fetchUsers(true)
+      }, 500)
     }
   },
   mounted() {
@@ -306,8 +296,10 @@ export default {
     window.addEventListener('scroll', this.handleScroll)
   },
   beforeUnmount() {
-    // Clean up scroll listener
     window.removeEventListener('scroll', this.handleScroll)
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer)
+    }
   },
   methods: {
     async fetchUsers(reset = true) {
@@ -325,6 +317,10 @@ export default {
         const params = {
           page: this.currentPage,
           per_page: this.perPage
+        }
+        
+        if (this.searchQuery) {
+          params.search = this.searchQuery
         }
         
         const response = await apiClient.get('/admin/users', { params })
@@ -1193,6 +1189,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
+  padding-top: calc(20px + env(safe-area-inset-top));
   border-bottom: 1px solid #e5e7eb;
 }
 

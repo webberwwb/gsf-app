@@ -398,8 +398,21 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
   background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%);
   border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+  position: relative;
+}
+
+/* Extend background color into safe area */
+.modal-header::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%);
   border-radius: 24px 24px 0 0;
 }
 

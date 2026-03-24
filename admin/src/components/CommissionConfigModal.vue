@@ -272,6 +272,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
+  padding-top: calc(20px + env(safe-area-inset-top));
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }

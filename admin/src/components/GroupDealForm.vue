@@ -37,7 +37,7 @@
         </div>
 
         <!-- Dates -->
-        <div class="form-row">
+        <div class="form-row form-row-dates">
           <div class="form-group">
             <label for="order_start_date">开团时间 *</label>
             <input
@@ -60,18 +60,17 @@
             />
             <small class="form-hint">团购截止时间</small>
           </div>
-        </div>
-
-        <div class="form-group">
-          <label for="pickup_date">取货日期 *</label>
-          <input
-            id="pickup_date"
-            v-model="formData.pickup_date"
-            type="date"
-            required
-            class="form-input"
-          />
-          <small class="form-hint">取货日期（时间待定）</small>
+          <div class="form-group">
+            <label for="pickup_date">取货日期 *</label>
+            <input
+              id="pickup_date"
+              v-model="formData.pickup_date"
+              type="date"
+              required
+              class="form-input"
+            />
+            <small class="form-hint">取货日期（时间待定）</small>
+          </div>
         </div>
 
         <!-- Status -->
@@ -396,6 +395,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
   border-bottom: 1px solid var(--md-surface-variant);
 }
 
@@ -443,6 +443,10 @@ export default {
   margin-bottom: var(--md-spacing-lg);
 }
 
+.form-row-dates {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 label {
   display: block;
   margin-bottom: var(--md-spacing-sm);
@@ -463,6 +467,14 @@ select.form-input {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: var(--md-surface);
   color: var(--md-on-surface);
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* Ensure date and datetime inputs don't overflow */
+input[type="date"].form-input,
+input[type="datetime-local"].form-input {
+  min-width: 0;
 }
 
 .form-input:focus,
@@ -500,16 +512,17 @@ select.form-input:focus {
   padding: var(--md-spacing-sm);
   background: var(--md-surface-variant);
   border-radius: var(--md-radius-md);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .product-select-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
   background: var(--md-surface);
-  border: 2px solid transparent;
-  border-radius: var(--md-radius-md);
+  border: 1.5px solid transparent;
+  border-radius: var(--md-radius-sm);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -529,14 +542,14 @@ select.form-input:focus {
 }
 
 .product-select-name {
-  font-size: var(--md-body-size);
+  font-size: var(--md-label-size);
   font-weight: 500;
   color: var(--md-on-surface);
-  margin-bottom: var(--md-spacing-xs);
+  margin-bottom: 2px;
 }
 
 .product-select-price {
-  font-size: var(--md-label-size);
+  font-size: 0.75rem;
   color: var(--md-on-surface-variant);
 }
 
@@ -681,6 +694,213 @@ select.form-input:focus {
 .submit-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.form-hint {
+  display: block;
+  margin-top: var(--md-spacing-xs);
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+}
+
+/* Mobile-friendly responsive styles */
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-start;
+  }
+  
+  .modal-container {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    min-height: 100vh;
+  }
+  
+  .modal-container.large {
+    max-width: 100%;
+  }
+  
+  .modal-header {
+    position: sticky;
+    top: 0;
+    background: var(--md-surface);
+    z-index: 10;
+    padding: var(--md-spacing-md);
+  }
+  
+  .modal-header h2 {
+    font-size: var(--md-title-size);
+  }
+  
+  .group-deal-form {
+    padding: var(--md-spacing-md);
+  }
+  
+  /* Stack form rows vertically on mobile */
+  .form-row,
+  .form-row-dates {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-bottom: 0;
+  }
+  
+  .form-row .form-group,
+  .form-row-dates .form-group {
+    margin-bottom: var(--md-spacing-lg);
+  }
+  
+  /* Adjust input padding for mobile */
+  .form-input,
+  .form-textarea,
+  select.form-input {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    font-size: 16px; /* Prevents zoom on iOS */
+    max-width: 100%;
+  }
+  
+  /* Ensure date inputs don't overflow on mobile */
+  input[type="date"].form-input,
+  input[type="datetime-local"].form-input {
+    padding: var(--md-spacing-sm);
+    min-width: 0;
+    width: 100%;
+  }
+  
+  /* Make product list single column on mobile */
+  .products-list {
+    grid-template-columns: 1fr;
+    max-height: 250px;
+    padding: var(--md-spacing-xs);
+  }
+  
+  .product-select-item {
+    padding: var(--md-spacing-sm);
+  }
+  
+  .product-select-name {
+    font-size: var(--md-label-size);
+  }
+  
+  .product-select-price {
+    font-size: 0.75rem;
+  }
+  
+  /* Stack product detail fields vertically */
+  .product-detail-fields {
+    grid-template-columns: 1fr;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .product-detail-card {
+    padding: var(--md-spacing-sm);
+  }
+  
+  /* Make form actions stack on very small screens */
+  .form-actions {
+    flex-direction: column-reverse;
+    gap: var(--md-spacing-sm);
+    margin-top: var(--md-spacing-md);
+    padding-top: var(--md-spacing-md);
+  }
+  
+  .cancel-btn,
+  .submit-btn {
+    width: 100%;
+    padding: var(--md-spacing-md);
+  }
+}
+
+/* Extra small screens (phones in portrait) */
+@media (max-width: 480px) {
+  .modal-header {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    padding-top: calc(var(--md-spacing-sm) + env(safe-area-inset-top));
+  }
+  
+  .modal-header h2 {
+    font-size: 1.1rem;
+  }
+  
+  .close-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .group-deal-form {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .form-group {
+    margin-bottom: var(--md-spacing-md);
+  }
+  
+  label {
+    font-size: var(--md-label-size);
+    margin-bottom: 6px;
+  }
+  
+  .form-input,
+  .form-textarea,
+  select.form-input {
+    padding: 10px 12px;
+    max-width: 100%;
+  }
+  
+  /* Extra constraint for date inputs on small screens */
+  input[type="date"].form-input,
+  input[type="datetime-local"].form-input {
+    padding: 8px;
+    min-width: 0;
+    width: 100%;
+  }
+  
+  .form-hint {
+    font-size: 0.75rem;
+  }
+  
+  .products-list {
+    max-height: 200px;
+  }
+  
+  .selected-products-details {
+    gap: var(--md-spacing-sm);
+  }
+  
+  .product-detail-header {
+    margin-bottom: var(--md-spacing-sm);
+  }
+  
+  .product-detail-name {
+    font-size: var(--md-label-size);
+  }
+  
+  .remove-product-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 1rem;
+  }
+  
+  .form-input-small {
+    padding: 8px 10px;
+    font-size: var(--md-label-size);
+  }
+  
+  .error-message {
+    padding: var(--md-spacing-sm);
+    font-size: 0.8rem;
+  }
+}
+
+/* Landscape orientation adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+  .modal-container {
+    max-height: 100vh;
+  }
+  
+  .products-list {
+    max-height: 150px;
+  }
 }
 </style>
 

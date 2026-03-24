@@ -1360,8 +1360,22 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
   background: var(--gradient-primary);
   border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+  border-radius: 24px 24px 0 0;
+  position: relative;
+}
+
+/* Extend background color into safe area */
+.modal-header::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--gradient-primary);
   border-radius: 24px 24px 0 0;
 }
 
@@ -2923,18 +2937,33 @@ export default {
   
   .modal-content {
     max-width: 100%;
-    max-height: 95vh;
-    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-height: 100vh;
+    height: 100vh;
+    border-radius: 0;
     margin: 0;
   }
   
   .modal-header {
-    padding: var(--md-spacing-sm) var(--md-spacing-md);
-    border-radius: 16px 16px 0 0;
+    padding: var(--md-spacing-md) var(--md-spacing-md) var(--md-spacing-sm);
+    border-radius: 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--gradient-primary);
+    /* Add top safe area */
+    padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+  }
+  
+  /* Extend background into safe area on mobile */
+  .modal-header::before {
+    border-radius: 0;
   }
   
   .header-content {
     gap: var(--md-spacing-sm);
+    width: 100%;
+    position: relative;
   }
   
   .header-icon {
@@ -2956,9 +2985,7 @@ export default {
   }
   
   .header-status-badges {
-    position: absolute;
-    top: var(--md-spacing-sm);
-    right: 48px;
+    margin-left: auto;
   }
   
   .payment-status-badge-header {
@@ -2966,14 +2993,24 @@ export default {
     padding: 2px 6px;
   }
   
+  .close-btn {
+    flex-shrink: 0;
+    margin-left: var(--md-spacing-sm);
+  }
+  
   .modal-body {
     padding: var(--md-spacing-sm);
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
   
   .order-info-section,
   .order-items-section {
     padding: var(--md-spacing-sm);
     margin-bottom: var(--md-spacing-xs);
+    overflow-x: hidden;
   }
   
   .section-header {
@@ -3122,6 +3159,12 @@ export default {
     flex-direction: column;
     gap: var(--md-spacing-sm);
     padding: var(--md-spacing-sm);
+    position: sticky;
+    bottom: 0;
+    background: #FFFFFF;
+    border-top: 2px solid rgba(0, 0, 0, 0.08);
+    /* Add bottom safe area */
+    padding-bottom: calc(var(--md-spacing-sm) + env(safe-area-inset-bottom));
   }
   
   .update-order-btn,
@@ -3132,12 +3175,14 @@ export default {
   }
   
   .modal-overlay-inner {
-    padding: var(--md-spacing-sm);
+    padding: 0;
   }
   
   .modal-content-inner {
     max-width: 100%;
+    width: 100%;
     max-height: 90vh;
+    border-radius: 16px 16px 0 0;
   }
   
   .modal-header-inner {
@@ -3146,6 +3191,10 @@ export default {
   
   .modal-header-inner h3 {
     font-size: 1rem;
+  }
+  
+  .modal-body-inner {
+    padding: var(--md-spacing-sm);
   }
   
   .product-info-icon:hover .price-tooltip {

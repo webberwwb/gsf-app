@@ -172,10 +172,10 @@ def get_group_deals():
         now = utc_now()
         if is_admin:
             # Admin users can see all deals including draft
-            statuses = ['draft', 'active', 'upcoming', 'preparing', 'ready_for_pickup']
+            statuses = ['draft', 'active', 'upcoming', 'preparing', 'ready_for_pickup', 'closed', 'completed']
         else:
-            # Regular users can only see active, upcoming, preparing, and ready_for_pickup deals
-            statuses = ['active', 'upcoming', 'preparing', 'ready_for_pickup']
+            # Regular users can see active, upcoming, closed, and completed deals (but not draft)
+            statuses = ['active', 'upcoming', 'preparing', 'ready_for_pickup', 'closed', 'completed']
         
         deals = GroupDeal.query.filter(
             GroupDeal.status.in_(statuses),

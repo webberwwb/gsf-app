@@ -10,14 +10,14 @@ export default defineConfig({
     }
   },
   server: {
-    port: 3001,
+    port: 3002,
     strictPort: true, // Exit if port is already in use
     // Enable HMR with proper WebSocket configuration
     hmr: {
       protocol: 'ws',
       host: 'localhost',
-      port: 3001,
-      clientPort: 3001
+      port: 3002,
+      clientPort: 3002
     },
     // Disable caching in development
     headers: {

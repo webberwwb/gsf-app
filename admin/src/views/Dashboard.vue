@@ -306,6 +306,7 @@ export default {
 
 .sidebar-header {
   padding: var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
   border-bottom: 1px solid var(--md-surface-variant);
   display: flex;
   align-items: center;
@@ -317,6 +318,7 @@ export default {
 @media (max-width: 1366px) {
   .sidebar-header {
     padding: var(--md-spacing-md);
+    padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
     gap: var(--md-spacing-sm);
   }
   
@@ -435,6 +437,7 @@ export default {
 
 .sidebar-footer {
   padding: var(--md-spacing-md);
+  padding-bottom: calc(var(--md-spacing-md) + env(safe-area-inset-bottom));
   border-top: 1px solid var(--md-surface-variant);
 }
 
@@ -442,6 +445,7 @@ export default {
 @media (max-width: 1366px) {
   .sidebar-footer {
     padding: var(--md-spacing-sm) var(--md-spacing-md);
+    padding-bottom: calc(var(--md-spacing-sm) + env(safe-area-inset-bottom));
   }
   
   .user-avatar {
@@ -542,6 +546,7 @@ export default {
 .top-header {
   background: var(--md-surface);
   padding: var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
   box-shadow: var(--md-elevation-1);
   position: sticky;
   top: 0;
@@ -555,6 +560,7 @@ export default {
 @media (max-width: 1366px) {
   .top-header {
     padding: var(--md-spacing-md);
+    padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
   }
   
   .top-header h1 {
@@ -607,12 +613,14 @@ export default {
 .content-area {
   flex: 1;
   padding: var(--md-spacing-lg);
+  padding-bottom: calc(var(--md-spacing-lg) + env(safe-area-inset-bottom));
 }
 
 /* Reduce padding on smaller laptops */
 @media (max-width: 1366px) {
   .content-area {
     padding: var(--md-spacing-md);
+    padding-bottom: calc(var(--md-spacing-md) + env(safe-area-inset-bottom));
   }
 }
 
@@ -620,6 +628,7 @@ export default {
 @media (max-width: 767px) {
   .content-area {
     padding: var(--md-spacing-sm);
+    padding-bottom: calc(var(--md-spacing-sm) + env(safe-area-inset-bottom));
   }
 }
 </style>

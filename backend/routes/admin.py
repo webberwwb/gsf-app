@@ -586,7 +586,7 @@ def impersonate_user(user_id):
         if not is_production:
             # In local development, use localhost if APP_FRONTEND_URL is not set or is production URL
             if not app_frontend_url or 'grainstoryfarm.ca' in app_frontend_url:
-                app_frontend_url = 'http://localhost:5173'  # App frontend dev server port
+                app_frontend_url = 'http://localhost:3000'  # App frontend dev server port
                 current_app.logger.info(f'Using default localhost URL for local development: {app_frontend_url}')
         
         current_app.logger.info(f'Admin {admin_user_id} impersonating user {user_id}, token: {auth_token.token[:10]}...')
