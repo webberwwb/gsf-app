@@ -66,6 +66,12 @@
           </svg>
           <span>运费管理</span>
         </router-link>
+        <router-link to="/after-sales" class="nav-item" :class="{ active: $route.path === '/after-sales' }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+          <span>售后回访</span>
+        </router-link>
       </nav>
       <div class="sidebar-footer">
         <div class="user-info">
@@ -122,7 +128,8 @@ export default {
         '/users': '用户管理',
         '/sales-management': '销售管理',
         '/suppliers': '供应商管理',
-        '/shipping-fee': '运费管理'
+        '/shipping-fee': '运费管理',
+        '/after-sales': '售后回访'
       }
       return titles[this.$route.path] || '管理后台'
     },
@@ -244,6 +251,9 @@ export default {
 .admin-layout {
   display: flex;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: var(--md-background);
 }
 
@@ -524,9 +534,12 @@ export default {
 
 .main-content {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   margin-left: 260px;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 /* Laptop screens - adjust for smaller sidebar */
@@ -554,6 +567,8 @@ export default {
   display: flex;
   align-items: center;
   gap: var(--md-spacing-md);
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Laptop screens - compact header */
@@ -570,6 +585,7 @@ export default {
 
 .hamburger-btn {
   display: none;
+  flex-shrink: 0;
   background: transparent;
   border: none;
   color: var(--md-on-surface);
@@ -601,6 +617,10 @@ export default {
   font-weight: 500;
   letter-spacing: -0.5px;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Mobile - smaller title */
@@ -612,6 +632,9 @@ export default {
 
 .content-area {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   padding: var(--md-spacing-lg);
   padding-bottom: calc(var(--md-spacing-lg) + env(safe-area-inset-bottom));
 }

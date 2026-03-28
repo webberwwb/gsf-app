@@ -7,6 +7,7 @@ from models.user import AuthToken, User
 from datetime import datetime, timezone, date, timedelta
 from models.base import utc_now
 from sqlalchemy import func, desc
+from constants.status_enums import GroupDealStatus
 
 def get_user_id_optional():
     """Get user_id if authenticated, otherwise return None (optional auth for group deal endpoint)"""
@@ -237,6 +238,59 @@ def get_group_deals():
             'message': str(e)
         }), 500
 
+def _serialize_group_deal_with_products(deal):
+    """Build deal dict with nested products (same shape as list/detail endpoints)."""
+    deal_dict = deal.to_dict()
+    deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
+    products_data = []
+    for dp in deal_products:
+        product = Product.query.get(dp.product_id)
+        if product:
+            product_dict = product.to_dict()
+            product_dict['deal_stock_limit'] = dp.deal_stock_limit
+            products_data.append(product_dict)
+    products_data.sort(key=lambda p: (
+        p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
+        p.get('sort_order', 0),
+        p.get('id', 0)
+    ))
+    deal_dict['products'] = products_data
+    return deal_dict
+
+
+@products_bp.route('/group-deals/latest', methods=['GET'])
+def get_latest_group_deal():
+    """
+    Latest storefront group deal for the app detail page.
+    Excludes upcoming and completed. Non-admins never see draft.
+    Admins may see draft in this result (same endpoint, auth-aware).
+    Eligible: active, closed, preparing, ready_for_pickup; plus draft if admin.
+    """
+    try:
+        current_user = get_current_user_optional()
+        is_admin = bool(current_user and getattr(current_user, 'is_admin', False))
+        open_statuses = [
+            GroupDealStatus.ACTIVE.value,
+            GroupDealStatus.CLOSED.value,
+            GroupDealStatus.PREPARING.value,
+            GroupDealStatus.READY_FOR_PICKUP.value,
+        ]
+        if is_admin:
+            open_statuses.append(GroupDealStatus.DRAFT.value)
+        deal = GroupDeal.query.filter(
+            GroupDeal.status.in_(open_statuses),
+            GroupDeal.deleted_at.is_(None)
+        ).order_by(GroupDeal.order_start_date.desc()).first()
+        if not deal:
+            return jsonify({'deal': None}), 200
+        return jsonify({'deal': _serialize_group_deal_with_products(deal)}), 200
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to fetch latest group deal',
+            'message': str(e)
+        }), 500
+
+
 @products_bp.route('/group-deals/<int:deal_id>', methods=['GET'])
 def get_group_deal(deal_id):
     """Get a single group deal by ID with products. Orders are accessed via /orders endpoint."""
@@ -245,36 +299,8 @@ def get_group_deal(deal_id):
             GroupDeal.id == deal_id,
             GroupDeal.deleted_at.is_(None)
         ).first_or_404()
-        deal_dict = deal.to_dict()
-        
-        # Get products for this deal
-        deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
-        products_data = []
-        for dp in deal_products:
-            product = Product.query.get(dp.product_id)
-            if product:
-                product_dict = product.to_dict()
-                product_dict['deal_stock_limit'] = dp.deal_stock_limit
-                products_data.append(product_dict)
-        
-        # Sort products by custom sort_order, then move out of stock items to bottom
-        # Out of stock = deal_stock_limit is 0 (not None, which means unlimited)
-        products_data.sort(key=lambda p: (
-            p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
-            p.get('sort_order', 0),
-            p.get('id', 0)
-        ))
-        
-        deal_dict['products'] = products_data
-        
-        # Don't return order data - allow users to place multiple orders per group deal
-        # Orders should be accessed via the /orders endpoint
-        
-        response_data = {
-            'deal': deal_dict
-        }
-        
-        return jsonify(response_data), 200
+        deal_dict = _serialize_group_deal_with_products(deal)
+        return jsonify({'deal': deal_dict}), 200
     except Exception as e:
         return jsonify({
             'error': 'Group deal not found',

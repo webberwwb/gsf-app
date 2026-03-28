@@ -10,6 +10,7 @@ from models.address import Address
 from models.product_sales_stats import ProductSalesStats
 from models.delivery_fee_config import DeliveryFeeConfig
 from models.sdr import SDR, CommissionRule, CommissionRecord
+from models.customer_feedback import CustomerFeedback, FeedbackContext, FeedbackOutcome
 from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
 from utils.date_helpers import normalize_date_start, normalize_date_end
@@ -27,7 +28,7 @@ import os
 import uuid
 import secrets
 from werkzeug.utils import secure_filename
-from sqlalchemy import func
+from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import joinedload, selectinload
 from decimal import Decimal
 from utils.shipping import calculate_shipping_fee
@@ -4001,3 +4002,506 @@ def update_commission_adjustment(record_id):
         db.session.rollback()
         current_app.logger.error(f'Error updating commission adjustment {record_id}: {e}', exc_info=True)
         return jsonify({'error': 'Failed to update adjustment', 'message': str(e)}), 500
+
+
+def _admin_user_ids():
+    return [r[0] for r in db.session.query(UserRole.user_id).filter(UserRole.role == 'admin').all()]
+
+
+def _customer_feedback_summary_for_users(user_ids, context):
+    """Returns (counts_by_user_id, records_list_by_user_id) for customer_feedback."""
+    from collections import defaultdict
+
+    if not user_ids:
+        return {}, {}
+
+    count_rows = db.session.query(
+        CustomerFeedback.user_id,
+        func.count(CustomerFeedback.id),
+    ).filter(
+        CustomerFeedback.user_id.in_(user_ids),
+        CustomerFeedback.context == context,
+    ).group_by(CustomerFeedback.user_id).all()
+    counts = {uid: c for uid, c in count_rows}
+
+    all_recs = CustomerFeedback.query.options(
+        joinedload(CustomerFeedback.created_by)
+    ).filter(
+        CustomerFeedback.user_id.in_(user_ids),
+        CustomerFeedback.context == context,
+    ).all()
+    by_uid = defaultdict(list)
+    for r in all_recs:
+        by_uid[r.user_id].append(r)
+    records_out = {}
+    for uid in user_ids:
+        rows = sorted(by_uid[uid], key=lambda x: x.created_at, reverse=True)[:25]
+        records_out[uid] = [x.to_dict(include_created_by=True) for x in rows]
+
+    return counts, records_out
+
+
+def _user_deal_order_pairs(user_ids, deal_ids):
+    """Set of (user_id, group_deal_id) where the user has a non-cancelled order in that deal."""
+    if not user_ids or not deal_ids:
+        return set()
+    rows = db.session.query(Order.user_id, Order.group_deal_id).filter(
+        Order.user_id.in_(user_ids),
+        Order.group_deal_id.in_(deal_ids),
+        Order.deleted_at.is_(None),
+        Order.status != OrderStatus.CANCELLED.value,
+    ).distinct().all()
+    return set(rows)
+
+
+def _deal_chips_for_user(user_id, deals_ordered, pair_set):
+    return [
+        {
+            'id': d.id,
+            'title': d.title,
+            'has_order': (user_id, d.id) in pair_set,
+        }
+        for d in deals_ordered
+    ]
+
+
+def _merge_chip_deals_first_time(target_deal, recent_two):
+    """Unique deals: selected target + recent two, sorted by order_end_date desc (newest first)."""
+    seen = {}
+    for d in [target_deal] + list(recent_two or []):
+        if d and d.id not in seen:
+            seen[d.id] = d
+    out = list(seen.values())
+    out.sort(
+        key=lambda d: d.order_end_date.timestamp() if d.order_end_date else 0.0,
+        reverse=True,
+    )
+    return out
+
+
+def _after_sales_first_time_buyers_payload(target_deal, admin_ids, search, chip_deals):
+    """Build items for users whose only non-cancelled order is in target_deal."""
+    q = db.session.query(Order.user_id).filter(
+        Order.deleted_at.is_(None),
+        Order.status != OrderStatus.CANCELLED.value,
+    )
+    if admin_ids:
+        q = q.filter(~Order.user_id.in_(admin_ids))
+    single_order_user_ids = [
+        r[0] for r in q.group_by(Order.user_id).having(func.count(Order.id) == 1).all()
+    ]
+
+    if not single_order_user_ids:
+        return []
+
+    orders_query = Order.query.options(
+        joinedload(Order.user),
+        joinedload(Order.group_deal),
+    ).join(User, Order.user_id == User.id).filter(
+        Order.user_id.in_(single_order_user_ids),
+        Order.group_deal_id == target_deal.id,
+        Order.deleted_at.is_(None),
+        Order.status != OrderStatus.CANCELLED.value,
+    )
+    if search:
+        term = f'%{search}%'
+        orders_query = orders_query.filter(
+            or_(
+                User.nickname.like(term),
+                User.phone.like(term),
+                User.wechat.like(term),
+            )
+        )
+    orders = orders_query.order_by(Order.created_at.desc()).all()
+
+    user_ids = list({o.user_id for o in orders})
+    fu_counts, fu_records = _customer_feedback_summary_for_users(
+        user_ids, FeedbackContext.AFTER_SALES_FIRST_ORDER
+    )
+
+    deal_ids = [d.id for d in chip_deals] if chip_deals else []
+    pair_set = _user_deal_order_pairs(user_ids, deal_ids)
+
+    items = []
+    for order in orders:
+        u = order.user
+        if not u:
+            continue
+        uid = order.user_id
+        base_total = float(order.total) if order.total is not None else 0.0
+        adj = float(order.adjustment_amount) if order.adjustment_amount is not None else 0.0
+        final_total = round(base_total + adj, 2)
+        items.append({
+            'user': {
+                'id': u.id,
+                'nickname': u.nickname,
+                'phone': u.phone,
+                'wechat': u.wechat,
+                'user_source': u.user_source or 'default',
+            },
+            'order': {
+                'id': order.id,
+                'order_number': order.order_number,
+                'created_at': order.created_at.isoformat() if order.created_at else None,
+                'status': order.status,
+                'final_total': final_total,
+            },
+            'group_deal': {
+                'id': order.group_deal.id,
+                'title': order.group_deal.title,
+                'order_end_date': order.group_deal.order_end_date.isoformat() if order.group_deal and order.group_deal.order_end_date else None,
+                'pickup_date': order.group_deal.pickup_date.isoformat() if order.group_deal and order.group_deal.pickup_date else None,
+            } if order.group_deal else None,
+            'deal_chips': _deal_chips_for_user(uid, chip_deals, pair_set),
+            'feedback': {
+                'count': fu_counts.get(uid, 0),
+                'records': fu_records.get(uid, []),
+            },
+        })
+    return items
+
+
+@admin_bp.route('/after-sales/first-time-buyers', methods=['GET'])
+def get_after_sales_first_time_buyers():
+    """First-time buyers in a chosen group deal (default: latest by order_end_date)."""
+    _admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        group_deal_options = GroupDeal.query.filter(
+            GroupDeal.deleted_at.is_(None)
+        ).order_by(GroupDeal.order_end_date.desc()).all()
+        options_payload = [d.to_dict() for d in group_deal_options]
+
+        admin_ids = _admin_user_ids()
+        search = request.args.get('search', '').strip()
+
+        if not group_deal_options:
+            return jsonify({
+                'recent_group_deals': [],
+                'group_deal_options': [],
+                'selected_group_deal_id': None,
+                'items': [],
+                'feedback_outcome_options': FeedbackOutcome.all_values(),
+            }), 200
+
+        requested_id = request.args.get('group_deal_id', type=int)
+        if requested_id is not None:
+            target_deal = GroupDeal.query.filter(
+                GroupDeal.id == requested_id,
+                GroupDeal.deleted_at.is_(None),
+            ).first()
+            if not target_deal:
+                return jsonify({
+                    'error': 'Invalid group_deal_id',
+                    'message': '团购不存在或已删除',
+                }), 400
+        else:
+            target_deal = group_deal_options[0]
+
+        recent_two = GroupDeal.query.filter(
+            GroupDeal.deleted_at.is_(None)
+        ).order_by(GroupDeal.order_end_date.desc()).limit(2).all()
+        chip_deals = _merge_chip_deals_first_time(target_deal, recent_two)
+
+        items = _after_sales_first_time_buyers_payload(target_deal, admin_ids, search, chip_deals)
+
+        return jsonify({
+            'recent_group_deals': [target_deal.to_dict()],
+            'group_deal_options': options_payload,
+            'selected_group_deal_id': target_deal.id,
+            'items': items,
+            'feedback_outcome_options': FeedbackOutcome.all_values(),
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f'Error listing first-time buyers: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to list first-time buyers', 'message': str(e)}), 500
+
+
+@admin_bp.route('/after-sales/customer-feedback', methods=['POST'])
+def create_after_sales_customer_feedback():
+    """Append one customer feedback row (multiple per user; join user to count)."""
+    admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        data = request.get_json() or {}
+        target_user_id = data.get('user_id')
+        if not target_user_id:
+            return jsonify({'error': 'user_id is required'}), 400
+
+        context = (data.get('context') or '').strip()
+        if context not in FeedbackContext.all_values():
+            return jsonify({'error': 'Invalid context'}), 400
+
+        outcome = (data.get('outcome') or '').strip()
+        if outcome not in FeedbackOutcome.all_values():
+            return jsonify({'error': 'Invalid outcome'}), 400
+
+        user = User.query.get(int(target_user_id))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        raw_order_id = data.get('order_id')
+        order_id = None
+        if raw_order_id is not None and raw_order_id != '':
+            order_id = int(raw_order_id)
+            order = Order.query.filter(
+                Order.id == order_id,
+                Order.user_id == user.id,
+                Order.deleted_at.is_(None),
+            ).first()
+            if not order:
+                return jsonify({'error': 'Order not found for this user'}), 404
+
+        notes = data.get('notes')
+        if notes is not None:
+            notes = (notes or '').strip() or None
+
+        row = CustomerFeedback(
+            user_id=user.id,
+            order_id=order_id,
+            context=context,
+            outcome=outcome,
+            notes=notes,
+            created_by_user_id=admin_id,
+        )
+        db.session.add(row)
+        db.session.commit()
+
+        saved = CustomerFeedback.query.options(
+            joinedload(CustomerFeedback.created_by)
+        ).get(row.id)
+
+        return jsonify({
+            'record': saved.to_dict(include_created_by=True) if saved else row.to_dict(),
+            'message': '已保存',
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating customer feedback: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to save feedback', 'message': str(e)}), 500
+
+
+@admin_bp.route('/after-sales/customer-feedback/<int:record_id>', methods=['PATCH'])
+def update_after_sales_customer_feedback(record_id):
+    """Update outcome/notes on an existing after-sales feedback row."""
+    _admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        row = CustomerFeedback.query.get(record_id)
+        if not row:
+            return jsonify({'error': 'Not found', 'message': '记录不存在'}), 404
+        if row.context not in FeedbackContext.all_values():
+            return jsonify({'error': 'Forbidden', 'message': '无法编辑此记录'}), 403
+
+        data = request.get_json() or {}
+        outcome = (data.get('outcome') or '').strip()
+        if outcome not in FeedbackOutcome.all_values():
+            return jsonify({'error': 'Invalid outcome'}), 400
+
+        notes = data.get('notes')
+        if notes is not None:
+            notes = (notes or '').strip() or None
+
+        row.outcome = outcome
+        row.notes = notes
+        db.session.commit()
+
+        saved = CustomerFeedback.query.options(
+            joinedload(CustomerFeedback.created_by)
+        ).get(row.id)
+
+        return jsonify({
+            'record': saved.to_dict(include_created_by=True) if saved else row.to_dict(),
+            'message': '已更新',
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating customer feedback: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update feedback', 'message': str(e)}), 500
+
+
+@admin_bp.route('/after-sales/customer-feedback/<int:record_id>', methods=['DELETE'])
+def delete_after_sales_customer_feedback(record_id):
+    """Delete one after-sales feedback row."""
+    _admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        row = CustomerFeedback.query.get(record_id)
+        if not row:
+            return jsonify({'error': 'Not found', 'message': '记录不存在'}), 404
+        if row.context not in FeedbackContext.all_values():
+            return jsonify({'error': 'Forbidden', 'message': '无法删除此记录'}), 403
+
+        db.session.delete(row)
+        db.session.commit()
+
+        return jsonify({'message': '已删除'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting customer feedback: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to delete feedback', 'message': str(e)}), 500
+
+
+@admin_bp.route('/after-sales/churned-buyers', methods=['GET'])
+def get_after_sales_churned_buyers():
+    """Users who have purchased before but have no non-cancelled order in the last two group deals (by order_end_date)."""
+    _admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        recent_deals = GroupDeal.query.filter(
+            GroupDeal.deleted_at.is_(None)
+        ).order_by(GroupDeal.order_end_date.desc()).limit(2).all()
+        recent_ids = [d.id for d in recent_deals]
+
+        admin_ids = _admin_user_ids()
+
+        if not recent_ids:
+            return jsonify({
+                'recent_group_deals': [],
+                'items': [],
+                'feedback_outcome_options': FeedbackOutcome.all_values(),
+            }), 200
+
+        q_all = db.session.query(Order.user_id).filter(
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value,
+        )
+        if admin_ids:
+            q_all = q_all.filter(~Order.user_id.in_(admin_ids))
+        all_buyer_ids = set(r[0] for r in q_all.distinct().all())
+
+        q_recent = db.session.query(Order.user_id).filter(
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value,
+            Order.group_deal_id.in_(recent_ids),
+        )
+        if admin_ids:
+            q_recent = q_recent.filter(~Order.user_id.in_(admin_ids))
+        recent_buyer_ids = set(r[0] for r in q_recent.distinct().all())
+
+        churned_ids = list(all_buyer_ids - recent_buyer_ids)
+        if not churned_ids:
+            return jsonify({
+                'recent_group_deals': [d.to_dict() for d in recent_deals],
+                'items': [],
+                'feedback_outcome_options': FeedbackOutcome.all_values(),
+            }), 200
+
+        subq = db.session.query(
+            Order.user_id.label('uid'),
+            func.max(Order.id).label('mid'),
+        ).filter(
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value,
+            Order.user_id.in_(churned_ids),
+        ).group_by(Order.user_id).subquery()
+
+        last_orders_query = Order.query.options(
+            joinedload(Order.user),
+            joinedload(Order.group_deal),
+        ).join(
+            subq,
+            and_(Order.user_id == subq.c.uid, Order.id == subq.c.mid),
+        ).join(User, Order.user_id == User.id)
+
+        search = request.args.get('search', '').strip()
+        if search:
+            term = f'%{search}%'
+            last_orders_query = last_orders_query.filter(
+                or_(
+                    User.nickname.like(term),
+                    User.phone.like(term),
+                    User.wechat.like(term),
+                )
+            )
+
+        last_orders = last_orders_query.all()
+        filtered_churned_ids = [o.user_id for o in last_orders]
+
+        if not filtered_churned_ids:
+            return jsonify({
+                'recent_group_deals': [d.to_dict() for d in recent_deals],
+                'items': [],
+                'feedback_outcome_options': FeedbackOutcome.all_values(),
+            }), 200
+
+        order_count_rows = db.session.query(
+            Order.user_id,
+            func.count(Order.id),
+        ).filter(
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value,
+            Order.user_id.in_(filtered_churned_ids),
+        ).group_by(Order.user_id).all()
+        counts = {uid: c for uid, c in order_count_rows}
+
+        fu_counts, fu_records = _customer_feedback_summary_for_users(
+            filtered_churned_ids, FeedbackContext.AFTER_SALES_CHURNED
+        )
+
+        pair_set = _user_deal_order_pairs(filtered_churned_ids, recent_ids)
+
+        items = []
+        for order in last_orders:
+            u = order.user
+            if not u:
+                continue
+            gd = order.group_deal
+            uid = u.id
+            base_total = float(order.total) if order.total is not None else 0.0
+            adj = float(order.adjustment_amount) if order.adjustment_amount is not None else 0.0
+            final_total = round(base_total + adj, 2)
+            items.append({
+                'user': {
+                    'id': u.id,
+                    'nickname': u.nickname,
+                    'phone': u.phone,
+                    'wechat': u.wechat,
+                    'user_source': u.user_source or 'default',
+                },
+                'total_non_cancelled_orders': counts.get(u.id, 0),
+                'last_order': {
+                    'id': order.id,
+                    'order_number': order.order_number,
+                    'created_at': order.created_at.isoformat() if order.created_at else None,
+                    'status': order.status,
+                    'final_total': final_total,
+                },
+                'last_group_deal': {
+                    'id': gd.id,
+                    'title': gd.title,
+                    'order_end_date': gd.order_end_date.isoformat() if gd and gd.order_end_date else None,
+                    'pickup_date': gd.pickup_date.isoformat() if gd and gd.pickup_date else None,
+                } if gd else None,
+                'deal_chips': _deal_chips_for_user(uid, recent_deals, pair_set),
+                'feedback': {
+                    'count': fu_counts.get(uid, 0),
+                    'records': fu_records.get(uid, []),
+                },
+            })
+
+        items.sort(key=lambda x: (x['last_order']['created_at'] or ''), reverse=True)
+
+        return jsonify({
+            'recent_group_deals': [d.to_dict() for d in recent_deals],
+            'items': items,
+            'feedback_outcome_options': FeedbackOutcome.all_values(),
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f'Error listing churned buyers: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to list churned buyers', 'message': str(e)}), 500

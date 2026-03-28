@@ -1,32 +1,36 @@
 <template>
   <div class="deal-detail-page">
     <header class="page-header" :class="{ 'admin-draft-header': isAdmin && deal && deal.status === 'draft' }">
-      <button @click="$router.back()" class="back-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
       <div class="header-center">
         <h1>团购详情</h1>
         <span v-if="isAdmin && deal && deal.status === 'draft'" class="admin-draft-badge">
           仅管理员可见
         </span>
       </div>
-      <div class="header-spacer"></div>
     </header>
 
     <div v-if="loading" class="loading">加载中...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-else-if="showNoDealPlaceholder" class="no-deal-placeholder">
+      <div class="no-deal-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
+        </svg>
+      </div>
+      <p class="no-deal-title">暂无团购</p>
+      <p class="no-deal-sub">请查看产品介绍，耐心等待下次团购。</p>
+    </div>
     <div v-else-if="deal" class="deal-content">
       <!-- Deal Info Section -->
-      <div class="deal-info-section" :class="{ 'admin-draft-section': isAdmin && deal.status === 'draft' }">
-        <div v-if="isAdmin && deal.status === 'draft'" class="admin-warning-banner">
+      <div class="deal-info-section" :class="{ 'admin-draft-section': isAdmin && deal && deal.status === 'draft' }">
+        <div v-if="isAdmin && deal && deal.status === 'draft'" class="admin-warning-banner">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="warning-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <div class="warning-content">
             <strong>草稿状态 - 仅管理员可见</strong>
-            <p>此团购处于草稿状态，普通用户无法看到此页面。请在管理后台将状态更改为"即将开始"或"进行中"以向用户开放。</p>
+            <p>此团购尚未对用户开放, 到开团时间会自动开放。</p>
           </div>
         </div>
         <div class="deal-header">
@@ -68,16 +72,23 @@
         </div>
       </div>
 
-      <!-- Read-only notice for closed/completed deals -->
-      <div v-if="isDealClosed" class="deal-status-notice">
+      <!-- Loaded via GET /group-deals/latest (see backend for statuses) -->
+      <div v-if="deal && deal.status === 'closed'" class="deal-status-notice">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="notice-icon">
           <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div class="notice-content">
-          <strong v-if="deal.status === 'completed'">团购已完成</strong>
-          <strong v-else>团购已截单</strong>
-          <p v-if="deal.status === 'completed'">此团购已完成，仅供查看历史信息</p>
-          <p v-else>订单提交已截止，仅可查看团购详情。如有已提交订单，请前往"我的订单"查看</p>
+          <strong>团购已截单</strong>
+          <p>已超过截单时间，商品不可再改。如需调整取货方式或支付，请前往「我的订单」操作。</p>
+        </div>
+      </div>
+      <div v-else-if="deal && dealFulfillmentPhase" class="deal-status-notice fulfillment">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="notice-icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div class="notice-content">
+          <strong>{{ deal.status === 'preparing' ? '正在配货' : '可以取货' }}</strong>
+          <p>订单处理进度请前往「我的订单」查看。</p>
         </div>
       </div>
 
@@ -385,7 +396,7 @@
         <span v-if="hasEstimatedTotal() && !isOrderCompleted" class="estimated-note">(估算)</span>
       </div>
       <button @click="confirmOrder" class="confirm-order-btn" :disabled="!isOrderEditable">
-        {{ deal.status === 'completed' ? '已完成' : (isDealClosed ? '已截单' : '确认订单') }}
+        确认下单
       </button>
     </div>
 
@@ -451,40 +462,33 @@ export default {
     },
     isAdmin() {
       return this.authStore.isAdmin
+    },
+    dealFulfillmentPhase() {
+      return this.deal && ['preparing', 'ready_for_pickup'].includes(this.deal.status)
+    },
+    isOrderEditable() {
+      return this.deal && this.deal.status === 'active'
+    },
+    showNoDealPlaceholder() {
+      return !this.loading && !this.error && !this.deal
     }
   },
   async mounted() {
-    // Load auth from storage if not already loaded
-    // This allows guest browsing - no forced authentication
     if (!this.authStore.token) {
       this.authStore.loadFromStorage()
     }
-    
-    // Debug: Log auth status
-    console.log('GroupDealDetail mounted - isAuthenticated:', this.isAuthenticated, 'token:', !!this.authStore.token)
-    
     await this.loadDeal()
-  },
-  computed: {
-    isDealClosed() {
-      return this.deal && (this.deal.status === 'closed' || this.deal.status === 'completed')
-    },
-    isOrderEditable() {
-      // Only allow editing if deal is active (not closed or completed)
-      return this.deal && this.deal.status === 'active'
-    }
   },
   methods: {
     async loadDeal() {
       this.loading = true
       this.error = null
+      this.deal = null
+      this.selectedItems = {}
       try {
-        const dealId = this.$route.params.id
-        const response = await apiClient.get(`/group-deals/${dealId}`)
+        const response = await apiClient.get('/group-deals/latest')
         this.deal = response.data.deal
-        
-        // Initialize selected items - always start clean
-        if (this.deal.products) {
+        if (this.deal && this.deal.products) {
           this.deal.products.forEach(product => {
             this.selectedItems[product.id] = {
               quantity: 0
@@ -496,6 +500,25 @@ export default {
         console.error('Failed to load deal:', error)
       } finally {
         this.loading = false
+      }
+      if (this.deal && this.authStore.isAuthenticated) {
+        await this.maybeRedirectToOrderForCurrentDeal()
+      }
+    },
+    /** If user already has a non-cancelled order for this deal, go to order detail. */
+    async maybeRedirectToOrderForCurrentDeal() {
+      if (!this.deal) return
+      try {
+        const response = await apiClient.get('/orders')
+        const orders = response.data.orders || []
+        const userOrder = orders.find(
+          o => o.group_deal_id === this.deal.id && o.status !== 'cancelled'
+        )
+        if (userOrder) {
+          await this.$router.replace(`/orders/${userOrder.id}`)
+        }
+      } catch (e) {
+        console.error('Failed to check orders for deal redirect:', e)
       }
     },
     formatDate(dateString) {
@@ -576,11 +599,11 @@ export default {
     },
     getStatusLabel(status) {
       const labels = {
-        'draft': '草稿',
-        'upcoming': '即将开始',
-        'active': '进行中',
-        'closed': '已截单',
-        'completed': '已完成'
+        draft: '草稿',
+        active: '进行中',
+        closed: '已截单',
+        preparing: '正在配货',
+        ready_for_pickup: '可以取货'
       }
       return labels[status] || status
     },
@@ -833,46 +856,15 @@ export default {
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: var(--md-spacing-md);
-}
-
-.back-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  padding: var(--md-spacing-xs);
-  cursor: pointer;
-  color: white;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  border-radius: var(--md-radius-sm);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-}
-
-.back-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.back-btn svg {
-  width: 24px;
-  height: 24px;
-  color: white;
-}
-
-.header-spacer {
-  width: 40px;
-  flex-shrink: 0;
 }
 
 .header-center {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--md-spacing-sm);
+  flex-wrap: wrap;
 }
 
 .header-logo {
@@ -899,6 +891,42 @@ export default {
 
 .error {
   color: #C62828;
+}
+
+.no-deal-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--md-spacing-xl);
+  min-height: 45vh;
+  color: var(--md-on-surface-variant);
+}
+
+.no-deal-icon {
+  width: 72px;
+  height: 72px;
+  opacity: 0.35;
+  margin-bottom: var(--md-spacing-md);
+}
+
+.no-deal-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.no-deal-title {
+  font-size: var(--md-title-size);
+  color: var(--md-on-surface);
+  font-weight: 500;
+  margin: 0 0 var(--md-spacing-xs);
+}
+
+.no-deal-sub {
+  font-size: var(--md-body-size);
+  margin: 0;
+  opacity: 0.85;
 }
 
 .deal-content {
@@ -962,27 +990,26 @@ export default {
   box-shadow: 0 2px 4px rgba(255, 68, 68, 0.3);
 }
 
-.deal-badge.upcoming {
-  background: var(--md-primary-variant);
-  color: var(--md-on-surface);
-}
-
 .deal-badge.closed {
   background: #FFF3E0;
   color: #F57C00;
   box-shadow: 0 2px 4px rgba(245, 124, 0, 0.3);
 }
 
+.deal-badge.preparing {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
+.deal-badge.ready_for_pickup {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
 .deal-badge.draft {
   background: #E0E0E0;
   color: #616161;
   box-shadow: 0 2px 4px rgba(97, 97, 97, 0.2);
-}
-
-.deal-badge.completed {
-  background: #4CAF50;
-  color: white;
-  box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
 }
 
 .page-header.admin-draft-header {
@@ -1868,6 +1895,20 @@ export default {
   font-size: var(--md-label-size);
   line-height: 1.5;
   margin: 0;
+}
+
+.deal-status-notice.fulfillment {
+  border-color: #1565C0;
+  background: linear-gradient(135deg, rgba(21, 101, 192, 0.06) 0%, rgba(46, 125, 50, 0.05) 100%);
+}
+.deal-status-notice.fulfillment .notice-icon {
+  color: #1565C0;
+}
+.deal-status-notice.fulfillment .notice-content strong {
+  color: #0D47A1;
+}
+.deal-status-notice.fulfillment .notice-content p {
+  color: #1565C0;
 }
 </style>
 

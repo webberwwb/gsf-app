@@ -13,4 +13,5 @@ from models.supplier import Supplier
 from models.product_sales_stats import ProductSalesStats
 from models.delivery_fee_config import DeliveryFeeConfig
 from models.sdr import SDR, CommissionRule, CommissionRecord
+from models.customer_feedback import CustomerFeedback, FeedbackContext, FeedbackOutcome
 

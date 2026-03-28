@@ -35,10 +35,11 @@ def verify_cron_request():
 @cron_bp.route('/cron/update-group-deal-statuses', methods=['POST'])
 def update_group_deal_statuses_cron():
     """
-    Daily cron job (00:01 EDT) to update group deal statuses:
-    1. Mark deals as CLOSED when order_end_date has passed
-    2. Mark deals as PREPARING on pickup day
-    3. Mark deals as COMPLETED when one day after pickup_date
+    Hourly cron job to update group deal statuses:
+    1. Activate DRAFT deals when order_start_date has passed
+    2. Mark deals as CLOSED when order_end_date has passed
+    3. Mark deals as PREPARING on pickup day
+    4. Mark deals as COMPLETED when one day after pickup_date
     
     This uses the same status update logic as the admin endpoint to ensure
     order statuses are cascaded correctly.
@@ -51,10 +52,40 @@ def update_group_deal_statuses_cron():
     
     try:
         now = est_now()
-        current_app.logger.info(f"[{now}] Running daily group deal status update...")
+        current_app.logger.info(f"[{now}] Running hourly group deal status update...")
         
         deals_updated = []
         total_orders_updated = 0
+        
+        # ==============================================
+        # Task 0: Activate DRAFT deals when order_start_date passes
+        # ==============================================
+        current_app.logger.info("Task 0: Checking for DRAFT deals to activate...")
+        
+        deals_to_activate = GroupDeal.query.filter(
+            GroupDeal.status == GroupDealStatus.DRAFT.value,
+            GroupDeal.order_start_date <= now,
+            GroupDeal.deleted_at.is_(None)
+        ).all()
+        
+        for deal in deals_to_activate:
+            old_status = deal.status
+            deal.status = GroupDealStatus.ACTIVE.value
+            deal.updated_at = now
+            
+            deals_updated.append({
+                'deal_id': deal.id,
+                'title': deal.title,
+                'old_status': old_status,
+                'new_status': GroupDealStatus.ACTIVE.value,
+                'orders_updated': 0
+            })
+            current_app.logger.info(f"  Activated deal '{deal.title}' (ID: {deal.id})")
+        
+        if len(deals_to_activate) > 0:
+            current_app.logger.info(f"✅ Activated {len(deals_to_activate)} DRAFT deals")
+        else:
+            current_app.logger.info("ℹ️  No DRAFT deals to activate")
         
         # ==============================================
         # Task 1: Mark deals as CLOSED when order_end_date passes

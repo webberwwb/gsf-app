@@ -13,7 +13,7 @@
         </div>
         <h2>暂无收藏</h2>
         <p>您收藏的商品将显示在这里</p>
-        <button @click="$router.push('/')" class="browse-btn">去逛逛</button>
+        <button @click="$router.push('/products')" class="browse-btn">去逛逛</button>
       </div>
       <div v-else class="favorites-list">
         <div

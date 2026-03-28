@@ -14,8 +14,18 @@ const router = createRouter({
   },
   routes: [
     {
+      path: '/group-deals/latest',
+      redirect: '/'
+    },
+    {
       path: '/',
-      name: 'Home',
+      name: 'GroupDealDetail',
+      component: () => import('../views/GroupDealDetail.vue'),
+      meta: { requiresAuth: false, showBottomNav: true }
+    },
+    {
+      path: '/products',
+      name: 'ProductIntro',
       component: () => import('../views/Home.vue'),
       meta: { requiresAuth: false, showBottomNav: true }
     },
@@ -39,15 +49,7 @@ const router = createRouter({
     },
     {
       path: '/group-deals',
-      name: 'GroupDeals',
-      component: () => import('../views/GroupDeals.vue'),
-      meta: { requiresAuth: false, showBottomNav: true }
-    },
-    {
-      path: '/group-deals/:id',
-      name: 'GroupDealDetail',
-      component: () => import('../views/GroupDealDetail.vue'),
-      meta: { requiresAuth: false, showBottomNav: true }
+      redirect: '/'
     },
     {
       path: '/checkout',

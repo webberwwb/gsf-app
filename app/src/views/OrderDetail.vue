@@ -1406,7 +1406,7 @@ export default {
 <style scoped>
 .order-detail-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #FFD700 0%, #FFA500 120px, var(--md-background) 200px);
+  background: var(--md-background);
   padding-bottom: calc(80px + env(safe-area-inset-bottom)); /* Space for bottom nav */
 }
 

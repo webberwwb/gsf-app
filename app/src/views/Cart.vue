@@ -13,7 +13,7 @@
         </div>
         <h2>购物车是空的</h2>
         <p>快去挑选您喜欢的商品吧</p>
-        <button @click="$router.push('/')" class="browse-btn">去逛逛</button>
+        <button @click="$router.push('/products')" class="browse-btn">去逛逛</button>
       </div>
       <div v-else class="cart-items">
         <div v-for="item in cartItems" :key="item.id" class="cart-item">
