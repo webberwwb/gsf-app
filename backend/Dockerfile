@@ -23,6 +23,6 @@ COPY . .
 # Cloud Run will provide PORT environment variable
 EXPOSE 8080
 
-# Use gunicorn to run the Flask app, using PORT env var from Cloud Run
-CMD exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 8 --timeout 0 wsgi:app
+# Use gunicorn with gevent-websocket worker for SocketIO support
+CMD exec gunicorn --bind 0.0.0.0:${PORT:-8080} --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --timeout 0 wsgi:app
 

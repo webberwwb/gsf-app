@@ -1,6 +1,6 @@
 from models.base import BaseModel
 from models import db
-from sqlalchemy import Numeric
+from sqlalchemy import Numeric, Integer, String, DateTime
 
 class SDR(BaseModel):
     """Sales Development Representative model"""
@@ -153,5 +153,66 @@ class CommissionRecord(BaseModel):
                 data['sdr'] = self.sdr.to_dict()
             if self.group_deal:
                 data['group_deal'] = self.group_deal.to_dict()
+        
+        return data
+
+
+class QuarterlyBonus(BaseModel):
+    """Quarterly bonus for SDR based on commission totals"""
+    __tablename__ = 'quarterly_bonuses'
+    
+    sdr_id = db.Column(Integer, db.ForeignKey('sdrs.id'), nullable=False, index=True)
+    year = db.Column(Integer, nullable=False)
+    quarter = db.Column(Integer, nullable=False)
+    
+    # Commission data (JSON array of commission records with group deal info)
+    # Structure: [
+    #   {
+    #     "commission_record_id": 1,
+    #     "group_deal_id": 5,
+    #     "group_deal_title": "2024年春季团购",
+    #     "total_commission": 500.00,
+    #     "manual_adjustment": 50.00,
+    #     "final_total": 550.00
+    #   },
+    #   ...
+    # ]
+    commission_records_data = db.Column(db.JSON, nullable=True)
+    
+    # Totals
+    total_commission = db.Column(Numeric(10, 2), nullable=False)
+    bonus_percentage = db.Column(Numeric(5, 2), nullable=False)
+    bonus_amount = db.Column(Numeric(10, 2), nullable=False)
+    
+    # Payment tracking
+    payment_status = db.Column(String(20), default='pending', nullable=False)
+    payment_date = db.Column(DateTime, nullable=True)
+    payment_notes = db.Column(db.Text, nullable=True)
+    
+    # Relationships
+    sdr = db.relationship('SDR', backref='quarterly_bonuses')
+    
+    # Unique constraint: one bonus per SDR per quarter
+    __table_args__ = (
+        db.UniqueConstraint('sdr_id', 'year', 'quarter', name='uq_sdr_year_quarter'),
+    )
+    
+    def to_dict(self, include_relations=False):
+        data = super().to_dict()
+        data.update({
+            'sdr_id': self.sdr_id,
+            'year': self.year,
+            'quarter': self.quarter,
+            'commission_records_data': self.commission_records_data,
+            'total_commission': float(self.total_commission) if self.total_commission is not None else 0.0,
+            'bonus_percentage': float(self.bonus_percentage) if self.bonus_percentage is not None else 0.0,
+            'bonus_amount': float(self.bonus_amount) if self.bonus_amount is not None else 0.0,
+            'payment_status': self.payment_status,
+            'payment_date': self.payment_date.isoformat() if self.payment_date else None,
+            'payment_notes': self.payment_notes
+        })
+        
+        if include_relations and self.sdr:
+            data['sdr'] = self.sdr.to_dict()
         
         return data

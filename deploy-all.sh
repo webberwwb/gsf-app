@@ -146,6 +146,9 @@ BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --update-env-vars "$ENV_VARS" \
     --remove-env-vars MYSQL_USER,MYSQL_PASSWORD,SECRET_KEY,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,GOOGLE_OAUTH_CLIENT_SECRET,CRON_SECRET \
     --update-secrets "$SECRETS" \
+    --execution-environment gen2 \
+    --session-affinity \
+    --timeout 1800 \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 

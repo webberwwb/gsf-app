@@ -38,6 +38,9 @@
           <button @click="openCommissionConfig" class="commission-config-btn">
             配置产品提成
           </button>
+          <button @click="openQuarterlyBonus" class="quarterly-bonus-btn">
+            季度分红
+          </button>
           <button @click="editSdr" class="edit-sdr-btn">
             编辑SDR
           </button>
@@ -171,19 +174,28 @@
       @close="closeCommissionConfig"
       @saved="fetchSdr"
     />
+
+    <!-- Quarterly Bonus Modal -->
+    <QuarterlyBonusModal
+      v-if="showQuarterlyBonusModal && sdr"
+      :sdr="sdr"
+      @close="closeQuarterlyBonus"
+    />
   </div>
 </template>
 
 <script>
 import apiClient from '../api/client'
 import CommissionConfigModal from '../components/CommissionConfigModal.vue'
+import QuarterlyBonusModal from '../components/QuarterlyBonusModal.vue'
 import { useModal } from '../composables/useModal'
 import { formatDateTimeEST_CN } from '../utils/date'
 
 export default {
   name: 'SalesManagement',
   components: {
-    CommissionConfigModal
+    CommissionConfigModal,
+    QuarterlyBonusModal
   },
   setup() {
     const { confirm, success, error } = useModal()
@@ -196,6 +208,7 @@ export default {
       loadingRecords: false,
       commissionRecords: [],
       showCommissionConfigModal: false,
+      showQuarterlyBonusModal: false,
       showCreateSdrModal: false,
       showEditSdrModal: false,
       savingSdr: false,
@@ -337,6 +350,12 @@ export default {
     closeCommissionConfig() {
       this.showCommissionConfigModal = false
     },
+    openQuarterlyBonus() {
+      this.showQuarterlyBonusModal = true
+    },
+    closeQuarterlyBonus() {
+      this.showQuarterlyBonusModal = false
+    },
     formatDate(dateString) {
       return formatDateTimeEST_CN(dateString) || 'N/A'
     },
@@ -450,6 +469,7 @@ export default {
 }
 
 .commission-config-btn,
+.quarterly-bonus-btn,
 .edit-sdr-btn,
 .create-sdr-btn {
   padding: var(--md-spacing-md) var(--md-spacing-lg);
@@ -470,6 +490,20 @@ export default {
 .commission-config-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+}
+
+.quarterly-bonus-btn {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.quarterly-bonus-btn:hover {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .edit-sdr-btn {
@@ -821,6 +855,7 @@ export default {
   }
   
   .commission-config-btn,
+  .quarterly-bonus-btn,
   .edit-sdr-btn,
   .create-sdr-btn {
     padding: 8px 16px;
@@ -847,6 +882,7 @@ export default {
   }
 
   .commission-config-btn,
+  .quarterly-bonus-btn,
   .edit-sdr-btn,
   .create-sdr-btn {
     width: 100%;

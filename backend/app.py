@@ -1,22 +1,44 @@
 from flask import Flask, redirect, request
 from flask_cors import CORS
 from flask_migrate import Migrate
+from flask_socketio import SocketIO
 from config import Config
 from models import db
 
+# Global socketio instance (initialized in create_app)
+socketio = None
+
 def create_app(config_class=Config):
+    global socketio
+    
     app = Flask(__name__)
     config = config_class()
     app.config.from_object(config)
     # Set database URI directly since Flask-SQLAlchemy needs it as a string
     app.config['SQLALCHEMY_DATABASE_URI'] = config.SQLALCHEMY_DATABASE_URI
     
+    # Configure logging for Cloud Run (logs to stdout)
+    import logging
+    import sys
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        stream=sys.stdout
+    )
+    logger = logging.getLogger(__name__)
+    
     # Initialize extensions
     db.init_app(app)
     migrate = Migrate(app, db)
     
+    # Initialize SocketIO with CORS support and gevent async mode
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', logger=True, engineio_logger=True)
+    
+    # Register WebSocket handlers
+    from websockets import register_websocket_handlers
+    register_websocket_handlers(socketio)
+    
     # Test database connection on startup
-    import logging
     logger = logging.getLogger(__name__)
     with app.app_context():
         try:
@@ -115,9 +137,10 @@ def create_app(config_class=Config):
     # Note: Database migrations are handled by Flask-Migrate
     # Run: flask db upgrade to apply migrations
 
-    return app
+    return app, socketio
 
 if __name__ == '__main__':
-    app = create_app()
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app, socketio = create_app()
+    # Use gevent mode for both development and production consistency
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
 

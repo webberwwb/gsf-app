@@ -57,6 +57,11 @@ const router = createRouter({
           path: 'after-sales',
           name: 'AfterSales',
           component: () => import('../views/AfterSales.vue')
+        },
+        {
+          path: 'work-arrangement',
+          name: 'WorkArrangement',
+          component: () => import('../views/WorkArrangement.vue')
         }
       ]
     },

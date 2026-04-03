@@ -9,8 +9,9 @@ from models.order import Order, OrderItem
 from models.address import Address
 from models.product_sales_stats import ProductSalesStats
 from models.delivery_fee_config import DeliveryFeeConfig
-from models.sdr import SDR, CommissionRule, CommissionRecord
+from models.sdr import SDR, CommissionRule, CommissionRecord, QuarterlyBonus
 from models.customer_feedback import CustomerFeedback, FeedbackContext, FeedbackOutcome
+from models.work_document import WorkDocument, ActionItem
 from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
 from utils.date_helpers import normalize_date_start, normalize_date_end
@@ -21,6 +22,7 @@ from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, 
 from schemas.product import CreateProductSchema, UpdateProductSchema, BulkUpdateSortOrderSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
 from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateUserSchema
+from schemas.work_document import CreateWorkDocumentSchema, UpdateWorkDocumentSchema, CreateActionItemSchema, UpdateActionItemSchema
 from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
 from schemas.utils import validate_request
 from urllib.parse import quote
@@ -422,9 +424,15 @@ def get_users():
         per_page = request.args.get('per_page', 50, type=int)
         search = request.args.get('search', '').strip()
         status_filter = request.args.get('status', '').strip()
+        role_filter = request.args.get('role', '').strip()
         
         # Build query
         query = User.query
+        
+        # Apply role filter (e.g., 'admin')
+        if role_filter:
+            from models.user import UserRole
+            query = query.join(UserRole).filter(UserRole.role == role_filter)
         
         # Apply search filter
         if search:
@@ -4004,6 +4012,257 @@ def update_commission_adjustment(record_id):
         return jsonify({'error': 'Failed to update adjustment', 'message': str(e)}), 500
 
 
+@admin_bp.route('/sdrs/<int:sdr_id>/quarterly-bonus/calculate', methods=['POST'])
+def calculate_quarterly_bonus(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Calculate quarterly bonus for an SDR based on commission records"""
+    try:
+        # Get SDR
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        data = request.get_json()
+        year = data.get('year')
+        quarter = data.get('quarter')
+        
+        if not year or not quarter:
+            return jsonify({'error': 'Year and quarter are required'}), 400
+        
+        if quarter not in [1, 2, 3, 4]:
+            return jsonify({'error': 'Quarter must be 1, 2, 3, or 4'}), 400
+        
+        # Calculate quarter date range
+        quarter_start_month = (quarter - 1) * 3 + 1
+        if quarter == 4:
+            quarter_end_month = 12
+            quarter_end_day = 31
+        else:
+            quarter_end_month = quarter_start_month + 2
+            # Get last day of the quarter end month
+            if quarter_end_month in [1, 3, 5, 7, 8, 10, 12]:
+                quarter_end_day = 31
+            elif quarter_end_month in [4, 6, 9, 11]:
+                quarter_end_day = 30
+            else:
+                quarter_end_day = 28
+        
+        quarter_start = datetime(year, quarter_start_month, 1)
+        quarter_end = datetime(year, quarter_end_month, quarter_end_day, 23, 59, 59)
+        
+        # Get all commission records for this SDR within the quarter
+        commission_records = CommissionRecord.query.join(
+            GroupDeal, CommissionRecord.group_deal_id == GroupDeal.id
+        ).filter(
+            CommissionRecord.sdr_id == sdr_id,
+            GroupDeal.created_at >= quarter_start,
+            GroupDeal.created_at <= quarter_end
+        ).all()
+        
+        if not commission_records:
+            return jsonify({
+                'success': True,
+                'commission_records': [],
+                'total_commission': 0,
+                'message': 'No commission records found for this quarter'
+            }), 200
+        
+        # Build commission records data
+        commission_records_data = []
+        total_commission = Decimal('0')
+        
+        for record in commission_records:
+            # For quarterly bonus, only count the base commission (exclude manual adjustments)
+            base_commission = record.total_commission
+            total_commission += base_commission
+            
+            commission_records_data.append({
+                'commission_record_id': record.id,
+                'group_deal_id': record.group_deal_id,
+                'group_deal_title': record.group_deal.title if record.group_deal else f"团购 #{record.group_deal_id}",
+                'total_commission': float(record.total_commission),
+                'manual_adjustment': float(record.manual_adjustment or 0),
+                'final_total': float(base_commission)
+            })
+        
+        return jsonify({
+            'success': True,
+            'commission_records': commission_records_data,
+            'total_commission': float(total_commission),
+            'year': year,
+            'quarter': quarter
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error calculating quarterly bonus for SDR {sdr_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to calculate quarterly bonus', 'message': str(e)}), 500
+
+
+@admin_bp.route('/sdrs/<int:sdr_id>/quarterly-bonus', methods=['POST'])
+def create_quarterly_bonus(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Create or update quarterly bonus for an SDR"""
+    try:
+        # Get SDR
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        data = request.get_json()
+        year = data.get('year')
+        quarter = data.get('quarter')
+        bonus_percentage = data.get('bonus_percentage')
+        commission_records_data = data.get('commission_records', [])
+        
+        if not year or not quarter or bonus_percentage is None:
+            return jsonify({'error': 'Year, quarter, and bonus_percentage are required'}), 400
+        
+        if quarter not in [1, 2, 3, 4]:
+            return jsonify({'error': 'Quarter must be 1, 2, 3, or 4'}), 400
+        
+        # Calculate totals
+        total_commission = Decimal('0')
+        for record_data in commission_records_data:
+            total_commission += Decimal(str(record_data.get('final_total', 0)))
+        
+        bonus_percentage_decimal = Decimal(str(bonus_percentage))
+        bonus_amount = total_commission * (bonus_percentage_decimal / Decimal('100'))
+        
+        # Check if bonus already exists
+        existing_bonus = QuarterlyBonus.query.filter_by(
+            sdr_id=sdr_id,
+            year=year,
+            quarter=quarter
+        ).first()
+        
+        if existing_bonus:
+            # Update existing bonus
+            existing_bonus.commission_records_data = commission_records_data
+            existing_bonus.total_commission = total_commission
+            existing_bonus.bonus_percentage = bonus_percentage_decimal
+            existing_bonus.bonus_amount = bonus_amount
+            bonus = existing_bonus
+        else:
+            # Create new bonus
+            bonus = QuarterlyBonus(
+                sdr_id=sdr_id,
+                year=year,
+                quarter=quarter,
+                commission_records_data=commission_records_data,
+                total_commission=total_commission,
+                bonus_percentage=bonus_percentage_decimal,
+                bonus_amount=bonus_amount,
+                payment_status='pending'
+            )
+            db.session.add(bonus)
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Created/updated quarterly bonus for SDR {sdr_id}, Q{quarter} {year}')
+        
+        return jsonify({
+            'bonus': bonus.to_dict(include_relations=True),
+            'message': '季度分红保存成功'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating quarterly bonus for SDR {sdr_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to create quarterly bonus', 'message': str(e)}), 500
+
+
+@admin_bp.route('/sdrs/<int:sdr_id>/quarterly-bonuses', methods=['GET'])
+def get_quarterly_bonuses(sdr_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Get all quarterly bonuses for an SDR"""
+    try:
+        # Get SDR
+        sdr = SDR.query.get(sdr_id)
+        if not sdr:
+            return jsonify({'error': 'SDR not found'}), 404
+        
+        bonuses = QuarterlyBonus.query.filter_by(sdr_id=sdr_id).order_by(
+            QuarterlyBonus.year.desc(),
+            QuarterlyBonus.quarter.desc()
+        ).all()
+        
+        return jsonify({
+            'bonuses': [bonus.to_dict(include_relations=True) for bonus in bonuses]
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error fetching quarterly bonuses for SDR {sdr_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to fetch quarterly bonuses'}), 500
+
+
+@admin_bp.route('/quarterly-bonuses/<int:bonus_id>/payment', methods=['PUT'])
+def update_quarterly_bonus_payment(bonus_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    """Update payment status of quarterly bonus"""
+    try:
+        bonus = QuarterlyBonus.query.get(bonus_id)
+        if not bonus:
+            return jsonify({'error': 'Quarterly bonus not found'}), 404
+        
+        data = request.get_json()
+        
+        if 'payment_status' in data:
+            bonus.payment_status = data['payment_status']
+        
+        if data.get('payment_status') == 'paid' and not bonus.payment_date:
+            bonus.payment_date = utc_now()
+        
+        if 'payment_notes' in data:
+            bonus.payment_notes = data['payment_notes']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated payment status for quarterly bonus {bonus_id}')
+        
+        return jsonify({
+            'bonus': bonus.to_dict(include_relations=True),
+            'message': '付款状态更新成功'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating quarterly bonus payment {bonus_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update payment status', 'message': str(e)}), 500
+
+
+@admin_bp.route('/quarterly-bonuses/<int:bonus_id>', methods=['DELETE'])
+def delete_quarterly_bonus(bonus_id):
+    """Delete a quarterly bonus record"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        bonus = QuarterlyBonus.query.get(bonus_id)
+        if not bonus:
+            return jsonify({'error': 'Quarterly bonus not found'}), 404
+        
+        db.session.delete(bonus)
+        db.session.commit()
+        
+        current_app.logger.info(f'Deleted quarterly bonus {bonus_id}')
+        
+        return jsonify({'message': '季度分红记录已删除'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting quarterly bonus {bonus_id}: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to delete quarterly bonus', 'message': str(e)}), 500
+
+
 def _admin_user_ids():
     return [r[0] for r in db.session.query(UserRole.user_id).filter(UserRole.role == 'admin').all()]
 
@@ -4505,3 +4764,305 @@ def get_after_sales_churned_buyers():
     except Exception as e:
         current_app.logger.error(f'Error listing churned buyers: {e}', exc_info=True)
         return jsonify({'error': 'Failed to list churned buyers', 'message': str(e)}), 500
+
+
+# ============================================
+# Work Document Routes
+# ============================================
+
+@admin_bp.route('/work-documents', methods=['GET'])
+def list_work_documents():
+    """Get all work documents"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        documents = WorkDocument.query.options(
+            joinedload(WorkDocument.created_by),
+            joinedload(WorkDocument.updated_by)
+        ).order_by(WorkDocument.updated_at.desc()).all()
+        
+        return jsonify({
+            'documents': [doc.to_dict() for doc in documents]
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error listing work documents: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to list work documents', 'message': str(e)}), 500
+
+
+@admin_bp.route('/work-documents/<int:document_id>', methods=['GET'])
+def get_work_document(document_id):
+    """Get a specific work document with action items"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        document = WorkDocument.query.options(
+            joinedload(WorkDocument.created_by),
+            joinedload(WorkDocument.updated_by),
+            joinedload(WorkDocument.action_items).joinedload(ActionItem.assigned_to),
+            joinedload(WorkDocument.action_items).joinedload(ActionItem.created_by)
+        ).get(document_id)
+        
+        if not document:
+            return jsonify({'error': 'Work document not found'}), 404
+        
+        doc_data = document.to_dict()
+        doc_data['action_items'] = [item.to_dict() for item in document.action_items]
+        
+        return jsonify(doc_data), 200
+    except Exception as e:
+        current_app.logger.error(f'Error getting work document: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to get work document', 'message': str(e)}), 500
+
+
+@admin_bp.route('/work-documents', methods=['POST'])
+def create_work_document():
+    """Create a new work document"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    validated_data, error_response, status_code = validate_request(CreateWorkDocumentSchema)
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        document = WorkDocument(
+            title=validated_data['title'],
+            content=validated_data['content'],
+            created_by_id=user_id,
+            updated_by_id=user_id
+        )
+        
+        db.session.add(document)
+        db.session.commit()
+        
+        return jsonify(document.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating work document: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to create work document', 'message': str(e)}), 500
+
+
+@admin_bp.route('/work-documents/<int:document_id>', methods=['PUT', 'PATCH'])
+def update_work_document(document_id):
+    """Update a work document"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    validated_data, error_response, status_code = validate_request(UpdateWorkDocumentSchema)
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        document = WorkDocument.query.get(document_id)
+        if not document:
+            return jsonify({'error': 'Work document not found'}), 404
+        
+        if 'title' in validated_data and validated_data['title']:
+            document.title = validated_data['title']
+        if 'content' in validated_data and validated_data['content'] is not None:
+            document.content = validated_data['content']
+        
+        document.updated_by_id = user_id
+        document.updated_at = utc_now()
+        
+        db.session.commit()
+        
+        # Broadcast update to all connected clients
+        try:
+            import app
+            if app.socketio is not None and hasattr(app.socketio, 'emit'):
+                user = User.query.get(user_id)
+                app.socketio.emit('document_changed', {
+                    'document_id': document_id,
+                    'updated_by': user.nickname or user.phone if user else 'Unknown',
+                    'updated_at': document.updated_at.isoformat() if document.updated_at else None
+                }, room=f'doc_{document_id}')
+        except Exception as ws_error:
+            current_app.logger.debug(f'Failed to broadcast document update: {ws_error}')
+        
+        return jsonify(document.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating work document: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update work document', 'message': str(e)}), 500
+
+
+@admin_bp.route('/work-documents/<int:document_id>', methods=['DELETE'])
+def delete_work_document(document_id):
+    """Delete a work document"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        document = WorkDocument.query.get(document_id)
+        if not document:
+            return jsonify({'error': 'Work document not found'}), 404
+        
+        db.session.delete(document)
+        db.session.commit()
+        
+        return jsonify({'message': 'Work document deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting work document: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to delete work document', 'message': str(e)}), 500
+
+
+# ============================================
+# Action Item Routes
+# ============================================
+
+@admin_bp.route('/action-items', methods=['GET'])
+def list_action_items():
+    """Get all action items, optionally filtered by status or assigned user"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        query = ActionItem.query.options(
+            joinedload(ActionItem.assigned_to),
+            joinedload(ActionItem.created_by),
+            joinedload(ActionItem.document)
+        )
+        
+        status = request.args.get('status')
+        if status:
+            query = query.filter_by(status=status)
+        
+        assigned_to_id = request.args.get('assigned_to_id')
+        if assigned_to_id:
+            query = query.filter_by(assigned_to_id=int(assigned_to_id))
+        
+        document_id = request.args.get('document_id')
+        if document_id:
+            query = query.filter_by(document_id=int(document_id))
+        
+        action_items = query.order_by(ActionItem.created_at.desc()).all()
+        
+        return jsonify({
+            'action_items': [item.to_dict() for item in action_items]
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error listing action items: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to list action items', 'message': str(e)}), 500
+
+
+@admin_bp.route('/action-items', methods=['POST'])
+def create_action_item():
+    """Create a new action item"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    validated_data, error_response, status_code = validate_request(CreateActionItemSchema)
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        document = WorkDocument.query.get(validated_data['document_id'])
+        if not document:
+            return jsonify({'error': 'Work document not found'}), 404
+        
+        if validated_data.get('assigned_to_id'):
+            assigned_user = User.query.get(validated_data['assigned_to_id'])
+            if not assigned_user:
+                return jsonify({'error': 'Assigned user not found'}), 404
+        
+        action_item = ActionItem(
+            document_id=validated_data['document_id'],
+            title=validated_data['title'],
+            description=validated_data.get('description'),
+            assigned_to_id=validated_data.get('assigned_to_id'),
+            status=validated_data.get('status', 'pending'),
+            due_date=validated_data.get('due_date'),
+            created_by_id=user_id
+        )
+        
+        db.session.add(action_item)
+        db.session.commit()
+        
+        return jsonify(action_item.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating action item: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to create action item', 'message': str(e)}), 500
+
+
+@admin_bp.route('/action-items/<int:item_id>', methods=['PUT', 'PATCH'])
+def update_action_item(item_id):
+    """Update an action item"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    validated_data, error_response, status_code = validate_request(UpdateActionItemSchema)
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        action_item = ActionItem.query.get(item_id)
+        if not action_item:
+            return jsonify({'error': 'Action item not found'}), 404
+        
+        if 'title' in validated_data and validated_data['title']:
+            action_item.title = validated_data['title']
+        if 'description' in validated_data:
+            action_item.description = validated_data['description']
+        if 'assigned_to_id' in validated_data:
+            if validated_data['assigned_to_id']:
+                assigned_user = User.query.get(validated_data['assigned_to_id'])
+                if not assigned_user:
+                    return jsonify({'error': 'Assigned user not found'}), 404
+            action_item.assigned_to_id = validated_data['assigned_to_id']
+        if 'status' in validated_data and validated_data['status']:
+            old_status = action_item.status
+            action_item.status = validated_data['status']
+            if validated_data['status'] == 'completed' and old_status != 'completed':
+                action_item.completed_at = utc_now()
+            elif validated_data['status'] != 'completed':
+                action_item.completed_at = None
+        if 'due_date' in validated_data:
+            action_item.due_date = validated_data['due_date']
+        if 'completed_at' in validated_data:
+            action_item.completed_at = validated_data['completed_at']
+        
+        action_item.updated_at = utc_now()
+        
+        db.session.commit()
+        
+        return jsonify(action_item.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating action item: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update action item', 'message': str(e)}), 500
+
+
+@admin_bp.route('/action-items/<int:item_id>', methods=['DELETE'])
+def delete_action_item(item_id):
+    """Delete an action item"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        action_item = ActionItem.query.get(item_id)
+        if not action_item:
+            return jsonify({'error': 'Action item not found'}), 404
+        
+        db.session.delete(action_item)
+        db.session.commit()
+        
+        return jsonify({'message': 'Action item deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting action item: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to delete action item', 'message': str(e)}), 500
+

@@ -11,8 +11,11 @@
   "dependencies": {
     "axios": "^1.6.7",
     "html5-qrcode": "^2.3.8",
+    "marked": "^17.0.5",
+    "socket.io-client": "^4.7.5",
     "vue": "^3.4.21",
-    "vue-router": "^4.3.0"
+    "vue-router": "^4.3.0",
+    "vue-showdown": "^4.2.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
