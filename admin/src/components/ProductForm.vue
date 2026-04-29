@@ -270,6 +270,26 @@
           <small class="form-hint">选择产品的供应商（可选）</small>
         </div>
 
+        <!-- Category -->
+        <div class="form-group">
+          <label for="category_id">商品分类</label>
+          <select
+            id="category_id"
+            v-model.number="formData.category_id"
+            class="form-input"
+          >
+            <option :value="null">-- 无分类 --</option>
+            <option
+              v-for="category in categories"
+              :key="category.id"
+              :value="category.id"
+            >
+              {{ category.name }}
+            </option>
+          </select>
+          <small class="form-hint">选择商品分类（可选）</small>
+        </div>
+
         <!-- Active Status -->
         <div class="form-group">
           <label class="checkbox-label">
@@ -345,10 +365,12 @@ export default {
           max_weight: null
         },
         supplier_id: null,
+        category_id: null,
         is_active: true,
         counts_toward_free_shipping: true
       },
       suppliers: [],
+      categories: [],
       imagePreviews: [],
       uploading: false,
       uploadProgress: 0,
@@ -366,6 +388,7 @@ export default {
       if (newVal) {
         this.resetForm()
         this.fetchSuppliers()
+        this.fetchCategories()
         if (this.product) {
           this.loadProductData()
         }
@@ -374,6 +397,7 @@ export default {
   },
   mounted() {
     this.fetchSuppliers()
+    this.fetchCategories()
   },
   methods: {
     resetForm() {
@@ -410,6 +434,15 @@ export default {
         this.suppliers = []
       }
     },
+    async fetchCategories() {
+      try {
+        const response = await apiClient.get('/admin/product-categories')
+        this.categories = (response.data.categories || []).filter(c => c.is_active)
+      } catch (error) {
+        console.error('Failed to fetch categories:', error)
+        this.categories = []
+      }
+    },
     loadProductData() {
       if (this.product) {
         const pricingType = this.product.pricing_type || 'per_item'
@@ -437,6 +470,7 @@ export default {
             max_weight: pricingData.max_weight || null
           },
           supplier_id: this.product.supplier_id || null,
+          category_id: this.product.category_id || null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true,
           counts_toward_free_shipping: this.product.counts_toward_free_shipping !== undefined ? this.product.counts_toward_free_shipping : true
         }

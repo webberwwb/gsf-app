@@ -158,6 +158,7 @@ router.beforeEach(async (to, from, next) => {
 
 // Ensure scroll to top after navigation completes (especially important for mobile)
 router.afterEach((to, from) => {
+  document.title = '谷语农庄下单入口'
   // Use nextTick to ensure DOM is updated before scrolling
   setTimeout(() => {
     window.scrollTo(0, 0)

@@ -115,7 +115,7 @@ source venv/bin/activate
 python app.py
 ```
 
-The backend will be available at `http://localhost:5001`
+The backend will be available at `http://localhost:5015` (set `PORT` to use another port)
 
 ### App Frontend Setup
 

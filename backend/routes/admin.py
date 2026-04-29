@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app, Response
 from models import db
 from models.product import Product
+from models.product_category import ProductCategory
 from models.user import User, AuthToken, UserRole
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.otp_attempt import OTPAttempt
@@ -14,12 +15,14 @@ from models.customer_feedback import CustomerFeedback, FeedbackContext, Feedback
 from models.work_document import WorkDocument, ActionItem
 from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
+from utils.product_repurchase import compute_product_repurchase_rates
 from utils.date_helpers import normalize_date_start, normalize_date_end
 from utils.commission import calculate_commission_for_group_deal, get_commission_summary_for_group_deal
 from datetime import datetime, timedelta, timezone, date
 from config import Config
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
 from schemas.product import CreateProductSchema, UpdateProductSchema, BulkUpdateSortOrderSchema
+from schemas.product_category import CreateProductCategorySchema, UpdateProductCategorySchema, BulkUpdateCategorySortOrderSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
 from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateUserSchema
 from schemas.work_document import CreateWorkDocumentSchema, UpdateWorkDocumentSchema, CreateActionItemSchema, UpdateActionItemSchema
@@ -236,6 +239,7 @@ def create_product():
             stock_limit=final_stock_limit,
             is_active=validated_data.get('is_active', True),
             supplier_id=validated_data.get('supplier_id'),
+            category_id=validated_data.get('category_id'),
             counts_toward_free_shipping=validated_data.get('counts_toward_free_shipping', True)
         )
         
@@ -322,6 +326,8 @@ def update_product(product_id):
             product.is_active = validated_data['is_active']
         if 'supplier_id' in validated_data:
             product.supplier_id = validated_data['supplier_id'] if validated_data['supplier_id'] else None
+        if 'category_id' in validated_data:
+            product.category_id = validated_data['category_id'] if validated_data['category_id'] else None
         if 'counts_toward_free_shipping' in validated_data:
             product.counts_toward_free_shipping = validated_data['counts_toward_free_shipping']
         
@@ -408,6 +414,188 @@ def update_product_sort_orders():
         current_app.logger.error(f'Error updating product sort orders: {e}', exc_info=True)
         return jsonify({
             'error': 'Failed to update product sort orders',
+            'message': str(e)
+        }), 500
+
+# ===== Product Category Routes =====
+
+@admin_bp.route('/product-categories', methods=['GET'])
+def get_product_categories():
+    """Get all product categories"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Get query parameters
+        sort = request.args.get('sort', 'custom')  # 'custom' or 'name'
+        
+        # Build query
+        query = ProductCategory.query
+        
+        # Apply sorting
+        if sort == 'name':
+            query = query.order_by(ProductCategory.name.asc())
+        else:  # default to custom sort order
+            query = query.order_by(ProductCategory.sort_order.asc(), ProductCategory.created_at.asc())
+        
+        categories = query.all()
+        
+        return jsonify({
+            'categories': [category.to_dict() for category in categories]
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f'Error getting product categories: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to get product categories',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/product-categories', methods=['POST'])
+def create_product_category():
+    """Create a new product category"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(CreateProductCategorySchema)
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        category = ProductCategory(
+            name=validated_data['name'],
+            description=validated_data.get('description', ''),
+            is_active=validated_data.get('is_active', True),
+            sort_order=validated_data.get('sort_order', 0)
+        )
+        
+        db.session.add(category)
+        db.session.commit()
+        
+        current_app.logger.info(f'Created product category: {category.id} - {category.name}')
+        
+        return jsonify({
+            'category': category.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating product category: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to create product category',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/product-categories/<int:category_id>', methods=['PUT'])
+def update_product_category(category_id):
+    """Update an existing product category"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    category = ProductCategory.query.get_or_404(category_id)
+    
+    # Validate request data using schema
+    validated_data, error_response, status_code = validate_request(UpdateProductCategorySchema)
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        if 'name' in validated_data:
+            category.name = validated_data['name']
+        if 'description' in validated_data:
+            category.description = validated_data['description']
+        if 'is_active' in validated_data:
+            category.is_active = validated_data['is_active']
+        if 'sort_order' in validated_data:
+            category.sort_order = validated_data['sort_order']
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated product category: {category.id} - {category.name}')
+        
+        return jsonify({
+            'category': category.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating product category: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update product category',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/product-categories/<int:category_id>', methods=['DELETE'])
+def delete_product_category(category_id):
+    """Delete a product category (soft delete by setting is_active=False)"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    category = ProductCategory.query.get_or_404(category_id)
+    
+    try:
+        # Soft delete - set is_active to False
+        category.is_active = False
+        db.session.commit()
+        
+        current_app.logger.info(f'Deleted product category: {category.id} - {category.name}')
+        
+        return jsonify({
+            'message': 'Product category deleted successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting product category: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to delete product category',
+            'message': str(e)
+        }), 500
+
+@admin_bp.route('/product-categories/sort-order', methods=['PUT'])
+def update_category_sort_orders():
+    """Update product category sort orders in bulk"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    
+    try:
+        # Validate request data
+        schema = BulkUpdateCategorySortOrderSchema()
+        data = schema.load(request.json)
+        
+        # Update each category's sort_order
+        updated_count = 0
+        for item in data['categories']:
+            category = ProductCategory.query.get(item['category_id'])
+            if category:
+                category.sort_order = item['sort_order']
+                updated_count += 1
+        
+        db.session.commit()
+        
+        current_app.logger.info(f'Updated sort order for {updated_count} product categories')
+        
+        return jsonify({
+            'message': f'Successfully updated sort order for {updated_count} product categories',
+            'updated_count': updated_count
+        }), 200
+        
+    except ValidationError as e:
+        return jsonify({
+            'error': 'Invalid request data',
+            'message': str(e.messages)
+        }), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating product category sort orders: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to update product category sort orders',
             'message': str(e)
         }), 500
 
@@ -934,21 +1122,35 @@ def get_group_deals():
         
         deals = pagination.items
         
+        # Get all deal IDs to fetch products in bulk
+        deal_ids = [deal.id for deal in deals]
+        
+        # Fetch all GroupDealProducts for these deals in one query with eager loading
+        from sqlalchemy.orm import joinedload
+        deal_products_query = GroupDealProduct.query.options(
+            joinedload(GroupDealProduct.product).joinedload(Product.category),
+            joinedload(GroupDealProduct.product).joinedload(Product.supplier)
+        ).filter(GroupDealProduct.group_deal_id.in_(deal_ids))
+        
+        deal_products_all = deal_products_query.all()
+        
+        # Group products by deal_id
+        products_by_deal = {}
+        for dp in deal_products_all:
+            if dp.group_deal_id not in products_by_deal:
+                products_by_deal[dp.group_deal_id] = []
+            
+            if dp.product:
+                product_dict = dp.product.to_dict()
+                product_dict['deal_stock_limit'] = dp.deal_stock_limit
+                product_dict['group_deal_product_id'] = dp.id
+                products_by_deal[dp.group_deal_id].append(product_dict)
+        
         # Include products for each deal
         deals_data = []
         for deal in deals:
             deal_dict = deal.to_dict()
-            # Get products for this deal
-            deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
-            products_data = []
-            for dp in deal_products:
-                product = Product.query.get(dp.product_id)
-                if product:
-                    product_dict = product.to_dict()
-                    product_dict['deal_stock_limit'] = dp.deal_stock_limit
-                    product_dict['group_deal_product_id'] = dp.id
-                    products_data.append(product_dict)
-            deal_dict['products'] = products_data
+            deal_dict['products'] = products_by_deal.get(deal.id, [])
             deals_data.append(deal_dict)
         
         return jsonify({
@@ -4764,6 +4966,26 @@ def get_after_sales_churned_buyers():
     except Exception as e:
         current_app.logger.error(f'Error listing churned buyers: {e}', exc_info=True)
         return jsonify({'error': 'Failed to list churned buyers', 'message': str(e)}), 500
+
+
+@admin_bp.route('/after-sales/product-repurchase-rates', methods=['GET'])
+def get_after_sales_product_repurchase_rates():
+    """Per-product repurchase rate from live orders (有效订单, excluding admins)."""
+    _admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        admin_ids = _admin_user_ids()
+        rows = compute_product_repurchase_rates(admin_user_ids=admin_ids)
+        for r in rows:
+            rr = r.get('repurchase_rate')
+            if rr is not None:
+                r['repurchase_rate'] = round(float(rr), 6)
+        return jsonify({'items': rows}), 200
+    except Exception as e:
+        current_app.logger.error(f'Error computing product repurchase rates: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to compute repurchase rates', 'message': str(e)}), 500
 
 
 # ============================================

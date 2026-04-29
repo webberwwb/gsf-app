@@ -177,6 +177,37 @@
               清除筛选 ({{ selectedProductFilters.length }})
             </button>
           </div>
+          
+          <!-- Selected Products Summary -->
+          <div v-if="selectedProductFilters.length > 0" class="selected-products-summary">
+            <div class="summary-header">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <h5>已选商品汇总 ({{ selectedProductFilters.length }} 个商品)</h5>
+            </div>
+            <div class="summary-stats-grid">
+              <div class="summary-stat-card">
+                <div class="summary-stat-label">总销售额</div>
+                <div class="summary-stat-value">${{ selectedProductsSummary.totalSales.toFixed(2) }}</div>
+              </div>
+              <div class="summary-stat-card">
+                <div class="summary-stat-label">订单数量</div>
+                <div class="summary-stat-value">{{ selectedProductsSummary.totalOrders }}</div>
+              </div>
+              <div class="summary-stat-card">
+                <div class="summary-stat-label">商品总数</div>
+                <div class="summary-stat-value">{{ selectedProductsSummary.totalQuantity }}</div>
+              </div>
+              <div class="summary-stat-card">
+                <div class="summary-stat-label">平均订单额</div>
+                <div class="summary-stat-value">
+                  ${{ selectedProductsSummary.totalOrders > 0 ? (selectedProductsSummary.totalSales / selectedProductsSummary.totalOrders).toFixed(2) : '0.00' }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <div class="product-stats-list">
             <div 
               v-for="productStat in statistics.productCounts" 
@@ -185,7 +216,10 @@
               @click="toggleProductFilter(productStat.productId)">
               <div class="product-stat-content">
                 <div class="product-stat-name">{{ productStat.productName }}</div>
-                <div class="product-stat-value">{{ productStat.totalQuantity }}</div>
+                <div class="product-stat-details">
+                  <div class="product-stat-value">数量: {{ productStat.totalQuantity }}</div>
+                  <div class="product-stat-sales">${{ productStat.totalSalesValue.toFixed(2) }}</div>
+                </div>
               </div>
               <div v-if="isProductFilterActive(productStat.productId)" class="product-stat-check">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
@@ -690,15 +724,45 @@ export default {
             const unit = item.product?.unit || '件'
             const pricingType = item.product?.pricing_type || 'per_item'
             const pricingData = item.product?.pricing_data || {}
+            
+            // Calculate sales value for this item
+            let itemSalesValue = 0
+            
+            // For weight-based products, calculate using actual or estimated weight
+            if (pricingType === 'unit_weight' || pricingType === 'bundled_weight') {
+              const pricePerUnit = pricingData?.price_per_unit || 0
+              
+              // If final_weight exists, use it; otherwise use minimum weight
+              // For bundled_weight: use min_weight from pricing_data (e.g., 8 for 8-10lb bundle)
+              // For unit_weight: use 1 as minimum
+              let weight = item.final_weight
+              if (!weight) {
+                if (pricingType === 'bundled_weight') {
+                  weight = pricingData?.min_weight || 1
+                } else {
+                  weight = 1
+                }
+              }
+              itemSalesValue = pricePerUnit * weight * quantity
+            } else if (pricingType === 'weight_range') {
+              // For weight_range, use the price from the item or calculate from ranges
+              // The item's unit_price already has the correct price for the weight range
+              itemSalesValue = (item.unit_price || 0) * quantity
+            } else {
+              // For per_item pricing, use unit_price * quantity
+              itemSalesValue = (item.unit_price || 0) * quantity
+            }
 
             if (productCountsMap.has(productId)) {
               const existing = productCountsMap.get(productId)
               existing.totalQuantity += quantity
+              existing.totalSalesValue += itemSalesValue
             } else {
               productCountsMap.set(productId, {
                 productId,
                 productName,
                 totalQuantity: quantity,
+                totalSalesValue: itemSalesValue,
                 unit,
                 pricingType,
                 pricingData
@@ -734,6 +798,34 @@ export default {
         cashReceived,
         cashCount,
         cashPaidCount
+      }
+    },
+    selectedProductsSummary() {
+      // Calculate summary statistics for selected products
+      if (this.selectedProductFilters.length === 0) {
+        return {
+          totalSales: 0,
+          totalOrders: 0,
+          totalQuantity: 0
+        }
+      }
+      
+      // Get selected product statistics
+      const selectedProducts = this.statistics.productCounts.filter(p => 
+        this.selectedProductFilters.includes(p.productId)
+      )
+      
+      const totalSales = selectedProducts.reduce((sum, p) => sum + p.totalSalesValue, 0)
+      const totalQuantity = selectedProducts.reduce((sum, p) => sum + p.totalQuantity, 0)
+      
+      // Count unique orders containing selected products
+      const ordersWithSelectedProducts = this.applyProductFilter(this.ordersStore.state.orders || [])
+      const totalOrders = ordersWithSelectedProducts.length
+      
+      return {
+        totalSales,
+        totalOrders,
+        totalQuantity
       }
     }
   },
@@ -1956,6 +2048,72 @@ export default {
   box-shadow: 0px 2px 4px rgba(244, 67, 54, 0.3);
 }
 
+.selected-products-summary {
+  margin-bottom: var(--md-spacing-lg);
+  padding: var(--md-spacing-lg);
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.08) 0%, rgba(255, 140, 0, 0.02) 100%);
+  border: 2px solid rgba(255, 140, 0, 0.3);
+  border-radius: var(--md-radius-lg);
+  box-shadow: 0px 2px 8px rgba(255, 140, 0, 0.15);
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  margin-bottom: var(--md-spacing-md);
+  padding-bottom: var(--md-spacing-sm);
+  border-bottom: 2px solid rgba(255, 140, 0, 0.2);
+}
+
+.summary-header svg {
+  width: 24px;
+  height: 24px;
+  color: var(--md-primary);
+}
+
+.summary-header h5 {
+  font-size: var(--md-title-size);
+  color: var(--md-on-surface);
+  margin: 0;
+  font-weight: 600;
+}
+
+.summary-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--md-spacing-md);
+}
+
+.summary-stat-card {
+  background: white;
+  padding: var(--md-spacing-md);
+  border-radius: var(--md-radius-md);
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.summary-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.summary-stat-label {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-bottom: var(--md-spacing-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-stat-value {
+  font-size: 1.5rem;
+  color: var(--md-primary);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .product-stats-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -1993,6 +2151,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   flex: 1;
+  gap: var(--md-spacing-md);
 }
 
 .product-stat-name {
@@ -2000,7 +2159,6 @@ export default {
   color: var(--md-on-surface);
   flex: 1;
   min-width: 0;
-  margin-right: var(--md-spacing-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -2010,7 +2168,21 @@ export default {
   word-break: break-word;
 }
 
+.product-stat-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
 .product-stat-value {
+  font-size: 0.75rem;
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.product-stat-sales {
   font-size: 0.875rem;
   color: var(--md-primary);
   font-weight: 600;
@@ -2688,12 +2860,42 @@ export default {
   .product-name {
     font-size: 1rem;
   }
+  
+  .summary-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--md-spacing-sm);
+  }
+  
+  .summary-stat-value {
+    font-size: 1.25rem;
+  }
 }
 
 /* Mobile Responsive Styles */
 @media (max-width: 767px) {
   .group-deal-detail-page {
     padding: var(--md-spacing-sm);
+  }
+  
+  .selected-products-summary {
+    padding: var(--md-spacing-md);
+  }
+  
+  .summary-header h5 {
+    font-size: 0.9375rem;
+  }
+  
+  .summary-stats-grid {
+    grid-template-columns: 1fr;
+    gap: var(--md-spacing-sm);
+  }
+  
+  .summary-stat-card {
+    padding: var(--md-spacing-sm) var(--md-spacing-md);
+  }
+  
+  .summary-stat-value {
+    font-size: 1.125rem;
   }
   
   .page-header {

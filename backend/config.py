@@ -1,4 +1,6 @@
 import os
+from urllib.parse import quote_plus
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,6 +27,10 @@ class Config:
         """Build database URI based on environment"""
         import logging
         logger = logging.getLogger(__name__)
+
+        # User/password must be URL-encoded (e.g. ; $ " @ in MYSQL_PASSWORD break parsing otherwise)
+        user = quote_plus(self.MYSQL_USER or '', safe='')
+        password = quote_plus(self.MYSQL_PASSWORD or '', safe='')
         
         # Cloud Run provides DB_SOCKET_PATH when Cloud SQL is connected
         db_socket_path = os.environ.get('DB_SOCKET_PATH')
@@ -38,14 +44,14 @@ class Config:
             socket_path = f"/cloudsql/{self.CLOUD_SQL_CONNECTION_NAME}"
             logger.info(f"Using Cloud Run Unix socket: {socket_path}")
             return (
-                f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@/{self.MYSQL_DATABASE}"
+                f"mysql+pymysql://{user}:{password}@/{self.MYSQL_DATABASE}"
                 f"?unix_socket={socket_path}"
             )
         
         # Local dev: use TCP connection
         logger.info(f"Using local TCP connection: {self.MYSQL_HOST}:{self.MYSQL_PORT}")
         return (
-            f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
+            f"mysql+pymysql://{user}:{password}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
         )
     
     # Set SQLALCHEMY_DATABASE_URI as a property that evaluates dynamically

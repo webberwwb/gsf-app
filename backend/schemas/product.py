@@ -43,6 +43,7 @@ class CreateProductSchema(Schema):
     description = fields.String(allow_none=True)
     is_active = fields.Boolean(missing=True)
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    category_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(missing=True)
     sort_order = fields.Integer(missing=0, validate=validate.Range(min=0))
     
@@ -105,6 +106,7 @@ class UpdateProductSchema(Schema):
     description = fields.String(allow_none=True)
     is_active = fields.Boolean(allow_none=True)
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    category_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(allow_none=True)
     sort_order = fields.Integer(allow_none=True, validate=validate.Range(min=0))
     

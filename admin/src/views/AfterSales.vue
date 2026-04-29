@@ -15,6 +15,13 @@
       >
         近两期未下单
       </button>
+      <button
+        type="button"
+        @click="activeTab = 'repurchase'"
+        :class="['tab', { active: activeTab === 'repurchase' }]"
+      >
+        回购分析
+      </button>
     </div>
 
     <div class="search-toolbar">
@@ -41,7 +48,7 @@
         v-model.trim="searchQuery"
         type="search"
         class="search-input"
-        placeholder="搜索昵称、手机号、微信号…"
+        :placeholder="searchToolbarPlaceholder"
         enterkeyhint="search"
         autocomplete="off"
         @input="scheduleSearchReload"
@@ -229,6 +236,52 @@
       </div>
     </div>
 
+    <!-- Repurchase rate by product -->
+    <div v-if="activeTab === 'repurchase'" class="tab-content">
+      <div class="hint-block repurchase-hint">
+        <div class="hint-main hint-main--single repurchase-hint-row">
+          <span class="hint-text">
+            按<strong>商品</strong>统计：每位客户对该商品的<strong>首次有效订单</strong>中的件数计为首次购买，之后各单中的件数计为<strong>回购</strong>。回购率 = 回购件数 ÷ 总销量。不含管理员账号订单。
+          </span>
+          <button
+            type="button"
+            class="btn-secondary btn-compact repurchase-refresh"
+            @click="loadRepurchase"
+            :disabled="loadingRepurchase"
+          >
+            {{ loadingRepurchase ? '刷新中…' : '刷新数据' }}
+          </button>
+        </div>
+        <p class="hint-note">由当前订单实时计算，每次打开本页或点击刷新都会重新汇总。</p>
+      </div>
+
+      <div v-if="loadingRepurchase" class="loading">加载中...</div>
+      <div v-else-if="errorRepurchase" class="error">{{ errorRepurchase }}</div>
+      <div v-else-if="filteredRepurchaseRows.length === 0" class="empty-state">
+        <p>{{ searchQuery ? '无匹配商品，可更换关键词或清除搜索' : '暂无销量数据' }}</p>
+      </div>
+      <div v-else class="repurchase-table-wrap">
+        <table class="repurchase-table">
+          <thead>
+            <tr>
+              <th>商品</th>
+              <th class="col-num">总销量（件）</th>
+              <th class="col-num">回购件数</th>
+              <th class="col-num">回购率</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in filteredRepurchaseRows" :key="row.product_id">
+              <td class="repurchase-name">{{ row.product_name }}</td>
+              <td class="col-num">{{ row.total_sold_units }}</td>
+              <td class="col-num">{{ row.repurchase_units }}</td>
+              <td class="col-num">{{ formatRepurchaseRate(row.repurchase_rate) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Add follow-up modal -->
     <div v-if="followUpModal.open" class="modal-overlay" @click.self="closeFollowUpModal">
       <div class="modal-box modal-wide">
@@ -353,9 +406,22 @@ export default {
       editHistoryForm: { outcome: '', notes: '' },
       savingHistoryEdit: false,
       searchQuery: '',
+      loadingRepurchase: false,
+      errorRepurchase: null,
+      repurchaseItems: [],
     }
   },
   computed: {
+    searchToolbarPlaceholder() {
+      if (this.activeTab === 'repurchase') return '搜索商品名称…'
+      return '搜索昵称、手机号、微信号…'
+    },
+    filteredRepurchaseRows() {
+      const q = this.searchQuery.trim().toLowerCase()
+      const items = this.repurchaseItems || []
+      if (!q) return items
+      return items.filter((row) => (row.product_name || '').toLowerCase().includes(q))
+    },
     historyRecords() {
       const row = this.followUpModal.row
       if (!row || !row.feedback || !row.feedback.records) return []
@@ -373,7 +439,8 @@ export default {
   watch: {
     activeTab(tab) {
       if (tab === 'first-time') this.loadFirstTime()
-      else this.loadChurned()
+      else if (tab === 'churned') this.loadChurned()
+      else if (tab === 'repurchase') this.loadRepurchase()
     },
   },
   methods: {
@@ -385,17 +452,18 @@ export default {
       return `登记回访，${name}`
     },
     scheduleSearchReload() {
+      if (this.activeTab === 'repurchase') return
       clearTimeout(this._searchDebounce)
       this._searchDebounce = setTimeout(() => {
         if (this.activeTab === 'first-time') this.loadFirstTime()
-        else this.loadChurned()
+        else if (this.activeTab === 'churned') this.loadChurned()
       }, 350)
     },
     clearSearch() {
       this.searchQuery = ''
       clearTimeout(this._searchDebounce)
       if (this.activeTab === 'first-time') this.loadFirstTime()
-      else this.loadChurned()
+      else if (this.activeTab === 'churned') this.loadChurned()
     },
     formatDateTime(value) {
       return formatDateTimeEST_CN(value)
@@ -418,6 +486,23 @@ export default {
       const title = d.title || `团购 #${d.id}`
       const end = d.order_end_date ? this.formatDateTime(d.order_end_date) : ''
       return end ? `${title} · 截单 ${end}` : title
+    },
+    formatRepurchaseRate(rate) {
+      if (rate == null || Number.isNaN(Number(rate))) return '—'
+      return `${(Number(rate) * 100).toFixed(1)}%`
+    },
+    async loadRepurchase() {
+      this.loadingRepurchase = true
+      this.errorRepurchase = null
+      try {
+        const { data } = await apiClient.get('/admin/after-sales/product-repurchase-rates')
+        this.repurchaseItems = data.items || []
+      } catch (e) {
+        this.errorRepurchase =
+          (e.response && e.response.data && e.response.data.message) || e.message || '加载失败'
+      } finally {
+        this.loadingRepurchase = false
+      }
     },
     async loadFirstTime() {
       this.loadingFirst = true
@@ -1244,6 +1329,58 @@ export default {
   cursor: not-allowed;
 }
 
+.repurchase-hint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-spacing-sm);
+}
+
+.repurchase-refresh {
+  flex-shrink: 0;
+}
+
+.repurchase-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--md-surface-variant);
+  border-radius: var(--md-radius-md);
+  background: #fff;
+}
+
+.repurchase-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--md-body-size);
+}
+
+.repurchase-table th,
+.repurchase-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--md-surface-variant);
+}
+
+.repurchase-table th {
+  background: var(--as-teal);
+  font-weight: 600;
+  color: var(--md-on-surface);
+}
+
+.repurchase-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.repurchase-table .col-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.repurchase-name {
+  min-width: 140px;
+}
+
 /* Mobile / small screens */
 @media (max-width: 767px) {
   .after-sales-page {
@@ -1255,7 +1392,7 @@ export default {
 
   .tabs {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0;
     margin-bottom: var(--md-spacing-md);
     border-bottom: none;

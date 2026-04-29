@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from models import db
 from models.product import Product
+from models.product_category import ProductCategory
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.product_sales_stats import ProductSalesStats
 from models.user import AuthToken, User
@@ -306,4 +307,25 @@ def get_group_deal(deal_id):
             'error': 'Group deal not found',
             'message': str(e)
         }), 404
+
+@products_bp.route('/product-categories', methods=['GET'])
+def get_product_categories():
+    """Get all active product categories (public endpoint)"""
+    try:
+        # Only show active categories
+        categories = ProductCategory.query.filter_by(
+            is_active=True
+        ).order_by(
+            ProductCategory.sort_order.asc(),
+            ProductCategory.created_at.asc()
+        ).all()
+        
+        return jsonify({
+            'categories': [category.to_dict() for category in categories]
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to fetch product categories',
+            'message': str(e)
+        }), 500
 

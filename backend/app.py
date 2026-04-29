@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, redirect, request
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -31,15 +33,25 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate = Migrate(app, db)
     
-    # Initialize SocketIO with CORS support and gevent async mode
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', logger=True, engineio_logger=True)
+    # SocketIO: prefer gevent when installed (production / full requirements); otherwise threading works for local dev
+    _socketio_kw = dict(cors_allowed_origins="*", logger=True, engineio_logger=True)
+    try:
+        import gevent  # noqa: F401
+        socketio = SocketIO(app, async_mode='gevent', **_socketio_kw)
+    except ImportError:
+        logger.info(
+            'gevent not installed; SocketIO using threading (pip install -r requirements.txt for gevent)'
+        )
+        socketio = SocketIO(app, async_mode='threading', **_socketio_kw)
+    except ValueError as e:
+        logger.warning('SocketIO gevent mode failed (%s); using threading', e)
+        socketio = SocketIO(app, async_mode='threading', **_socketio_kw)
     
     # Register WebSocket handlers
     from websockets import register_websocket_handlers
     register_websocket_handlers(socketio)
     
     # Test database connection on startup
-    logger = logging.getLogger(__name__)
     with app.app_context():
         try:
             db.session.execute(db.text('SELECT 1'))
@@ -141,6 +153,6 @@ def create_app(config_class=Config):
 
 if __name__ == '__main__':
     app, socketio = create_app()
-    # Use gevent mode for both development and production consistency
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get('PORT', '5015'))
+    socketio.run(app, host='0.0.0.0', port=port, debug=True, allow_unsafe_werkzeug=True)
 

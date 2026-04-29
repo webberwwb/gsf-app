@@ -16,7 +16,7 @@ class WorkDocumentSocket {
       return
     }
     // Use the same base URL as API client, but remove '/api' suffix for WebSocket
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5015/api'
     const apiUrl = baseUrl.replace('/api', '')
     
     this.socket = io(apiUrl, {

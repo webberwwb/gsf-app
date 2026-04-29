@@ -70,7 +70,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
           </svg>
-          <span>售后回访</span>
+          <span>售后分析</span>
         </router-link>
         <router-link to="/work-arrangement" class="nav-item" :class="{ active: $route.path === '/work-arrangement' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -135,7 +135,7 @@ export default {
         '/sales-management': '销售管理',
         '/suppliers': '供应商管理',
         '/shipping-fee': '运费管理',
-        '/after-sales': '售后回访',
+        '/after-sales': '售后分析',
         '/work-arrangement': '工作安排'
       }
       return titles[this.$route.path] || '管理后台'
