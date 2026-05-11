@@ -185,7 +185,8 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  /* Above feature modals (e.g. OrderDetailModal 10000) so confirm/warning always wins */
+  z-index: 20000;
   padding: 16px;
 }
 

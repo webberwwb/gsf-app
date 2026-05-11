@@ -23,6 +23,19 @@
           <span v-else>登录中...</span>
         </button>
 
+        <!-- Dev login button - only shows in local development -->
+        <button
+          v-if="showDevLogin"
+          @click="devLogin"
+          class="login-btn dev-btn"
+          :disabled="loading"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+          <span>开发者登录 (info@digitelf.com)</span>
+        </button>
+
         <div v-if="error" class="error-message">
           {{ error }}
         </div>
@@ -39,7 +52,8 @@ export default {
   data() {
     return {
       loading: false,
-      error: null
+      error: null,
+      showDevLogin: this.isLocalDevelopment()
     }
   },
   async mounted() {
@@ -82,6 +96,48 @@ export default {
     }
   },
   methods: {
+    isLocalDevelopment() {
+      // Show dev login button only in local development
+      const hostname = window.location.hostname
+      return hostname === 'localhost' || 
+             hostname === '127.0.0.1' || 
+             hostname.startsWith('192.168.') ||
+             hostname.startsWith('10.') ||
+             hostname.startsWith('172.')
+    },
+    
+    async devLogin() {
+      this.loading = true
+      this.error = null
+
+      try {
+        const response = await apiClient.post('/auth/dev-login', {
+          email: 'info@digitelf.com'
+        })
+
+        if (response.data.token) {
+          // Store token and user info
+          localStorage.setItem('admin_auth_token', response.data.token)
+          localStorage.setItem('admin_user', JSON.stringify(response.data.user))
+
+          if (response.data.expires_at) {
+            localStorage.setItem('admin_auth_token_expires_at', response.data.expires_at)
+          }
+
+          // Redirect to dashboard
+          this.$router.push('/')
+        } else {
+          this.error = 'Dev login failed'
+        }
+      } catch (error) {
+        const errorData = error.response?.data || {}
+        this.error = errorData.message || errorData.error || error.message || 'Dev login failed'
+        console.error('Dev login error:', error)
+      } finally {
+        this.loading = false
+      }
+    },
+
     async loginWithGoogle() {
       this.loading = true
       this.error = null
@@ -330,6 +386,18 @@ export default {
 .google-icon {
   width: 20px;
   height: 20px;
+}
+
+.dev-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  text-transform: none;
+  font-size: 0.875rem;
+}
+
+.dev-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5568d3 0%, #63408a 100%);
 }
 
 .error-message {

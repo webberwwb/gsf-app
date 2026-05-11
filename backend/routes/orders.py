@@ -14,6 +14,8 @@ from decimal import Decimal
 from utils.stock_management import check_and_reserve_stock, restore_stock, update_stock_after_order_modification
 from utils.shipping import calculate_shipping_fee
 from utils.sales_stats import update_product_sales_stats
+from services import credit_service
+from services import referral_service
 import random
 import string
 
@@ -256,7 +258,8 @@ def create_order():
         payment_method = validated_data['payment_method']
         notes = validated_data.get('notes')  # User custom notes
         
-        # Validate group deal exists and is active (excluding soft-deleted)
+        referral_raw = validated_data.get('referral_code')
+        store_credit_raw = validated_data.get('store_credit_to_apply')
         group_deal = GroupDeal.query.filter(
             GroupDeal.id == group_deal_id,
             GroupDeal.deleted_at.is_(None)
@@ -414,6 +417,24 @@ def create_order():
         tax = Decimal('0')
         total = subtotal + tax + shipping_fee
         
+        user_row = User.query.filter_by(id=user_id).with_for_update().first()
+        if not user_row:
+            return jsonify({'error': 'User not found'}), 404
+        
+        if referral_raw and not user_row.referred_by_user_id:
+            ok, err = referral_service.try_bind_referral(user_row, referral_raw)
+            if not ok:
+                db.session.rollback()
+                return jsonify({'error': err}), 400
+            db.session.refresh(user_row)
+        
+        pre_final = total
+        req_dec = Decimal(str(store_credit_raw)) if store_credit_raw is not None else Decimal('0')
+        if req_dec < 0:
+            req_dec = Decimal('0')
+        max_a = credit_service.compute_max_credit_apply(user_row, pre_final)
+        applied = min(req_dec, max_a)
+        
         # Calculate points (1 point per dollar, excluding shipping fee)
         points_earned = int(subtotal + tax)
         
@@ -441,7 +462,8 @@ def create_order():
             payment_status='unpaid',
             pickup_status='pending',
             status='submitted',
-            notes=notes  # User custom notes
+            notes=notes,
+            store_credit_applied=Decimal('0'),
         )
         
         db.session.add(order)
@@ -469,6 +491,12 @@ def create_order():
                 final_weight=final_weight  # Save weight for bundled_weight products
             )
             db.session.add(order_item)
+        
+        try:
+            credit_service.apply_order_store_credit_spend(user_row, order, applied)
+        except ValueError as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 400
         
         # Commit transaction
         db.session.commit()
@@ -750,6 +778,20 @@ def update_order(order_id):
         payment_method = validated_data.get('payment_method')
         notes = validated_data.get('notes')  # User custom notes
         
+        referral_raw = validated_data.get('referral_code')
+        store_credit_raw = validated_data.get('store_credit_to_apply')
+        
+        user_row = User.query.filter_by(id=user_id).with_for_update().first()
+        if not user_row:
+            return jsonify({'error': 'User not found'}), 404
+        credit_service.refund_order_store_credit(order, user_row)
+        if referral_raw and not user_row.referred_by_user_id:
+            ok, err = referral_service.try_bind_referral(user_row, referral_raw)
+            if not ok:
+                db.session.rollback()
+                return jsonify({'error': err}), 400
+        db.session.refresh(user_row)
+        
         # Check if items are being changed by comparing with existing order items
         existing_items = {(item.product_id, item.quantity) for item in order.items}
         new_items = {(item_data['product_id'], item_data['quantity']) for item_data in items}
@@ -1010,6 +1052,18 @@ def update_order(order_id):
                 final_weight=final_weight  # Save weight for bundled_weight products
             )
             db.session.add(order_item)
+        
+        pre_final = total + Decimal(str(order.adjustment_amount or 0))
+        req_dec = Decimal(str(store_credit_raw)) if store_credit_raw is not None else Decimal('0')
+        if req_dec < 0:
+            req_dec = Decimal('0')
+        max_a = credit_service.compute_max_credit_apply(user_row, pre_final)
+        applied = min(req_dec, max_a)
+        try:
+            credit_service.apply_order_store_credit_spend(user_row, order, applied)
+        except ValueError as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 400
         
         # Commit transaction
         db.session.commit()

@@ -105,6 +105,10 @@ export default {
     }
   },
   computed: {
+    refFromQuery() {
+      const r = this.$route.query.ref
+      return r ? String(r).trim() : ''
+    },
     isPhoneValid() {
       if (!this.phone) return false
       // Remove all non-digit characters
@@ -151,6 +155,8 @@ export default {
     if (savedPhone) {
       this.phone = savedPhone
     }
+
+    await this.updateInviteTitle()
     
     // Check if we have a valid cached token
     if (this.authStore.token || this.authStore.isAuthenticated) {
@@ -162,6 +168,17 @@ export default {
     }
   },
   methods: {
+    async updateInviteTitle() {
+      if (!this.refFromQuery) return
+      try {
+        const r = await apiClient.get(`/referrals/preview/${encodeURIComponent(this.refFromQuery)}`)
+        if (r.data?.inviter_nickname) {
+          document.title = `${r.data.inviter_nickname} 邀请您加入谷语农庄`
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    },
     formatPhoneInput() {
       // Optional: Add formatting as user types
       // For now, just trim whitespace
@@ -223,7 +240,7 @@ export default {
         }
 
         // Use the auth store login method
-        await this.authStore.login(this.phone, this.otp)
+        await this.authStore.login(this.phone, this.otp, this.refFromQuery)
 
         // Redirect to home
         this.$router.push('/')

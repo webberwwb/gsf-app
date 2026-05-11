@@ -62,14 +62,24 @@ def create_app(config_class=Config):
     
     # CORS configuration - allow all origins
     # Note: When supports_credentials=True, we can't use origins="*", so we'll handle it manually
-    CORS(app, 
-         resources={r"/api/*": {
-             "origins": "*",
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-             "expose_headers": ["Content-Type"],
-             "supports_credentials": False  # Set to False when using wildcard origin
-         }},
+    # Path must be a real regex: r"/api/*" only matched /api/ + slashes, not /api/referrals/...
+    CORS(app,
+         resources={
+             r"/api/.*": {
+                 "origins": "*",
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+                 "expose_headers": ["Content-Type"],
+                 "supports_credentials": False,
+             },
+             r"/invite/.*": {
+                 "origins": "*",
+                 "methods": ["GET", "HEAD", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Accept"],
+                 "expose_headers": ["Content-Type"],
+                 "supports_credentials": False,
+             },
+         },
          automatic_options=True)
     
     # Handle CORS headers for all responses
@@ -138,8 +148,42 @@ def create_app(config_class=Config):
     except ImportError:
         # Constants routes not available yet
         pass
+    try:
+        from routes.referrals import referrals_bp
+        app.register_blueprint(referrals_bp, url_prefix='/api/referrals')
+    except ImportError:
+        pass
     app.register_blueprint(api_bp, url_prefix='/api')
-    
+
+    @app.route('/invite/<code>')
+    def invite_landing(code):
+        """HTML landing for chat-app link previews; redirects to the Vue app with ?ref=."""
+        from flask import Response
+        from urllib.parse import quote
+        import html as html_module
+        from services import referral_service
+        preview = referral_service.invite_preview_for_code(code)
+        nickname = preview['inviter_nickname'] if preview else '好友'
+        title_text = f'{html_module.escape(nickname)} 邀请您加入谷语农庄'
+        desc = '谷语农庄 - 精品生态农产品团购'
+        app_url = config.APP_FRONTEND_URL.rstrip('/')
+        ref_val = (preview['referral_code'] if preview else referral_service.normalize_referral_code(code) or code) or ''
+        redirect_url = f'{app_url}/login?ref={quote(ref_val, safe="")}'
+        html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title_text}</title>
+<meta property="og:title" content="{title_text}" />
+<meta property="og:description" content="{desc}" />
+<meta property="og:type" content="website" />
+<meta http-equiv="refresh" content="0;url={redirect_url}" />
+</head>
+<body><p><a href="{redirect_url}">点击进入谷语农庄</a></p></body>
+</html>'''
+        return Response(html, mimetype='text/html; charset=utf-8')
+
     # Add root route
     @app.route('/')
     def root():

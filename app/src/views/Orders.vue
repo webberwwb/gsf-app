@@ -127,64 +127,117 @@
             </div>
           </div>
 
-          <!-- Delivery/Pickup Info Section for Completed Orders -->
-          <div v-if="order.status === 'completed'" class="delivery-info-section">
-            <div class="delivery-info-container">
-              <div class="delivery-method">
-                <svg v-if="order.delivery_method === 'delivery'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="delivery-icon">
+          <!-- Completed order: logistics + points as one slim meta strip (no heavy panels) -->
+          <div v-if="order.status === 'completed'" class="order-meta-strip">
+            <div class="order-meta-logistics">
+              <div
+                v-if="order.delivery_method === 'delivery'"
+                class="order-meta-one-line"
+                :title="order.address ? deliveryLineTooltip(order.address) : ''"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="order-meta-title-icon"
+                  aria-hidden="true"
+                >
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="delivery-icon">
+                <span class="order-meta-one-line-text">{{ deliveryOneLine(order) }}</span>
+              </div>
+              <div v-else class="order-meta-one-line">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="order-meta-title-icon"
+                  aria-hidden="true"
+                >
                   <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <div class="delivery-method-label">
-                  <span class="method-type">{{ order.delivery_method === 'delivery' ? '配送' : '自取' }}</span>
-                </div>
-              </div>
-              <div class="delivery-details">
-                <div v-if="order.delivery_method === 'delivery' && order.address" class="address-info">
-                  <div class="address-line">{{ order.address.recipient_name }} {{ order.address.phone }}</div>
-                  <div class="address-line">{{ order.address.address_line1 }}</div>
-                  <div v-if="order.address.address_line2" class="address-line">{{ order.address.address_line2 }}</div>
-                  <div class="address-line">{{ order.address.city }}, {{ order.address.postal_code }}</div>
-                  <div v-if="order.address.delivery_instructions" class="delivery-instructions">
-                    <span class="instructions-label">配送说明：</span>{{ order.address.delivery_instructions }}
-                  </div>
-                </div>
-                <div v-else-if="order.delivery_method === 'pickup' && order.pickup_location" class="pickup-info">
-                  <div class="pickup-location">
-                    <span class="location-label">取货地点：</span>{{ formatPickupLocation(order.pickup_location) }}
-                  </div>
-                </div>
+                <span class="order-meta-one-line-text">{{ pickupOneLine(order) }}</span>
               </div>
             </div>
-          </div>
-
-          <!-- Points Earned Section for Completed Orders -->
-          <div v-if="order.status === 'completed' && order.payment_status === 'paid' && order.points_earned" class="points-section">
-            <div class="points-container">
-              <div class="points-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <div
+              v-if="isOrderPaidDisplay(order) && order.points_earned"
+              class="order-meta-points"
+            >
+              <span class="order-meta-points-left">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="order-meta-points-icon"
+                  aria-hidden="true"
+                >
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-              </div>
-              <div class="points-content">
-                <div class="points-label">获得积分</div>
-                <div class="points-amount">{{ order.points_earned }} 积分</div>
-              </div>
+                <span class="order-meta-points-label">获得积分</span>
+              </span>
+              <span class="order-meta-points-pill">{{ formatPointsDisplay(order.points_earned) }}</span>
             </div>
           </div>
 
           <div class="order-footer">
-            <div class="order-total">
-              <span class="total-label">订单总额:</span>
-              <span class="total-amount">${{ parseFloat(order.total || 0).toFixed(2) }}</span>
+            <div class="order-footer-totals">
+              <div class="order-pricing-row">
+                <span class="order-pricing-label">商品小计</span>
+                <span class="order-pricing-value">${{ formatOrderMoney(orderSubtotalNumber(order)) }}</span>
+              </div>
+              <div
+                v-if="orderTaxNumber(order) > 0"
+                class="order-pricing-row"
+              >
+                <span class="order-pricing-label">税费</span>
+                <span class="order-pricing-value">${{ formatOrderMoney(orderTaxNumber(order)) }}</span>
+              </div>
+              <div
+                v-if="orderAdjustmentNumber(order) !== 0"
+                class="order-pricing-row"
+              >
+                <span class="order-pricing-label">价格调整</span>
+                <span
+                  :class="[
+                    'order-pricing-value',
+                    orderAdjustmentNumber(order) >= 0
+                      ? 'order-pricing-value--adjust-pos'
+                      : 'order-pricing-value--adjust-neg'
+                  ]"
+                >
+                  {{ orderAdjustmentNumber(order) >= 0 ? '+' : '-' }}${{ formatOrderMoney(Math.abs(orderAdjustmentNumber(order))) }}
+                </span>
+              </div>
+              <div
+                v-if="order.delivery_method === 'delivery'"
+                class="order-pricing-row"
+              >
+                <span class="order-pricing-label">配送费</span>
+                <span class="order-pricing-value">{{ orderShippingDisplay(order) }}</span>
+              </div>
+              <div
+                v-if="orderStoreCreditApplied(order) > 0"
+                class="order-pricing-row order-pricing-row--credit"
+              >
+                <span class="order-pricing-label">代金券</span>
+                <span class="order-pricing-value order-pricing-value--credit">-${{ formatOrderMoney(orderStoreCreditApplied(order)) }}</span>
+              </div>
+              <div class="order-pricing-row order-pricing-row--due">
+                <span class="order-pricing-label">应付金额</span>
+                <span class="order-pricing-value order-pricing-value--due">${{ formatOrderMoney(orderAmountDueNumber(order)) }}</span>
+              </div>
             </div>
             <div class="footer-right">
               <div class="payment-status">
-                <span :class="['payment-badge', getPaymentStatusClass(order.payment_status)]">
-                  {{ getPaymentStatusLabel(order.payment_status) }}
+                <span :class="['payment-badge', getListPaymentStatusClass(order)]">
+                  {{ getListPaymentStatusLabel(order) }}
                 </span>
               </div>
               <div class="order-actions" @click.stop>
@@ -306,6 +359,15 @@ import { useModal } from '../composables/useModal'
 import QRCode from 'qrcode'
 import { formatDateEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useAuthStore } from '../stores/auth'
+import {
+  orderAmountDueNumber,
+  orderStoreCreditAppliedNumber,
+  orderSubtotalNumber,
+  orderTaxNumber,
+  orderAdjustmentNumber,
+  orderShippingFeeNumber,
+  formatOrderMoney2
+} from '../utils/orderPricing'
 
 export default {
   name: 'Orders',
@@ -465,18 +527,72 @@ export default {
       }
       return classes[status] || 'pending'
     },
+    orderSubtotalNumber,
+    orderTaxNumber,
+    orderAdjustmentNumber,
+    orderAmountDueNumber,
+    orderShippingDisplay(order) {
+      if (!order || order.delivery_method !== 'delivery') return '免运费'
+      const n = orderShippingFeeNumber(order)
+      if (!Number.isFinite(n) || n <= 0) return '免运费'
+      return `$${formatOrderMoney2(n)}`
+    },
+    orderStoreCreditApplied(order) {
+      return orderStoreCreditAppliedNumber(order)
+    },
+    formatOrderMoney(value) {
+      return formatOrderMoney2(value)
+    },
+    /** Treat store-credit–covered orders ( nothing left to pay ) as 已支付 for display. */
+    isOrderPaidDisplay(order) {
+      if (!order) return false
+      if (order.payment_status === 'paid') return true
+      return orderAmountDueNumber(order) <= 0 && this.orderStoreCreditApplied(order) > 0
+    },
+    getListPaymentStatusLabel(order) {
+      if (this.isOrderPaidDisplay(order)) return '已支付'
+      return this.getPaymentStatusLabel(order.payment_status)
+    },
+    getListPaymentStatusClass(order) {
+      if (this.isOrderPaidDisplay(order)) return 'paid'
+      return this.getPaymentStatusClass(order.payment_status)
+    },
     viewOrderDetail(order) {
       // Navigate to order detail page
       this.$router.push(`/orders/${order.id}`)
     },
     formatPickupLocation(location) {
       const locationMap = {
-        'markham': '万锦',
-        'northyork': '北约克',
-        'scarborough': '士嘉堡',
-        'downtown': '市中心'
+        markham: '万锦',
+        northyork: '北约克',
+        scarborough: '士嘉堡',
+        downtown: '市中心'
       }
       return locationMap[location] || location
+    },
+    pickupOneLine(order) {
+      if (order.delivery_method !== 'pickup') return '自取'
+      if (!order.pickup_location) return '自取'
+      return `自取 · ${this.formatPickupLocation(order.pickup_location)}`
+    },
+    deliveryOneLine(order) {
+      if (order.delivery_method !== 'delivery') return '配送'
+      const a = order.address
+      if (!a) return '配送'
+      const line12 = [a.address_line1, a.address_line2].filter(Boolean).join(' ').trim()
+      const cityZip = [a.city, a.postal_code].filter(Boolean).join(', ')
+      const parts = [a.recipient_name, a.phone, line12 || null, cityZip || null].filter(Boolean)
+      return `配送 · ${parts.join(' · ')}`
+    },
+    deliveryLineTooltip(a) {
+      if (!a) return ''
+      const extra = a.delivery_instructions ? `\n备注：${a.delivery_instructions}` : ''
+      return `${this.deliveryOneLine({ delivery_method: 'delivery', address: a })}${extra}`
+    },
+    formatPointsDisplay(n) {
+      const num = Number(n)
+      if (!Number.isFinite(num)) return '—'
+      return `${num.toLocaleString('en-CA')} 积分`
     },
     setQRRef(orderId, el) {
       if (el) {
@@ -853,7 +969,7 @@ export default {
 .status-badge {
   padding: 0.25rem 0.75rem;
   border-radius: var(--md-radius-xl);
-  font-size: var(--md-label-size);
+  font-size: calc(var(--md-label-size) + 2px);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -994,21 +1110,79 @@ export default {
   color: var(--md-primary);
 }
 
-.order-footer {
+.order-footer-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+.order-pricing-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--md-spacing-sm);
+  min-height: calc((0.8125rem + 2px) * 1.4);
+  line-height: 1.4;
+}
+
+.order-pricing-row--due {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(28, 27, 31, 0.08);
+}
+
+.order-pricing-label {
+  font-size: calc(0.75rem + 2px);
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.order-pricing-value {
+  font-size: calc(0.75rem + 2px);
+  font-weight: 600;
+  text-align: right;
+  line-height: 1.4;
+}
+
+.order-pricing-value--credit {
+  color: #2e7d32;
+}
+
+.order-pricing-value--adjust-pos {
+  color: #1565c0;
+}
+
+.order-pricing-value--adjust-neg {
+  color: #c62828;
+}
+
+.order-pricing-value--due {
+  font-size: calc(0.8125rem + 2px);
+  font-weight: 700;
+  color: var(--md-primary);
+  line-height: 1.4;
+}
+
+.order-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   padding-top: var(--md-spacing-sm);
   border-top: 1px solid var(--md-outline-variant);
-  gap: var(--md-spacing-md);
-  flex-wrap: wrap;
+  gap: var(--md-spacing-sm);
 }
 
 .footer-right {
   display: flex;
   align-items: center;
-  gap: var(--md-spacing-md);
+  justify-content: flex-end;
   flex-wrap: wrap;
+  gap: var(--md-spacing-md);
+  flex-shrink: 0;
 }
 
 .payment-status {
@@ -1033,12 +1207,12 @@ export default {
   background: #FFA500;
   color: white;
   border-radius: var(--md-radius-md);
-  font-size: var(--md-label-size);
+  font-size: calc(var(--md-label-size) + 2px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   line-height: 1.5;
-  height: 36px;
+  height: 38px;
   box-shadow: 0 2px 4px rgba(255, 165, 0, 0.2);
 }
 
@@ -1067,12 +1241,12 @@ export default {
   background: #C62828;
   color: white;
   border-radius: var(--md-radius-md);
-  font-size: var(--md-label-size);
+  font-size: calc(var(--md-label-size) + 2px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   line-height: 1.5;
-  height: 36px;
+  height: 38px;
   box-shadow: 0 2px 4px rgba(198, 40, 40, 0.2);
 }
 
@@ -1128,7 +1302,7 @@ export default {
 .deadline-badge {
   padding: 0.25rem 0.75rem;
   border-radius: var(--md-radius-xl);
-  font-size: var(--md-label-size);
+  font-size: calc(var(--md-label-size) + 2px);
   font-weight: 500;
   background: #F5F5F5;
   color: #757575;
@@ -1136,13 +1310,13 @@ export default {
   line-height: 1.5;
   display: inline-flex;
   align-items: center;
-  height: 36px;
+  height: 38px;
 }
 
 .completed-badge {
   padding: 0.25rem 0.75rem;
   border-radius: var(--md-radius-xl);
-  font-size: var(--md-label-size);
+  font-size: calc(var(--md-label-size) + 2px);
   font-weight: 500;
   background: #4CAF50;
   color: white;
@@ -1150,7 +1324,7 @@ export default {
   line-height: 1.5;
   display: inline-flex;
   align-items: center;
-  height: 36px;
+  height: 38px;
 }
 
 .order-total {
@@ -1174,12 +1348,12 @@ export default {
 .payment-badge {
   padding: 0.25rem 0.75rem;
   border-radius: var(--md-radius-xl);
-  font-size: var(--md-label-size);
+  font-size: calc(var(--md-label-size) + 2px);
   font-weight: 500;
   line-height: 1.5;
   display: inline-flex;
   align-items: center;
-  height: 36px;
+  min-height: 38px;
 }
 
 .payment-badge.pending {
@@ -1500,134 +1674,93 @@ export default {
   box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
 }
 
-/* Points Section Styles */
-.points-section {
-  margin: var(--md-spacing-md) 0;
-  padding: var(--md-spacing-md);
-  background: linear-gradient(135deg, #FFF9C4 0%, #FFE082 100%);
-  border-radius: var(--md-radius-lg);
-  border: 2px solid #FFC107;
-}
-
-.points-container {
-  display: flex;
-  align-items: center;
-  gap: var(--md-spacing-md);
-}
-
-.points-icon {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  color: #FF6F00;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.8);
-  border-radius: 50%;
-}
-
-.points-icon svg {
-  width: 28px;
-  height: 28px;
-}
-
-.points-content {
-  flex: 1;
+/* Completed-order meta: inline with card, neutral “system UI” look */
+.order-meta-strip {
+  margin-top: var(--md-spacing-sm);
+  padding-top: var(--md-spacing-sm);
+  border-top: 1px solid rgba(28, 27, 31, 0.08);
   display: flex;
   flex-direction: column;
-  gap: var(--md-spacing-xs);
+  gap: 0;
 }
 
-.points-label {
-  font-size: var(--md-label-size);
-  color: #E65100;
+.order-meta-logistics {
+  min-width: 0;
+}
+
+.order-meta-one-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.order-meta-title-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--md-on-surface-variant);
+}
+
+.order-meta-one-line-text {
+  min-width: 0;
+  flex: 1;
+  font-size: calc(0.75rem + 2px);
   font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  color: var(--md-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.points-amount {
-  font-size: var(--md-title-size);
-  color: #FF6F00;
-  font-weight: 700;
-}
-
-/* Delivery Info Section Styles */
-.delivery-info-section {
-  margin: var(--md-spacing-md) 0;
-  padding: var(--md-spacing-md);
-  background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
-  border-radius: var(--md-radius-lg);
-  border: 2px solid #2196F3;
-}
-
-.delivery-info-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--md-spacing-md);
-}
-
-.delivery-method {
+.order-meta-points {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--md-spacing-sm);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(28, 27, 31, 0.06);
+  min-height: 30px;
 }
 
-.delivery-icon {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  color: #1976D2;
-}
-
-.delivery-method-label {
-  display: flex;
+.order-meta-points-left {
+  display: inline-flex;
   align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
-.method-type {
-  font-size: var(--md-title-size);
-  color: #1976D2;
-  font-weight: 600;
+.order-meta-points-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--md-on-surface-variant);
 }
 
-.delivery-details {
-  flex: 1;
+.order-meta-points-label {
+  font-size: calc(0.75rem + 2px);
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  letter-spacing: 0.01em;
 }
 
-.address-info,
-.pickup-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--md-spacing-xs);
-}
-
-.address-line {
-  font-size: var(--md-body-size);
-  color: #1565C0;
-  line-height: 1.5;
-}
-
-.delivery-instructions {
-  margin-top: var(--md-spacing-xs);
-  padding-top: var(--md-spacing-xs);
-  border-top: 1px solid rgba(21, 101, 192, 0.2);
-  font-size: var(--md-body-size);
-  color: #1565C0;
-  line-height: 1.5;
-}
-
-.instructions-label {
-  font-weight: 600;
-}
-
-.pickup-location {
-  font-size: var(--md-body-size);
-  color: #1565C0;
-  line-height: 1.5;
-}
-
-.location-label {
-  font-weight: 600;
+.order-meta-points-pill {
+  flex-shrink: 0;
+  font-size: calc(0.75rem + 2px);
+  font-weight: 700;
+  color: var(--md-primary);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 140, 0, 0.14) 0%,
+    rgba(255, 140, 0, 0.07) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 /* EMT Modal Styles */

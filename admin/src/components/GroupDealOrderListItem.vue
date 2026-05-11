@@ -12,6 +12,9 @@
       <div class="list-item-row">
         <div class="order-number">{{ order.order_number }}</div>
         <div class="status-badges">
+          <span v-if="hasMissingFinalWeight" class="missing-weight-badge" title="有按重计价商品未填写有效实际重量">
+            缺称重
+          </span>
           <span class="status-badge" :class="`status-${order.status}`">
             {{ getStatusText(order.status) }}
           </span>
@@ -21,7 +24,7 @@
         </div>
       </div>
 
-      <div class="list-item-row">
+      <div class="list-item-row list-item-row--with-pricing">
         <div class="user-info">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -30,8 +33,22 @@
           <span v-if="order.user?.phone" class="user-phone">{{ order.user.phone }}</span>
           <span v-if="order.user?.wechat" class="user-wechat">微信: {{ order.user.wechat }}</span>
         </div>
-        <div class="order-total">
-          <span class="total-amount">${{ parseFloat(order.final_total || order.total || 0).toFixed(2) }}</span>
+        <div class="order-pricing">
+          <div class="pricing-line">
+            <span class="pricing-label">订单金额</span>
+            <span class="pricing-value">${{ moneyFinal(order) }}</span>
+          </div>
+          <div
+            v-if="storeCreditApplied(order) > 0"
+            class="pricing-line pricing-line--sub"
+          >
+            <span class="pricing-label">使用代金券</span>
+            <span class="pricing-value pricing-value--credit">-${{ moneyCredit(order) }}</span>
+          </div>
+          <div class="pricing-line pricing-line--due">
+            <span class="pricing-label">应付金额</span>
+            <span class="pricing-value pricing-value--due">${{ moneyDue(order) }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -41,6 +58,9 @@
       <div class="list-item-row">
         <div class="order-number">{{ order.order_number }}</div>
         <div class="status-badges">
+          <span v-if="hasMissingFinalWeight" class="missing-weight-badge" title="有按重计价商品未填写有效实际重量">
+            缺称重
+          </span>
           <span class="status-badge" :class="`status-${order.status}`">
             {{ getStatusText(order.status) }}
           </span>
@@ -50,7 +70,7 @@
         </div>
       </div>
 
-      <div class="list-item-row">
+      <div class="list-item-row list-item-row--with-pricing">
         <div class="user-info">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -59,8 +79,22 @@
           <span v-if="order.user?.phone" class="user-phone">{{ order.user.phone }}</span>
           <span v-if="order.user?.wechat" class="user-wechat">微信: {{ order.user.wechat }}</span>
         </div>
-        <div class="order-total">
-          <span class="total-amount">${{ parseFloat(order.final_total || order.total || 0).toFixed(2) }}</span>
+        <div class="order-pricing">
+          <div class="pricing-line">
+            <span class="pricing-label">订单金额</span>
+            <span class="pricing-value">${{ moneyFinal(order) }}</span>
+          </div>
+          <div
+            v-if="storeCreditApplied(order) > 0"
+            class="pricing-line pricing-line--sub"
+          >
+            <span class="pricing-label">使用代金券</span>
+            <span class="pricing-value pricing-value--credit">-${{ moneyCredit(order) }}</span>
+          </div>
+          <div class="pricing-line pricing-line--due">
+            <span class="pricing-label">应付金额</span>
+            <span class="pricing-value pricing-value--due">${{ moneyDue(order) }}</span>
+          </div>
         </div>
       </div>
 
@@ -125,6 +159,14 @@
 </template>
 
 <script>
+import { orderHasMissingFinalWeight } from '../utils/orderWeightValidation'
+import {
+  orderFinalTotalNumber,
+  orderStoreCreditAppliedNumber,
+  orderAmountDueNumber,
+  formatOrderMoney2
+} from '../utils/orderPricing'
+
 export default {
   name: 'GroupDealOrderListItem',
   props: {
@@ -137,6 +179,11 @@ export default {
   data() {
     return {
       isExpanded: false
+    }
+  },
+  computed: {
+    hasMissingFinalWeight() {
+      return orderHasMissingFinalWeight(this.order)
     }
   },
   methods: {
@@ -175,6 +222,18 @@ export default {
       if (address.address_line1) parts.push(address.address_line1)
       if (address.city) parts.push(address.city)
       return parts.join(', ') || 'N/A'
+    },
+    moneyFinal(o) {
+      return formatOrderMoney2(orderFinalTotalNumber(o))
+    },
+    moneyCredit(o) {
+      return formatOrderMoney2(orderStoreCreditAppliedNumber(o))
+    },
+    moneyDue(o) {
+      return formatOrderMoney2(orderAmountDueNumber(o))
+    },
+    storeCreditApplied(o) {
+      return orderStoreCreditAppliedNumber(o)
     },
     handleMarkPackingComplete() {
       this.$emit('mark-packing-complete', this.order)
@@ -267,17 +326,35 @@ export default {
 
 .status-badges {
   display: flex;
-  gap: 6px;
+  align-items: center;
   flex-wrap: wrap;
+  gap: 6px;
+}
+
+.missing-weight-badge,
+.status-badge,
+.payment-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.missing-weight-badge {
+  background: #FFEBEE;
+  color: #B71C1C;
+  border: 1px solid rgba(183, 28, 28, 0.25);
 }
 
 .status-badge,
 .payment-badge {
-  padding: 3px 8px;
-  border-radius: 10px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
 }
 
 .status-submitted {
@@ -376,15 +453,71 @@ export default {
   font-weight: 500;
 }
 
-.order-total {
-  display: flex;
-  align-items: center;
+.list-item-row--with-pricing {
+  align-items: flex-start;
 }
 
-.total-amount {
-  font-size: 0.9375rem;
+.order-pricing {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 148px;
+  text-align: right;
+}
+
+.pricing-line {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pricing-line--sub .pricing-label,
+.pricing-line--sub .pricing-value {
+  font-size: 0.75rem;
+}
+
+.pricing-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.pricing-line--due {
+  margin-top: 2px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.14) 0%, rgba(255, 165, 0, 0.22) 100%);
+  border: 1px solid rgba(255, 140, 0, 0.45);
+  box-shadow: 0 1px 3px rgba(255, 140, 0, 0.2);
+  justify-content: space-between;
+}
+
+.pricing-line--due .pricing-label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #e65100;
+}
+
+.pricing-value {
+  font-size: 0.875rem;
   font-weight: 600;
-  color: var(--md-primary);
+  color: rgba(0, 0, 0, 0.87);
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-value--credit {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.pricing-value--due {
+  font-size: 1.0625rem;
+  font-weight: 800;
+  color: #bf360c;
+  font-variant-numeric: tabular-nums;
 }
 
 .delivery-method {
@@ -489,14 +622,20 @@ export default {
 /* Mobile Responsive Styles */
 @media (max-width: 767px) {
   .order-list-item {
-    padding: 10px 12px 10px 38px;
+    padding: 12px 12px 12px 40px;
     border-radius: 10px;
   }
   
   .toggle-expand-btn {
-    width: 24px;
-    height: 24px;
-    left: 6px;
+    width: 28px;
+    height: 28px;
+    left: 8px;
+    top: 14px;
+    transform: none;
+  }
+
+  .toggle-expand-btn:hover {
+    transform: scale(1.08);
   }
   
   .toggle-expand-btn svg {
@@ -508,6 +647,26 @@ export default {
     gap: 8px;
     margin-bottom: 6px;
     flex-wrap: wrap;
+  }
+
+  /* Stack user + pricing vertically so amounts are not cramped */
+  .list-item-row--with-pricing {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .list-item-row--with-pricing .user-info {
+    width: 100%;
+    min-width: 0;
+    align-items: flex-start;
+  }
+
+  .list-item-row--with-pricing .order-pricing {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
   }
   
   .order-number {
@@ -540,10 +699,30 @@ export default {
     padding: 1px 5px;
   }
   
-  .total-amount {
-    font-size: 0.875rem;
+  .order-pricing {
+    text-align: left;
   }
-  
+
+  .pricing-line {
+    justify-content: space-between;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .pricing-line--due {
+    padding: 8px 10px;
+  }
+
+  .pricing-line--due .pricing-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pricing-value--due {
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
   .delivery-method {
     font-size: 0.75rem;
   }

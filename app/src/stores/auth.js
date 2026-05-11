@@ -138,12 +138,13 @@ export const useAuthStore = defineStore('auth', {
     /**
      * Login with phone and OTP
      */
-    async login(phone, otp) {
-      // Call the correct backend endpoint for OTP verification
-      const response = await apiClient.post('/auth/phone/verify', {
-        phone,
-        otp
-      })
+    async login(phone, otp, referralCode = null) {
+      const body = { phone, otp }
+      const ref = referralCode != null ? String(referralCode).trim() : ''
+      if (ref) {
+        body.referral_code = ref
+      }
+      const response = await apiClient.post('/auth/phone/verify', body)
       
       const { token, user, expires_at } = response.data
       this.setAuth(token, user, expires_at)

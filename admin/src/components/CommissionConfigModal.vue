@@ -201,16 +201,21 @@ export default {
           try {
             this.saving = true
 
-            // Prepare rules to save (only non-zero amounts)
+            // Persist rows with any commission > 0, or rows that already had a rule (so 0/0 clears DB)
             const rulesToSave = []
             Object.keys(this.rules).forEach(productId => {
               const rule = this.rules[productId]
 
-              // Handle empty/NaN values - treat as 0
-              const safeOwnAmount = parseFloat(rule.own_customer_amount) || 0
-              const safeGeneralAmount = parseFloat(rule.general_customer_amount) || 0
+              const ownRaw = parseFloat(rule.own_customer_amount)
+              const generalRaw = parseFloat(rule.general_customer_amount)
+              const safeOwnAmount = Number.isFinite(ownRaw) ? ownRaw : 0
+              const safeGeneralAmount = Number.isFinite(generalRaw) ? generalRaw : 0
 
-              if (safeOwnAmount > 0 || safeGeneralAmount > 0) {
+              const hadExistingRule = !!this.existingRules[productId]
+              const hasNonZeroCommission =
+                safeOwnAmount > 0 || safeGeneralAmount > 0
+
+              if (hasNonZeroCommission || hadExistingRule) {
                 rulesToSave.push({
                   product_id: parseInt(productId),
                   commission_type: rule.commission_type || 'per_item',

@@ -14,6 +14,7 @@ class VerifyOTPSchema(Schema):
     """Schema for verifying OTP"""
     phone = fields.String(required=True, validate=validate.Length(min=1))
     otp = fields.String(required=True, validate=validate.Length(min=1))
+    referral_code = fields.String(required=False, allow_none=True, validate=validate.Length(max=32))
     
     class Meta:
         unknown = EXCLUDE  # Ignore unknown fields

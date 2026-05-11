@@ -88,6 +88,10 @@ const router = createRouter({
       meta: { requiresAuth: true, showBottomNav: false }
     },
     {
+      path: '/invite/:code',
+      redirect: to => ({ path: '/login', query: { ref: to.params.code } })
+    },
+    {
       path: '/login',
       name: 'Login',
       component: () => import('../views/Login.vue'),

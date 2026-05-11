@@ -687,7 +687,7 @@ export default {
   font-size: var(--md-body-size);
 }
 
-.tab:hover {
+.tab:hover:not(.active) {
   background: var(--md-surface-variant);
   color: var(--md-on-surface);
 }

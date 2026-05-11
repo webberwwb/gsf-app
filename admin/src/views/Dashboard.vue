@@ -48,6 +48,12 @@
           </svg>
           <span>用户管理</span>
         </router-link>
+        <router-link to="/credit-referrals" class="nav-item" :class="{ active: $route.path === '/credit-referrals' }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v13m0-13V6a2 2 0 112-2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+          </svg>
+          <span>用户推广</span>
+        </router-link>
         <router-link to="/sales-management" class="nav-item" :class="{ active: $route.path === '/sales-management' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -132,6 +138,7 @@ export default {
         '/group-deals': '团购管理',
         '/orders': '订单管理',
         '/users': '用户管理',
+        '/credit-referrals': '用户推广',
         '/sales-management': '销售管理',
         '/suppliers': '供应商管理',
         '/shipping-fee': '运费管理',
@@ -257,11 +264,21 @@ export default {
 <style scoped>
 .admin-layout {
   display: flex;
-  min-height: 100vh;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  /* Single scroll: lock shell to viewport; only .content-area scrolls */
+  height: 100vh;
+  max-height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--md-background);
+}
+
+@supports (height: 100dvh) {
+  .admin-layout {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
 }
 
 .sidebar {
@@ -542,11 +559,13 @@ export default {
 .main-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   max-width: 100%;
   margin-left: 260px;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: hidden;
 }
 
 /* Laptop screens - adjust for smaller sidebar */
@@ -568,9 +587,8 @@ export default {
   padding: var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
   box-shadow: var(--md-elevation-1);
-  position: sticky;
-  top: 0;
   z-index: 50;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: var(--md-spacing-md);
@@ -640,8 +658,11 @@ export default {
 .content-area {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: var(--md-spacing-lg);
   padding-bottom: calc(var(--md-spacing-lg) + env(safe-area-inset-bottom));
 }

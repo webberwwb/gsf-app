@@ -30,6 +30,66 @@
           </div>
         </div>
 
+        <div class="credit-referral-panel">
+          <div class="panel-block">
+            <h3 class="panel-title">代金券余额</h3>
+            <p class="panel-emphasis">${{ storeCreditDisplay }}</p>
+            <p class="panel-hint">下单支付时可抵扣订单金额（与积分不同）</p>
+            <p v-if="user?.referrer_display_name" class="referrer-line">
+              我的邀请人：{{ user.referrer_display_name }}
+            </p>
+            <button type="button" class="ledger-btn" @click="openCreditLedger">
+              查看代金券明细
+            </button>
+          </div>
+
+          <div class="panel-block">
+            <h3 class="panel-title">我的推荐码</h3>
+            <template v-if="user && user.referral_unlocked && user.referral_code">
+              <div class="ref-code-row">
+                <span class="ref-code">{{ user.referral_code }}</span>
+                <button type="button" class="mini-btn" @click="copyText(user.referral_code)">复制</button>
+              </div>
+              <button type="button" class="outline-btn" @click="copyInviteLink">复制邀请链接</button>
+              <p class="panel-hint">好友用您的链接注册或绑定推荐码后，好友立即获得奖励；好友首单完成后您再获得奖励。</p>
+            </template>
+            <p v-else class="placeholder-msg">
+              完成任意一笔订单后，即可获得专属推荐码。邀请好友加入，双方均可获得代金券。
+            </p>
+          </div>
+
+          <div v-if="user && user.referral_unlocked && invitees.length" class="panel-block">
+            <h3 class="panel-title">我邀请的好友</h3>
+            <ul class="invitees-ul">
+              <li v-for="row in invitees" :key="row.referral_id" class="invitee-li">
+                <span class="invitee-name">{{ row.invitee_nickname || ('用户' + row.invitee_user_id) }}</span>
+                <span class="invitee-status">{{ row.status_label }}</span>
+              </li>
+            </ul>
+          </div>
+
+          <div v-if="user && showReferralInviteRow" class="panel-block">
+            <h3 class="panel-title">填写好友推荐码</h3>
+            <p class="panel-hint">若尚未绑定过推荐人，可在此填写，并获取代金券（仅一次）</p>
+            <div class="apply-row apply-row--solo">
+              <input
+                v-model="referralApplyCode"
+                type="text"
+                class="apply-input apply-input--full"
+                placeholder="推荐码"
+                autocapitalize="characters"
+                autocomplete="off"
+              />
+            </div>
+            <p v-if="referralFeedback?.kind === 'loading'" class="referral-live-msg referral-live-msg--muted">
+              验证中…
+            </p>
+            <p v-else-if="referralFeedback?.kind === 'err'" class="referral-live-msg referral-live-msg--err">
+              {{ referralFeedback.text }}
+            </p>
+          </div>
+        </div>
+
         <div class="menu-section">
         <div class="menu-item" @click="$router.push('/addresses')">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
@@ -75,28 +135,81 @@
           <button @click="handleLogout" class="logout-btn">退出登录</button>
         </div>
       </template>
+
+      <Teleport to="body">
+        <div
+          v-if="showCreditLedger"
+          class="ledger-overlay"
+          @click.self="closeCreditLedger"
+        >
+          <div class="ledger-sheet" role="dialog" aria-modal="true" aria-labelledby="ledger-title">
+            <div class="ledger-sheet-header">
+              <h3 id="ledger-title" class="ledger-sheet-title">代金券明细</h3>
+              <button type="button" class="ledger-close" aria-label="关闭" @click="closeCreditLedger">
+                ×
+              </button>
+            </div>
+            <div class="ledger-sheet-body">
+              <p v-if="creditTxLoading" class="ledger-status">加载中…</p>
+              <p v-else-if="creditTxError" class="ledger-status ledger-status--err">{{ creditTxError }}</p>
+              <ul v-else-if="creditTxList.length" class="ledger-list">
+                <li v-for="t in creditTxList" :key="t.id" class="ledger-item">
+                  <div class="ledger-item-top">
+                    <span class="ledger-type">{{ t.tx_type_label }}</span>
+                    <span
+                      class="ledger-delta"
+                      :class="{ 'ledger-delta--pos': Number(t.delta) > 0, 'ledger-delta--neg': Number(t.delta) < 0 }"
+                    >
+                      {{ Number(t.delta) > 0 ? '+' : '' }}{{ Number(t.delta).toFixed(2) }}
+                    </span>
+                  </div>
+                  <p v-if="t.reason" class="ledger-reason">{{ t.reason }}</p>
+                  <p v-if="t.related_order_number" class="ledger-order">订单：{{ t.related_order_number }}</p>
+                  <p class="ledger-footer-line">
+                    余额 ${{ Number(t.balance_after).toFixed(2) }} · {{ formatTxTime(t.created_at) }}
+                  </p>
+                </li>
+              </ul>
+              <p v-else class="ledger-status">暂无代金券记录</p>
+            </div>
+          </div>
+        </div>
+      </Teleport>
     </main>
   </div>
 </template>
 
 <script>
 import apiClient from '../api/client'
+import { getAppPublicOrigin } from '@/config/api'
+import { formatDateTimeEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import { useAuthStore } from '../stores/auth'
+import { REFERRAL_BIND_DEBOUNCE_MS } from '../utils/referralLiveBind'
+import { getUserHasCompletedOrderCached } from '../utils/referralInviteUi'
 
 export default {
   name: 'Me',
   setup() {
-    const { confirm, error: showError } = useModal()
+    const { confirm, error: showError, success, alert: showAlert } = useModal()
     const authStore = useAuthStore()
-    return { confirm, showError, authStore }
+    return { confirm, showError, success, showAlert, authStore }
   },
   data() {
     return {
       showVersionSection: false,
       currentVersion: null,
       latestVersion: null,
-      isUpdating: false
+      isUpdating: false,
+      invitees: [],
+      referralApplyCode: '',
+      referralFeedback: null,
+      referralBindTimer: null,
+      showCreditLedger: false,
+      creditTxLoading: false,
+      creditTxList: [],
+      creditTxError: null,
+      referralUiHadCompletedOrder: null
     }
   },
   computed: {
@@ -136,6 +249,31 @@ export default {
     },
     isIOS() {
       return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
+    },
+    storeCreditDisplay() {
+      return Number(this.user?.store_credit_balance || 0).toFixed(2)
+    },
+    inviteShareOrigin() {
+      return getAppPublicOrigin()
+    },
+    showReferralInviteRow() {
+      const u = this.user
+      if (!u || u.referred_by_user_id) return false
+      return this.referralUiHadCompletedOrder === false
+    }
+  },
+  watch: {
+    referralApplyCode() {
+      this.scheduleReferralApplyLive()
+    },
+    'user.id'(id) {
+      if (id) this.refreshReferralInviteUiGate()
+    }
+  },
+  beforeUnmount() {
+    if (this.referralBindTimer) {
+      clearTimeout(this.referralBindTimer)
+      this.referralBindTimer = null
     }
   },
   mounted() {
@@ -148,6 +286,8 @@ export default {
     if (this.authStore.isAuthenticated) {
       this.loadUser()
       this.loadVersions()
+      this.fetchInvitees()
+      this.refreshReferralInviteUiGate()
     }
   },
   methods: {
@@ -162,9 +302,112 @@ export default {
         const response = await apiClient.get('/auth/me')
         if (response?.data?.user) {
           this.authStore.setUser(response.data.user)
+          await this.fetchInvitees()
+          await this.refreshReferralInviteUiGate()
         }
       } catch (error) {
         console.error('Failed to fetch user:', error)
+      }
+    },
+    async fetchInvitees() {
+      if (!this.authStore.isAuthenticated) return
+      try {
+        const r = await apiClient.get('/referrals/invitees')
+        this.invitees = r.data?.invitees || []
+      } catch (e) {
+        console.warn('invitees', e)
+        this.invitees = []
+      }
+    },
+    async refreshReferralInviteUiGate() {
+      const u = this.user
+      if (!u?.id) {
+        this.referralUiHadCompletedOrder = null
+        return
+      }
+      this.referralUiHadCompletedOrder = await getUserHasCompletedOrderCached(u.id)
+    },
+    async copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text)
+        await this.success('已复制到剪贴板', { title: '完成' })
+      } catch (_) {
+        await this.showError('复制失败，请手动复制')
+      }
+    },
+    async copyInviteLink() {
+      if (!this.user?.referral_code) return
+      const url = `${this.inviteShareOrigin}/login?ref=${encodeURIComponent(this.user.referral_code)}`
+      await this.copyText(url)
+    },
+    formatTxTime(iso) {
+      return formatDateTimeEST_CN(iso)
+    },
+    openCreditLedger() {
+      this.showCreditLedger = true
+      this.loadCreditTransactions()
+    },
+    closeCreditLedger() {
+      this.showCreditLedger = false
+    },
+    async loadCreditTransactions() {
+      this.creditTxLoading = true
+      this.creditTxError = null
+      try {
+        const r = await apiClient.get('/referrals/credit-transactions')
+        this.creditTxList = r.data?.transactions || []
+      } catch (e) {
+        this.creditTxError = e.response?.data?.error || e.response?.data?.message || '加载失败'
+        this.creditTxList = []
+      } finally {
+        this.creditTxLoading = false
+      }
+    },
+    scheduleReferralApplyLive() {
+      if (this.referralBindTimer) {
+        clearTimeout(this.referralBindTimer)
+        this.referralBindTimer = null
+      }
+      const raw = (this.referralApplyCode || '').trim()
+      if (!raw) {
+        this.referralFeedback = null
+        return
+      }
+      if (!this.user || this.user.referred_by_user_id || !this.showReferralInviteRow) {
+        this.referralFeedback = null
+        return
+      }
+      this.referralBindTimer = setTimeout(() => {
+        this.referralBindTimer = null
+        this.runReferralApplyLive(raw)
+      }, REFERRAL_BIND_DEBOUNCE_MS)
+    },
+    async runReferralApplyLive(raw) {
+      if (!this.user || this.user.referred_by_user_id || !this.showReferralInviteRow) return
+      if ((this.referralApplyCode || '').trim() !== raw) return
+      this.referralFeedback = { kind: 'loading' }
+      try {
+        const v = await apiClient.get('/referrals/validate-code', { params: { code: raw } })
+        const d = v.data || {}
+        if (!d.valid) {
+          this.referralFeedback = { kind: 'err', text: d.message || '邀请码无效' }
+          return
+        }
+        if ((this.referralApplyCode || '').trim() !== raw) return
+        const r = await apiClient.post('/referrals/apply', { code: raw })
+        if (r.data?.user) {
+          this.authStore.setUser(r.data.user)
+        } else {
+          await this.fetchUser()
+        }
+        const nick = d.inviter_nickname || '好友'
+        this.referralApplyCode = ''
+        this.referralFeedback = null
+        await this.fetchInvitees()
+        await this.success(`已绑定邀请人《${nick}》`, { title: '成功' })
+      } catch (e) {
+        const msg = e.response?.data?.error || e.response?.data?.message || '绑定失败'
+        this.referralFeedback = { kind: 'err', text: msg }
       }
     },
     goToLogin() {
@@ -810,6 +1053,317 @@ export default {
 .signup-btn:active {
   transform: translateY(0);
   box-shadow: var(--md-elevation-2);
+}
+
+.credit-referral-panel {
+  margin: 0 0 var(--md-spacing-md);
+  padding: var(--md-spacing-md);
+  background: var(--md-surface);
+  border-radius: var(--md-radius-lg);
+  box-shadow: var(--md-elevation-1);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.panel-block + .panel-block {
+  margin-top: var(--md-spacing-lg);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid var(--md-surface-variant);
+}
+
+.panel-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 var(--md-spacing-sm);
+  color: var(--md-on-surface);
+}
+
+.panel-emphasis {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--md-primary);
+}
+
+.panel-hint {
+  font-size: 0.8rem;
+  color: var(--md-on-surface-variant);
+  margin: var(--md-spacing-xs) 0 0;
+  line-height: 1.4;
+}
+
+.referrer-line {
+  font-size: 0.85rem;
+  color: var(--md-on-surface);
+  margin: var(--md-spacing-md) 0 0;
+  font-weight: 500;
+}
+
+.ledger-btn {
+  margin-top: var(--md-spacing-md);
+  width: 100%;
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border-radius: var(--md-radius-sm);
+  border: 1px solid var(--md-outline);
+  background: var(--md-surface);
+  color: var(--md-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ledger-btn:active {
+  opacity: 0.9;
+}
+
+.ledger-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.ledger-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  background: var(--md-surface);
+  border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0;
+  box-shadow: var(--md-elevation-3);
+  display: flex;
+  flex-direction: column;
+  animation: ledger-slide-up 0.25s ease-out;
+}
+
+@keyframes ledger-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.ledger-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  border-bottom: 1px solid var(--md-surface-variant);
+  flex-shrink: 0;
+}
+
+.ledger-sheet-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--md-on-surface);
+}
+
+.ledger-close {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+  cursor: pointer;
+  color: var(--md-on-surface-variant);
+}
+
+.ledger-sheet-body {
+  overflow-y: auto;
+  padding: var(--md-spacing-md);
+  -webkit-overflow-scrolling: touch;
+}
+
+.ledger-status {
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  font-size: 0.9rem;
+  margin: var(--md-spacing-xl) 0;
+}
+
+.ledger-status--err {
+  color: #c62828;
+}
+
+.ledger-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ledger-item {
+  padding: var(--md-spacing-md) 0;
+  border-bottom: 1px solid var(--md-surface-variant);
+}
+
+.ledger-item:last-child {
+  border-bottom: none;
+}
+
+.ledger-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--md-spacing-sm);
+}
+
+.ledger-type {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--md-on-surface);
+}
+
+.ledger-delta {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-delta--pos {
+  color: #2e7d32;
+}
+
+.ledger-delta--neg {
+  color: #c62828;
+}
+
+.ledger-reason {
+  font-size: 0.8rem;
+  color: var(--md-on-surface-variant);
+  margin: var(--md-spacing-xs) 0 0;
+  line-height: 1.35;
+}
+
+.ledger-order {
+  font-size: 0.8rem;
+  color: var(--md-on-surface);
+  margin: var(--md-spacing-xs) 0 0;
+}
+
+.ledger-footer-line {
+  font-size: 0.75rem;
+  color: var(--md-on-surface-variant);
+  margin: var(--md-spacing-xs) 0 0;
+}
+
+.placeholder-msg {
+  font-size: 0.85rem;
+  color: var(--md-on-surface-variant);
+  line-height: 1.5;
+  margin: 0;
+  padding: var(--md-spacing-sm);
+  background: rgba(255, 215, 0, 0.12);
+  border-radius: var(--md-radius-sm);
+}
+
+.ref-code-row {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.ref-code {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 1.05rem;
+}
+
+.mini-btn,
+.outline-btn,
+.primary-mini {
+  border-radius: var(--md-radius-sm);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: none;
+}
+
+.mini-btn {
+  background: var(--md-primary);
+  color: white;
+}
+
+.outline-btn {
+  width: 100%;
+  margin-top: var(--md-spacing-sm);
+  background: transparent;
+  border: 1px solid var(--md-outline);
+  color: var(--md-primary);
+}
+
+.invitees-ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.invitee-li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--md-surface-variant);
+}
+
+.invitee-status {
+  color: var(--md-on-surface-variant);
+}
+
+.apply-row {
+  display: flex;
+  gap: var(--md-spacing-sm);
+  margin-top: var(--md-spacing-sm);
+}
+
+.apply-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--md-radius-sm);
+  border: 1px solid var(--md-outline);
+  font-size: 0.9rem;
+}
+
+.apply-row--solo {
+  flex-direction: column;
+}
+
+.apply-input--full {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.referral-live-msg {
+  margin: var(--md-spacing-sm) 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.referral-live-msg--muted {
+  color: var(--md-on-surface-variant);
+}
+
+.referral-live-msg--err {
+  color: #c62828;
+  font-weight: 500;
+}
+
+.primary-mini {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: white;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.primary-mini:disabled {
+  opacity: 0.6;
 }
 </style>
 

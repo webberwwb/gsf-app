@@ -23,6 +23,8 @@ class CreateOrderSchema(Schema):
     pickup_location = fields.String(allow_none=True, validate=validate.Length(max=100))
     payment_method = fields.String(missing=PaymentMethod.CASH.value, validate=validate.OneOf(PaymentMethod.get_all_values()))
     notes = fields.String(allow_none=True, validate=validate.Length(max=1000))  # User custom notes
+    referral_code = fields.String(allow_none=True, validate=validate.Length(max=32))
+    store_credit_to_apply = fields.Decimal(places=2, allow_none=True, as_string=True)
     
     @validates('items')
     def validate_items(self, value):
@@ -49,6 +51,8 @@ class UpdateOrderSchema(Schema):
     pickup_location = fields.String(allow_none=True, validate=validate.Length(max=100))
     payment_method = fields.String(allow_none=True, validate=validate.OneOf(PaymentMethod.get_all_values()))
     notes = fields.String(allow_none=True, validate=validate.Length(max=1000))  # User custom notes
+    referral_code = fields.String(allow_none=True, validate=validate.Length(max=32))
+    store_credit_to_apply = fields.Decimal(places=2, allow_none=True, as_string=True)
     
     @validates('items')
     def validate_items(self, value):

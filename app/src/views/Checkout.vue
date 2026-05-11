@@ -141,8 +141,15 @@
             <span class="breakdown-label">运费:</span>
             <span class="breakdown-amount">{{ shippingFeeDisplay }}</span>
           </div>
+          <div
+            v-if="creditApplyActive && !isOrderCompleted"
+            class="breakdown-row breakdown-row--store-credit"
+          >
+            <span class="breakdown-label">使用代金券</span>
+            <span class="breakdown-amount breakdown-amount--credit">-${{ appliedStoreCreditLineAmount }}</span>
+          </div>
           <div class="breakdown-row total-row">
-            <span class="total-label">{{ isOrderCompleted ? '最终价格' : (hasEstimatedTotal ? '预估总计' : '总计') }}:</span>
+            <span class="total-label">{{ orderTotalRowLabel }}:</span>
             <span class="total-amount">${{ calculateTotal() }}</span>
           </div>
           <div v-if="deliveryMethod === 'delivery'" class="pricing-disclaimer">
@@ -157,6 +164,102 @@
             </svg>
             <span>最终价格以实际称重为准，所有商品均已含税</span>
           </div>
+        </div>
+      </div>
+
+      <div v-if="!isOrderCompleted" class="credit-referral-section">
+        <h3 class="section-title">优惠与推荐</h3>
+        <p v-if="currentUser?.referrer_display_name" class="referrer-bound-note">
+          已绑定邀请人：{{ currentUser.referrer_display_name }}
+        </p>
+        <div class="credit-referral-stack">
+          <div
+            v-if="showReferralInviteRow"
+            :class="['delivery-option', 'credit-promo-row', { active: referralRowActive }]"
+          >
+            <div class="option-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h17.25c.621 0 1.125-.504 1.125-1.125V11.25c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v2.625c0 .621.504 1.125 1.125 1.125z" />
+              </svg>
+            </div>
+            <div class="option-content">
+              <h4>好友推荐码（选填）</h4>
+              <p class="form-hint subtle">若尚未绑定过推荐人，可在此填写，并获取代金券（仅一次）</p>
+              <input
+                v-model="referralCodeInput"
+                type="text"
+                class="form-input credit-input"
+                placeholder="推荐码"
+                autocomplete="off"
+                autocapitalize="characters"
+              />
+              <p v-if="referralFeedback?.kind === 'loading'" class="referral-live-msg referral-live-msg--muted">
+                验证中…
+              </p>
+              <p v-else-if="referralFeedback?.kind === 'err'" class="referral-live-msg referral-live-msg--err">
+                {{ referralFeedback.text }}
+              </p>            </div>
+            <div class="option-check">
+              <svg
+                v-if="referralRowActive"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </div>
+          <button
+            v-if="currentUser"
+            type="button"
+            :class="[
+              'delivery-option',
+              'credit-promo-row',
+              'credit-voucher-summary',
+              'credit-voucher-toggle',
+              {
+                active: creditApplyActive,
+                'credit-voucher-toggle--disabled': maxStoreCreditApplicable <= 0
+              }
+            ]"
+            :aria-pressed="creditApplyActive ? 'true' : 'false'"
+            :aria-disabled="maxStoreCreditApplicable <= 0 ? 'true' : 'false'"
+            @click="toggleApplyStoreCredit"
+          >
+            <div class="option-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 003 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m0 0H15M3.75 19.5h-.375A1.5 1.5 0 012.25 18V9.75a1.5 1.5 0 011.5-1.5h.375m0 0V9.75A2.25 2.25 0 015.25 7.5h13.5a2.25 2.25 0 012.25 2.25v9.75A2.25 2.25 0 0118.75 21H5.25a2.25 2.25 0 01-2.25-2.25V9.75m9 0v9.75" />
+              </svg>
+            </div>
+            <div class="option-content">
+              <h4>代金券</h4>
+              <div class="credit-voucher-summary-rows">
+                <p class="credit-voucher-summary-line">
+                  <span class="credit-voucher-summary-label">账户余额</span>
+                  <span class="credit-voucher-summary-value">${{ storeCreditBalanceDisplay }}</span>
+                </p>
+                <p class="credit-voucher-summary-line">
+                  <span class="credit-voucher-summary-label">本单抵扣</span>
+                  <span class="credit-voucher-summary-value">${{ storeCreditAppliedDisplay }}</span>
+                </p>
+              </div>
+            </div>
+            <div class="option-check">
+              <svg
+                v-if="creditApplyActive"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -436,6 +539,11 @@ import { useCheckoutStore } from '../stores/checkout'
 import { useAuthStore } from '../stores/auth'
 import { formatDateEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
+import { REFERRAL_BIND_DEBOUNCE_MS } from '../utils/referralLiveBind'
+import {
+  getUserHasCompletedOrderCached,
+  invalidateReferralInviteCompletedCache
+} from '../utils/referralInviteUi'
 
 export default {
   name: 'Checkout',
@@ -464,7 +572,15 @@ export default {
       verifyingOTP: false,
       nickname: '',
       wechat: '',
-      updatingWechat: false
+      updatingWechat: false,
+      referralCodeInput: '',
+      /** Inline messages: loading | err | ok (invite bind) */
+      referralFeedback: null,
+      referralBindTimer: null,
+      /** User can opt out of applying store credit (when balance allows). */
+      applyStoreCredit: true,
+      /** null: loading / unknown; true: has completed order — hide new-user referral row */
+      referralUiHadCompletedOrder: null
     }
   },
   computed: {
@@ -561,6 +677,43 @@ export default {
       }
       return `$${this.shippingFee.toFixed(2)}`
     },
+    maxStoreCreditApplicable() {
+      const bal = Number(this.currentUser?.store_credit_balance) || 0
+      const t = parseFloat(this.checkoutStore.total) || 0
+      return Math.min(bal, t)
+    },
+    storeCreditBalanceDisplay() {
+      return Number(this.currentUser?.store_credit_balance || 0).toFixed(2)
+    },
+    /** 本单抵扣 preview: max when toggle on, else $0. */
+    storeCreditAppliedDisplay() {
+      if (!this.applyStoreCredit) return '0.00'
+      return Number(this.maxStoreCreditApplicable || 0).toFixed(2)
+    },
+    referralRowActive() {
+      const s =
+        this.referralCodeInput != null ? String(this.referralCodeInput).trim() : ''
+      return s.length > 0
+    },
+    /** Friend referral code field: only for users who never had a completed order */
+    showReferralInviteRow() {
+      const u = this.currentUser
+      if (!u || u.referred_by_user_id) return false
+      return this.referralUiHadCompletedOrder === false
+    },
+    creditApplyActive() {
+      return this.applyStoreCredit && Number(this.maxStoreCreditApplicable) > 0
+    },
+    /** Dollar amount applied in order breakdown when toggle on. */
+    appliedStoreCreditLineAmount() {
+      if (!this.creditApplyActive) return '0.00'
+      return Number(this.maxStoreCreditApplicable || 0).toFixed(2)
+    },
+    orderTotalRowLabel() {
+      if (this.isOrderCompleted) return '最终价格'
+      if (this.creditApplyActive) return '应付金额'
+      return this.hasEstimatedTotal ? '预估总计' : '总计'
+    },
     deliveryPolicyText() {
       const config = this.checkoutStore.shippingConfig
       if (!config || !config.tiers || config.tiers.length === 0) {
@@ -612,7 +765,11 @@ export default {
       // Try to load from storage
       await this.checkAuth()
     }
-    
+
+    if (this.isAuthenticated && this.currentUser?.id) {
+      await this.refreshReferralInviteUiGate()
+    }
+
     // If authenticated, check if we need wechat/nickname
     if (this.isAuthenticated) {
       if (this.needsWechatInfo) {
@@ -639,11 +796,105 @@ export default {
         // Load addresses when switching to delivery mode
         this.loadAddresses()
       }
+    },
+    referralCodeInput() {
+      this.scheduleReferralCodeLiveBind()
+    },
+    isAuthenticated(val) {
+      if (val) {
+        this.$nextTick(async () => {
+          await this.refreshReferralInviteUiGate()
+          this.scheduleReferralCodeLiveBind()
+        })
+      }
+    },
+    'currentUser.id'(id) {
+      if (id) this.refreshReferralInviteUiGate()
+    }
+  },
+  beforeUnmount() {
+    if (this.referralBindTimer) {
+      clearTimeout(this.referralBindTimer)
+      this.referralBindTimer = null
     }
   },
   methods: {
     setDeliveryMethod(method) {
       this.checkoutStore.setDeliveryMethod(method)
+    },
+    toggleApplyStoreCredit() {
+      if (this.maxStoreCreditApplicable <= 0) return
+      this.applyStoreCredit = !this.applyStoreCredit
+    },
+    async refreshReferralInviteUiGate() {
+      const u = this.currentUser
+      if (!u?.id) {
+        this.referralUiHadCompletedOrder = null
+        return
+      }
+      this.referralUiHadCompletedOrder = await getUserHasCompletedOrderCached(u.id)
+    },
+    scheduleReferralCodeLiveBind() {
+      if (this.referralBindTimer) {
+        clearTimeout(this.referralBindTimer)
+        this.referralBindTimer = null
+      }
+      const raw = this.referralCodeInput != null ? String(this.referralCodeInput).trim() : ''
+      if (!raw) {
+        this.referralFeedback = null
+        return
+      }
+      if (
+        !this.isAuthenticated ||
+        !this.currentUser ||
+        this.currentUser.referred_by_user_id ||
+        !this.showReferralInviteRow
+      ) {
+        this.referralFeedback = null
+        return
+      }
+      if (this.needsPhoneValidation || this.needsWechatInfo) {
+        this.referralFeedback = null
+        return
+      }
+      this.referralBindTimer = setTimeout(() => {
+        this.referralBindTimer = null
+        this.runReferralCodeLiveBind(raw)
+      }, REFERRAL_BIND_DEBOUNCE_MS)
+    },
+    async runReferralCodeLiveBind(raw) {
+      if (
+        !this.isAuthenticated ||
+        this.currentUser?.referred_by_user_id ||
+        !this.showReferralInviteRow
+      ) {
+        return
+      }
+      if (this.needsPhoneValidation || this.needsWechatInfo) return
+      const latest = this.referralCodeInput != null ? String(this.referralCodeInput).trim() : ''
+      if (latest !== raw) return
+      this.referralFeedback = { kind: 'loading' }
+      try {
+        const v = await apiClient.get('/referrals/validate-code', { params: { code: raw } })
+        const d = v.data || {}
+        if (!d.valid) {
+          this.referralFeedback = { kind: 'err', text: d.message || '邀请码无效' }
+          return
+        }
+        if ((this.referralCodeInput || '').trim() !== raw) return
+        const r = await apiClient.post('/referrals/apply', { code: raw })
+        if (r.data?.user) {
+          this.authStore.setUser(r.data.user)
+        } else {
+          await this.authStore.checkAuth()
+        }
+        this.referralCodeInput = ''
+        this.applyStoreCredit = true
+        this.referralFeedback = null
+      } catch (e) {
+        const msg = e.response?.data?.error || e.response?.data?.message || '绑定失败'
+        this.referralFeedback = { kind: 'err', text: msg }
+      }
     },
     async checkAuth() {
       if (this.authStore.token) {
@@ -684,7 +935,7 @@ export default {
       this.error = null
       
       try {
-        await this.authStore.login(this.phone, this.otp)
+        await this.authStore.login(this.phone, this.otp, this.$route.query.ref || this.referralCodeInput)
         // After successful login, check if wechat/nickname is needed
         if (this.needsWechatInfo) {
           // Pre-fill nickname if user already has one
@@ -752,10 +1003,19 @@ export default {
           return
         }
         
-        // Load addresses if delivery method is delivery
+        await this.authStore.checkAuth()
+        await this.refreshReferralInviteUiGate()
+        const qref = this.$route.query.ref
+        if (qref && !this.currentUser?.referred_by_user_id && this.showReferralInviteRow) {
+          this.referralCodeInput = String(qref).trim()
+        } else if (!this.showReferralInviteRow) {
+          this.referralCodeInput = ''
+        }
+        this.applyStoreCredit = this.maxStoreCreditApplicable > 0
         if (this.deliveryMethod === 'delivery') {
           await this.loadAddresses()
         }
+        this.$nextTick(() => this.scheduleReferralCodeLiveBind())
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '加载订单信息失败'
         console.error('Failed to load checkout data:', error)
@@ -824,8 +1084,15 @@ export default {
       return subtotal.toFixed(2)
     },
     calculateTotal() {
-      const total = this.checkoutStore.total || 0
-      return total.toFixed(2)
+      const raw = Number(this.checkoutStore.total) || 0
+      if (this.isOrderCompleted) {
+        return raw.toFixed(2)
+      }
+      if (this.creditApplyActive) {
+        const credit = Number(this.maxStoreCreditApplicable) || 0
+        return Math.max(0, raw - credit).toFixed(2)
+      }
+      return raw.toFixed(2)
     },
     formatPhoneInput() {
       this.phone = this.phone.trim()
@@ -862,8 +1129,16 @@ export default {
       }
 
       try {
-        // Get order data from store
-        const orderData = this.checkoutStore.getOrderData()
+        const orderData = { ...this.checkoutStore.getOrderData() }
+        if (!this.isOrderCompleted) {
+          const rawRef = (this.referralCodeInput || this.$route.query.ref || '').trim()
+          if (this.showReferralInviteRow && !this.currentUser?.referred_by_user_id && rawRef) {
+            orderData.referral_code = rawRef
+          }
+          let useCredit = this.applyStoreCredit ? Number(this.maxStoreCreditApplicable) || 0 : 0
+          if (Number.isNaN(useCredit) || useCredit < 0) useCredit = 0
+          orderData.store_credit_to_apply = useCredit.toFixed(2)
+        }
 
         let response
         let isNew = true
@@ -893,6 +1168,9 @@ export default {
           }
         }
         
+        await this.authStore.checkAuth()
+        invalidateReferralInviteCompletedCache(this.currentUser?.id)
+
         // Redirect to result page with order info in query params
         const orderNumber = response.data.order?.order_number || null
         
@@ -1038,6 +1316,7 @@ export default {
 }
 
 .order-summary-section,
+.credit-referral-section,
 .payment-section,
 .delivery-section,
 .notes-section {
@@ -1063,6 +1342,140 @@ export default {
 .order-summary-section {
   animation-delay: 0.1s;
   animation-fill-mode: both;
+}
+
+.credit-referral-section {
+  animation-delay: 0.12s;
+  animation-fill-mode: both;
+}
+
+.credit-referral-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-md);
+}
+
+/* Same tile language as取货方式 — non-button rows (forms inside) */
+.credit-promo-row {
+  align-items: flex-start;
+  cursor: default;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.credit-promo-row:active {
+  transform: none;
+}
+
+.credit-referral-section .credit-promo-row .option-content {
+  min-width: 0;
+}
+
+.credit-referral-section .credit-promo-row .form-input.credit-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  margin-top: var(--md-spacing-xs);
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border-radius: var(--md-radius-md);
+  border: 2px solid var(--md-outline-variant);
+  font-size: var(--md-body-size);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+
+.credit-referral-section .credit-promo-row .form-input.credit-input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+}
+
+.credit-promo-field-label {
+  display: block;
+  margin: 0;
+  margin-top: var(--md-spacing-sm);
+  margin-bottom: var(--md-spacing-xs);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  color: var(--md-on-surface);
+}
+
+.credit-voucher-summary {
+  font-family: inherit;
+  text-align: left;
+}
+
+.credit-voucher-summary.credit-voucher-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.credit-voucher-summary.credit-voucher-toggle:not(.credit-voucher-toggle--disabled) {
+  cursor: pointer;
+}
+
+.credit-voucher-summary.credit-voucher-toggle--disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+  opacity: 0.88;
+}
+
+.credit-voucher-summary-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--md-spacing-xs);
+}
+
+.credit-voucher-summary-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--md-spacing-md);
+  margin: 0;
+  font-size: var(--md-label-size);
+  line-height: 1.35;
+}
+
+.credit-voucher-summary-label {
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+}
+
+.credit-voucher-summary-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface);
+}
+
+.credit-referral-section .form-hint.subtle {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-top: var(--md-spacing-xs);
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.referrer-bound-note {
+  font-size: var(--md-label-size);
+  color: var(--md-primary);
+  font-weight: 500;
+  margin: 0 0 var(--md-spacing-sm);
+  line-height: 1.4;
+}
+
+.referral-live-msg {
+  margin: var(--md-spacing-sm) 0 0;
+  font-size: var(--md-label-size);
+  line-height: 1.4;
+}
+
+.referral-live-msg--muted {
+  color: var(--md-on-surface-variant);
+}
+
+.referral-live-msg--err {
+  color: #c62828;
+  font-weight: 500;
 }
 
 .delivery-section {
@@ -1235,6 +1648,11 @@ export default {
   font-size: var(--md-body-size);
   font-weight: 500;
   color: var(--md-on-surface);
+}
+
+.breakdown-amount--credit {
+  color: #2e7d32;
+  font-weight: 600;
 }
 
 .breakdown-row.total-row {

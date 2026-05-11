@@ -16,6 +16,8 @@ from twilio.base.exceptions import TwilioRestException
 from urllib.parse import urlencode, quote
 from decimal import Decimal
 
+from services import referral_service
+
 auth_bp = Blueprint('auth', __name__)
 
 def get_twilio_client():
@@ -374,6 +376,14 @@ def phone_verify():
     if not user.last_login_date:
         user.last_login_date = utc_now()
     
+    ref_code = validated_data.get('referral_code')
+    if ref_code and str(ref_code).strip():
+        if not user.referred_by_user_id:
+            ok, err = referral_service.try_bind_referral(user, ref_code)
+            if not ok:
+                db.session.rollback()
+                return jsonify({'error': err}), 400
+    
     db.session.commit()
     
     # Track successful verification attempt (only if OTP was actually verified, not dev bypass)
@@ -409,7 +419,7 @@ def phone_verify():
     
     return jsonify({
         'token': auth_token.token,
-        'user': user.to_dict(),
+        'user': user.to_dict(include_referrer=True),
         'expires_at': auth_token.expires_at.isoformat()
     }), 200
 
@@ -454,7 +464,7 @@ def get_current_user():
             return jsonify({'error': 'User account is inactive'}), 403
         
         return jsonify({
-            'user': user.to_dict(),
+            'user': user.to_dict(include_referrer=True),
             'token': {
                 'expires_at': auth_token.expires_at.isoformat(),
                 'token_type': auth_token.token_type
@@ -535,7 +545,7 @@ def update_wechat():
         current_app.logger.info(f'Updated wechat and nickname for user {user.id}')
         
         return jsonify({
-            'user': user.to_dict(),
+            'user': user.to_dict(include_referrer=True),
             'message': '个人信息更新成功'
         }), 200
     except Exception as e:
@@ -730,6 +740,95 @@ def google_callback():
         current_app.logger.error(f'Unexpected error in Google OAuth callback: {e}', exc_info=True)
         return jsonify({
             'error': 'Unexpected error',
+            'message': str(e)
+        }), 500
+
+@auth_bp.route('/dev-login', methods=['POST'])
+def dev_login():
+    """Development-only login endpoint - bypasses Google OAuth
+    
+    Only works in non-production environments.
+    Allows direct login as any admin user by email.
+    """
+    # Check if we're in production
+    is_production = os.environ.get('K_SERVICE') is not None
+    if is_production:
+        return jsonify({
+            'error': 'Not available',
+            'message': 'Dev login is only available in development mode'
+        }), 403
+    
+    data = request.get_json()
+    email = data.get('email')
+    
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+    
+    # Verify email is in the allowed list
+    admin_allowed_emails = Config.ADMIN_ALLOWED_EMAILS
+    if not admin_allowed_emails or email.lower() not in [e.lower() for e in admin_allowed_emails]:
+        return jsonify({
+            'error': 'Unauthorized',
+            'message': f'Email {email} is not in the admin allowed list'
+        }), 403
+    
+    try:
+        # Find or create user
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            # Create new admin user
+            user = User(
+                email=email,
+                nickname=email.split('@')[0],
+                phone=None,
+                status=UserStatus.ACTIVE.value,
+                points=0
+            )
+            db.session.add(user)
+            db.session.flush()
+            current_app.logger.info(f'[DEV] Created new admin user: {email}, ID: {user.id}')
+        else:
+            user.last_login_date = utc_now()
+            current_app.logger.info(f'[DEV] Found existing admin user: {email}, ID: {user.id}')
+        
+        # Ensure last_login_date is set
+        if not user.last_login_date:
+            user.last_login_date = utc_now()
+        
+        # Ensure user has admin role
+        admin_role = UserRole.query.filter_by(user_id=user.id, role='admin').first()
+        if not admin_role:
+            admin_role = UserRole(user_id=user.id, role='admin')
+            db.session.add(admin_role)
+            current_app.logger.info(f'[DEV] Assigned admin role to user: {email}, ID: {user.id}')
+        
+        db.session.commit()
+        
+        # Generate auth token (100 years expiration)
+        expires_at = utc_now() + timedelta(days=36500)
+        auth_token = AuthToken(
+            user_id=user.id,
+            token=secrets.token_urlsafe(32),
+            token_type='dev',
+            expires_at=expires_at
+        )
+        db.session.add(auth_token)
+        db.session.commit()
+        
+        current_app.logger.info(f'[DEV] Dev login successful for {email}, token: {auth_token.token[:10]}...')
+        
+        return jsonify({
+            'token': auth_token.token,
+            'user': user.to_dict(include_referrer=True),
+            'expires_at': auth_token.expires_at.isoformat()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'[DEV] Dev login error: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Login failed',
             'message': str(e)
         }), 500
 

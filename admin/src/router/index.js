@@ -39,6 +39,11 @@ const router = createRouter({
           component: () => import('../views/Users.vue')
         },
         {
+          path: 'credit-referrals',
+          name: 'CreditAndReferrals',
+          component: () => import('../views/CreditAndReferrals.vue')
+        },
+        {
           path: 'sales-management',
           name: 'SalesManagement',
           component: () => import('../views/SalesManagement.vue')

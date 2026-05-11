@@ -169,7 +169,7 @@ fi
 echo "✅ Google Maps API key retrieved from Secret Manager"
 
 # Build with substitutions for Vite env vars (needed at build time)
-BUILD_SUBSTITUTIONS="--substitutions=_VITE_API_BASE_URL=$BACKEND_URL/api,_VITE_GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
+BUILD_SUBSTITUTIONS="--substitutions=_VITE_API_BASE_URL=$BACKEND_URL/api,_VITE_APP_PUBLIC_URL=https://app.grainstoryfarm.ca,_VITE_GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
 
 BUILD_OUTPUT=$(gcloud builds submit --async --config=cloudbuild.yaml $BUILD_SUBSTITUTIONS --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?

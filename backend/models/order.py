@@ -20,7 +20,10 @@ class Order(BaseModel):
     tax = db.Column(Numeric(10, 2), default=0, nullable=False)
     shipping_fee = db.Column(Numeric(10, 2), default=0, nullable=False)
     total = db.Column(Numeric(10, 2), nullable=False)
-    
+
+    # Store credit applied to this order (pre-tax/shipping total + adjustment semantics — see to_dict amount_due)
+    store_credit_applied = db.Column(Numeric(10, 2), default=0, nullable=False)
+
     # Admin adjustment (can be positive or negative)
     # Negative = discount/deduction, Positive = addition/bonus
     adjustment_amount = db.Column(Numeric(10, 2), default=0, nullable=False)
@@ -67,7 +70,9 @@ class Order(BaseModel):
         base_total = float(self.total) if self.total is not None else 0.0
         adjustment = float(self.adjustment_amount) if self.adjustment_amount is not None else 0.0
         final_total = float(base_total + adjustment)
-        
+        credit_applied = float(self.store_credit_applied) if self.store_credit_applied is not None else 0.0
+        amount_due = max(0.0, final_total - credit_applied)
+
         data.update({
             'user_id': self.user_id,
             'group_deal_id': self.group_deal_id,
@@ -80,6 +85,8 @@ class Order(BaseModel):
             'adjustment_amount': float(adjustment),
             'adjustment_notes': self.adjustment_notes,
             'final_total': final_total,
+            'store_credit_applied': credit_applied,
+            'amount_due': amount_due,
             'points_earned': self.points_earned,
             'delivery_method': self.delivery_method,
             'pickup_location': self.pickup_location,

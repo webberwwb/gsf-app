@@ -1,7 +1,8 @@
 import axios from 'axios'
+import { getApiBaseURL } from '@/config/api'
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://backend.grainstoryfarm.ca/api',
+  baseURL: getApiBaseURL(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'

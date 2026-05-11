@@ -79,8 +79,20 @@
 
       <!-- Statistics Section -->
       <div class="statistics-section">
-        <h3>统计汇总</h3>
-        <div class="stats-grid">
+        <button
+          v-if="narrowMobile"
+          type="button"
+          class="mobile-stats-toggle"
+          :aria-expanded="mobileStatsSummaryOpen"
+          @click="mobileStatsSummaryOpen = !mobileStatsSummaryOpen"
+        >
+          <span>统计汇总</span>
+          <svg class="toggle-chevron" :class="{ 'is-open': mobileStatsSummaryOpen }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <h3 v-else class="stats-heading-desktop">统计汇总</h3>
+        <div v-show="!narrowMobile || mobileStatsSummaryOpen" class="stats-grid">
           <!-- Total Orders -->
           <div class="stat-card">
             <div class="stat-icon">
@@ -165,8 +177,21 @@
 
         <!-- Product Statistics -->
         <div v-if="statistics.productCounts.length > 0" class="product-stats-section">
-          <div class="product-stats-header">
-            <h4>商品统计</h4>
+          <button
+            v-if="narrowMobile"
+            type="button"
+            class="mobile-stats-toggle product-stats-toggle"
+            :aria-expanded="mobileProductStatsOpen"
+            @click="mobileProductStatsOpen = !mobileProductStatsOpen"
+          >
+            <span>商品统计</span>
+            <svg class="toggle-chevron" :class="{ 'is-open': mobileProductStatsOpen }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div v-show="!narrowMobile || mobileProductStatsOpen" class="product-stats-inner">
+          <div class="product-stats-header" :class="{ 'product-stats-header--narrow': narrowMobile }">
+            <h4 v-if="!narrowMobile">商品统计</h4>
             <button 
               v-if="selectedProductFilters.length > 0" 
               @click="clearProductFilters" 
@@ -227,6 +252,7 @@
                 </svg>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -365,6 +391,7 @@
       
       <!-- Order Detail Modal -->
       <OrderDetailModal
+        ref="orderDetailModal"
         :show="showOrderDetail"
         :order="selectedOrder"
         :available-products="availableProducts"
@@ -413,7 +440,7 @@
                     <div class="order-id">{{ order.order_number }}</div>
                     <div class="order-details">
                       <span>商品: {{ order.items?.length || 0 }}件</span>
-                      <span>总价: ${{ parseFloat(order.total || 0).toFixed(2) }}</span>
+                      <span>应付: ${{ formatDuplicateOrderDue(order) }}</span>
                       <span>状态: {{ getStatusText(order.status) }}</span>
                     </div>
                   </div>
@@ -455,6 +482,8 @@ import GroupDealOrderListView from '../components/GroupDealOrderListView.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
 import OrderMergeModal from '../components/OrderMergeModal.vue'
 import CommissionBreakdownModal from '../components/CommissionBreakdownModal.vue'
+import { orderHasMissingFinalWeight, statusChangeWarnsIfMissingFinalWeight } from '../utils/orderWeightValidation'
+import { orderAmountDueNumber, formatOrderMoney2, orderFinalTotalNumber, orderStoreCreditAppliedNumber } from '../utils/orderPricing'
 
 export default {
   name: 'GroupDealDetail',
@@ -469,6 +498,16 @@ export default {
     const { confirm, success, error: showError } = useModal()
     const ordersStore = useOrdersStore()
     return { confirm, success, showError, ordersStore }
+  },
+  async beforeRouteLeave(to, from, next) {
+    if (this.showOrderDetail && this.$refs.orderDetailModal?.hasUnsavedChanges) {
+      const ok = await this.confirm(
+        '您有未保存的订单修改（含称重、商品、备注等）。确定离开此页吗？未保存的修改将丢失。',
+        { type: 'warning', title: '未保存的修改' }
+      )
+      if (!ok) return next(false)
+    }
+    next()
   },
   data() {
     return {
@@ -498,7 +537,20 @@ export default {
       // Commission
       showCommissionModal: false,
       // View mode
-      viewMode: 'card' // 'card' or 'list'
+      viewMode: 'card', // 'card' or 'list'
+      narrowMobile: false,
+      mobileStatsSummaryOpen: true,
+      mobileProductStatsOpen: true
+    }
+  },
+  created() {
+    if (typeof window !== 'undefined') {
+      const narrow = window.innerWidth <= 767
+      this.narrowMobile = narrow
+      if (narrow) {
+        this.mobileStatsSummaryOpen = false
+        this.mobileProductStatsOpen = false
+      }
     }
   },
   computed: {
@@ -831,8 +883,29 @@ export default {
   },
   mounted() {
     this.fetchGroupDealDetail()
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', this.syncNarrowMobile, { passive: true })
+    }
+  },
+  beforeUnmount() {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', this.syncNarrowMobile)
+    }
   },
   methods: {
+    syncNarrowMobile() {
+      if (typeof window === 'undefined') return
+      const n = window.innerWidth <= 767
+      if (n === this.narrowMobile) return
+      this.narrowMobile = n
+      if (n) {
+        this.mobileStatsSummaryOpen = false
+        this.mobileProductStatsOpen = false
+      } else {
+        this.mobileStatsSummaryOpen = true
+        this.mobileProductStatsOpen = true
+      }
+    },
     applyProductFilter(orders) {
       if (this.selectedProductFilters.length === 0) {
         return orders
@@ -966,7 +1039,9 @@ export default {
           '地址/取货点',
           ...productColumns,
           '备注',
-          '总计',
+          '订单金额(含调整)',
+          '代金券',
+          '应付金额',
           '付款状态',
           '付款方式'
         ]
@@ -1025,7 +1100,11 @@ export default {
             location,
             ...productColumns.map(product => productQuantities[product] || ''),
             order.notes || '',
-            `$${parseFloat(order.total || 0).toFixed(2)}`,
+            `$${formatOrderMoney2(orderFinalTotalNumber(order))}`,
+            orderStoreCreditAppliedNumber(order) > 0
+              ? `$${formatOrderMoney2(orderStoreCreditAppliedNumber(order))}`
+              : '',
+            `$${formatOrderMoney2(orderAmountDueNumber(order))}`,
             paymentStatusMap[order.payment_status] || order.payment_status || '',
             paymentMethodMap[order.payment_method] || order.payment_method || ''
           ]
@@ -1143,6 +1222,9 @@ export default {
       }
       return labels[status] || status
     },
+    formatDuplicateOrderDue(order) {
+      return formatOrderMoney2(orderAmountDueNumber(order))
+    },
     getPaymentStatusText(status) {
       const labels = {
         'unpaid': '未付款',
@@ -1241,6 +1323,13 @@ export default {
       this.selectedOrder = order
       this.ordersStore.updateOrder(order)
     },
+    orderNeedsFinalWeightAttention(order) {
+      if (!order) return false
+      if (this.showOrderDetail && this.selectedOrder?.id === order.id && this.$refs.orderDetailModal) {
+        return this.$refs.orderDetailModal.hasMissingFinalWeight
+      }
+      return orderHasMissingFinalWeight(order)
+    },
     async handleOrderStatusChange(orderId, newStatus) {
       if (!this.selectedOrder || !newStatus) {
         return
@@ -1251,6 +1340,17 @@ export default {
       }
       
       const statusText = this.getStatusText(newStatus)
+
+      if (statusChangeWarnsIfMissingFinalWeight(newStatus) && this.orderNeedsFinalWeightAttention(this.selectedOrder)) {
+        const proceed = await this.confirm(
+          `此订单仍有按重计价商品未填写有效实际重量（或总重量）。确定仍要将状态改为「${statusText}」吗？\n\n若已在详情中填写重量，请先点击「更新订单」保存后再改状态。`,
+          { type: 'warning', title: '缺少最终重量' }
+        )
+        if (!proceed) {
+          return
+        }
+      }
+
       const confirmed = await this.confirm(`确认将订单状态改为 "${statusText}"?`)
       if (!confirmed) {
         return
@@ -1340,6 +1440,16 @@ export default {
       if (!orderToMark || orderToMark.payment_status === 'paid') {
         return
       }
+
+      if (this.orderNeedsFinalWeightAttention(orderToMark)) {
+        const proceed = await this.confirm(
+          '此订单仍有按重计价商品未填写有效实际重量（或总重量）。确定仍要标记为已付款吗？\n\n金额与积分将按当前已保存的数据结算；若刚在详情里填写了重量，请先点击「更新订单」。',
+          { type: 'warning', title: '缺少最终重量' }
+        )
+        if (!proceed) {
+          return
+        }
+      }
       
       const amount = parseFloat(orderToMark.total || 0).toFixed(2)
       const pointsToEarn = Math.floor(parseFloat(orderToMark.total) * 100)
@@ -1428,6 +1538,16 @@ export default {
     async markOrderComplete() {
       if (!this.selectedOrder || this.selectedOrder.status === 'completed') {
         return
+      }
+
+      if (this.orderNeedsFinalWeightAttention(this.selectedOrder)) {
+        const proceed = await this.confirm(
+          '此订单仍有按重计价商品未填写有效实际重量（或总重量）。确定仍要标记为已完成吗？\n\n建议先点击「更新订单」保存称重后再完成。',
+          { type: 'warning', title: '缺少最终重量' }
+        )
+        if (!proceed) {
+          return
+        }
       }
       
       const confirmed = await this.confirm(`确认标记订单 #${this.selectedOrder.order_number} 为已完成?`)
@@ -1895,6 +2015,33 @@ export default {
   color: var(--md-on-surface);
   margin-bottom: var(--md-spacing-lg);
   font-weight: 500;
+}
+
+.stats-heading-desktop {
+  font-size: var(--md-title-size);
+  color: var(--md-on-surface);
+  margin-bottom: var(--md-spacing-lg);
+  font-weight: 500;
+}
+
+.mobile-stats-toggle {
+  display: none;
+}
+
+.toggle-chevron {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  color: var(--md-on-surface-variant);
+}
+
+.toggle-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.product-stats-header--narrow {
+  justify-content: flex-end;
 }
 
 .stats-grid {
@@ -2982,6 +3129,35 @@ export default {
     font-size: 1rem;
     margin-bottom: var(--md-spacing-sm);
   }
+
+  .stats-heading-desktop {
+    font-size: 1rem;
+    margin-bottom: var(--md-spacing-sm);
+  }
+
+  .mobile-stats-toggle {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--md-spacing-sm);
+    padding: var(--md-spacing-md);
+    margin: 0 0 var(--md-spacing-md) 0;
+    background: var(--md-surface-variant);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: var(--md-radius-md);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--md-on-surface);
+    cursor: pointer;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-stats-toggle.product-stats-toggle {
+    margin-top: 0;
+    margin-bottom: var(--md-spacing-md);
+  }
   
   .stats-grid {
     grid-template-columns: 1fr;
@@ -3042,12 +3218,53 @@ export default {
   .orders-section h3 {
     font-size: 1rem;
   }
+
+  .orders-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .orders-header-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .search-box {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .view-mode-toggle {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .duplicates-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .order-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--md-spacing-sm);
+  }
+
+  .source-filter-select {
+    width: 100%;
+    box-sizing: border-box;
+  }
   
-  .filter-tabs {
+  .order-tabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
     gap: var(--md-spacing-xs);
     padding-bottom: var(--md-spacing-xs);
+    margin-bottom: var(--md-spacing-sm);
   }
   
   .tab-btn {

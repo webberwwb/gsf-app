@@ -292,11 +292,13 @@ export default {
   },
   mounted() {
     this.fetchUsers()
-    // Set up infinite scroll
-    window.addEventListener('scroll', this.handleScroll)
+    this._scrollContainer = this.$el?.closest?.('.content-area') ?? null
+    const target = this._scrollContainer ?? window
+    target.addEventListener('scroll', this.handleScroll, { passive: true })
   },
   beforeUnmount() {
-    window.removeEventListener('scroll', this.handleScroll)
+    const target = this._scrollContainer ?? window
+    target.removeEventListener('scroll', this.handleScroll)
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer)
     }
@@ -357,13 +359,21 @@ export default {
       await this.fetchUsers(false)
     },
     handleScroll() {
-      // Check if user has scrolled near the bottom
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-      const windowHeight = window.innerHeight
-      const documentHeight = document.documentElement.scrollHeight
-      
-      // Trigger when user is 300px from bottom
-      if (scrollTop + windowHeight >= documentHeight - 300) {
+      let scrollTop
+      let viewportHeight
+      let scrollHeight
+      if (this._scrollContainer) {
+        const el = this._scrollContainer
+        scrollTop = el.scrollTop
+        viewportHeight = el.clientHeight
+        scrollHeight = el.scrollHeight
+      } else {
+        scrollTop = window.pageYOffset || document.documentElement.scrollTop
+        viewportHeight = window.innerHeight
+        scrollHeight = document.documentElement.scrollHeight
+      }
+
+      if (scrollTop + viewportHeight >= scrollHeight - 300) {
         this.loadMoreUsers()
       }
     },
@@ -1035,7 +1045,7 @@ export default {
   margin-bottom: -2px;
 }
 
-.tab:hover {
+.tab:hover:not(.active) {
   color: var(--md-on-surface);
   background: var(--md-surface-variant);
 }

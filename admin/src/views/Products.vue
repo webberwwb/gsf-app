@@ -107,7 +107,7 @@ export default {
   height: 20px;
 }
 
-.tab:hover {
+.tab:hover:not(.active) {
   background: var(--md-surface-variant);
 }
 
@@ -115,6 +115,10 @@ export default {
   background: var(--md-primary);
   color: white;
   box-shadow: var(--md-elevation-2);
+}
+
+.tab.active:hover {
+  filter: brightness(0.94);
 }
 
 .tab-content {

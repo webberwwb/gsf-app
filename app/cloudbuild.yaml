@@ -6,6 +6,8 @@ steps:
       - '--build-arg'
       - 'VITE_API_BASE_URL=${_VITE_API_BASE_URL}'
       - '--build-arg'
+      - 'VITE_APP_PUBLIC_URL=${_VITE_APP_PUBLIC_URL}'
+      - '--build-arg'
       - 'VITE_GOOGLE_MAPS_API_KEY=${_VITE_GOOGLE_MAPS_API_KEY}'
       - '-t'
       - 'gcr.io/$PROJECT_ID/gsf-app-frontend:${BUILD_ID}'
@@ -31,5 +33,6 @@ options:
 
 substitutions:
   _VITE_API_BASE_URL: 'https://backend.grainstoryfarm.ca/api'
+  _VITE_APP_PUBLIC_URL: 'https://app.grainstoryfarm.ca'
   _VITE_GOOGLE_MAPS_API_KEY: ''
 

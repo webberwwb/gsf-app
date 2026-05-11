@@ -28,7 +28,7 @@ fi
 if [ ! -f "./cloud_sql_proxy" ]; then
     echo -e "${RED}Error: cloud_sql_proxy not found${NC}"
     echo "Downloading Cloud SQL Proxy..."
-    curl -o cloud_sql_proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.darwin.amd64
+    curl -o cloud_sql_proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.15.0/cloud-sql-proxy.darwin.amd64
     chmod +x cloud_sql_proxy
 fi
 

@@ -1,6 +1,7 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click="$emit('close')">
-    <div class="modal-content order-detail-modal" @click.stop>
+  <Teleport to="body">
+    <div v-if="show" class="modal-overlay" @click="requestClose">
+      <div class="modal-content order-detail-modal" @click.stop>
       <div class="modal-header">
         <div class="header-content">
           <div class="header-icon">
@@ -13,11 +14,14 @@
             <p class="order-number">{{ order?.order_number }}</p>
           </div>
           <div v-if="order" class="header-status-badges">
+            <span v-if="hasMissingFinalWeight" class="missing-weight-badge-header" title="有按重计价商品未填写有效实际重量">
+              缺称重
+            </span>
             <span class="payment-status-badge-header" :class="`payment-${order.payment_status}`">
               {{ getPaymentStatusText(order.payment_status) }}
             </span>
           </div>
-          <button @click="$emit('close')" class="close-btn">
+          <button @click="requestClose" class="close-btn">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -26,6 +30,10 @@
       </div>
       <div class="modal-body">
         <div v-if="order" class="order-detail-content">
+          <div v-if="hasMissingFinalWeight" class="final-weight-alert-banner" role="alert">
+            <strong>有 {{ missingFinalWeightCount }} 条按重计价商品未填写有效实际重量（或总重量）。</strong>
+            请先填写重量并点击底部「更新订单」保存，避免金额与客户预期不符。
+          </div>
           <!-- Customer & Order Status Section -->
           <div class="order-info-section">
             <div class="section-header">
@@ -266,7 +274,12 @@
               </button>
             </div>
             <div class="items-list">
-              <div v-for="(item, index) in editableItems" :key="item.tempId || item.id" class="order-item-row">
+              <div
+                v-for="(item, index) in editableItems"
+                :key="item.tempId || item.id"
+                class="order-item-row"
+                :class="{ 'order-item-row--missing-weight': rowMissingFinalWeight(item) }"
+              >
                 <div class="item-info">
                   <div class="item-name">
                     {{ item.product?.name || 'N/A' }}
@@ -351,6 +364,48 @@
                 </button>
               </div>
             </div>
+            <div class="items-list-breakdown">
+              <div class="breakdown-row">
+                <span class="breakdown-label">商品小计:</span>
+                <span class="breakdown-value">${{ editableItemsSubtotalFormatted }}</span>
+              </div>
+              <div
+                v-if="previewTax > 0"
+                class="breakdown-row"
+              >
+                <span class="breakdown-label">税费:</span>
+                <span class="breakdown-value">${{ previewTaxFormatted }}</span>
+              </div>
+              <div
+                v-if="previewAdjustment !== 0 && !Number.isNaN(previewAdjustment)"
+                class="breakdown-row"
+              >
+                <span class="breakdown-label">价格调整:</span>
+                <span
+                  :class="['breakdown-value', previewAdjustment >= 0 ? 'adjust-positive' : 'adjust-negative']"
+                >
+                  {{ previewAdjustment >= 0 ? '+' : '-' }}${{ previewAdjustmentAbsFormatted }}
+                </span>
+              </div>
+              <div
+                v-if="order && order.delivery_method === 'delivery'"
+                class="breakdown-row"
+              >
+                <span class="breakdown-label">配送费:</span>
+                <span class="breakdown-value">{{ modalShippingFeeDisplay }}</span>
+              </div>
+              <div
+                v-if="previewCredit > 0"
+                class="breakdown-row"
+              >
+                <span class="breakdown-label">代金券:</span>
+                <span class="breakdown-value breakdown-value--credit">-${{ previewCreditFormatted }}</span>
+              </div>
+              <div class="breakdown-row breakdown-row--due">
+                <span class="breakdown-label">应付金额:</span>
+                <span class="breakdown-value breakdown-value--due">${{ previewAmountDueFormatted }}</span>
+              </div>
+            </div>
           </div>
           
           <!-- Add Product Modal -->
@@ -390,23 +445,6 @@
               <h3>价格与调整</h3>
             </div>
             
-            <!-- Order Totals -->
-            <div class="totals-breakdown">
-              <div class="total-row">
-                <span class="total-label">商品小计:</span>
-                <span class="total-value">${{ parseFloat(order?.subtotal || 0).toFixed(2) }}</span>
-              </div>
-              <div class="total-row">
-                <span class="total-label">税费:</span>
-                <span class="total-value">${{ parseFloat(order?.tax || 0).toFixed(2) }}</span>
-              </div>
-              <div class="total-row">
-                <span class="total-label">运费:</span>
-                <span class="total-value">${{ parseFloat(order?.shipping_fee || 0).toFixed(2) }}</span>
-              </div>
-            </div>
-            
-            <!-- Adjustment Section -->
             <div class="adjustment-section">
               <div class="adjustment-header">
                 <span class="total-label">订单调整:</span>
@@ -449,10 +487,10 @@
               </div>
             </div>
             
-            <!-- Final Total -->
+            <!-- Final amount due (same as 商品列表 bottom line) -->
             <div class="total-row final-total-row">
-              <span class="total-label">最终总额:</span>
-              <span class="total-value-large">${{ finalTotal.toFixed(2) }}</span>
+              <span class="total-label">应付金额:</span>
+              <span class="total-value-large">${{ previewAmountDueFormatted }}</span>
             </div>
           </div>
 
@@ -481,12 +519,16 @@
         </button>
       </div>
     </div>
-  </div>
+    </div>
+  </Teleport>
 </template>
 
 <script>
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
+import {
+  editableRowMissingFinalWeight as rowNeedsFinalWeight
+} from '../utils/orderWeightValidation'
 
 export default {
   name: 'OrderDetailModal',
@@ -551,7 +593,8 @@ export default {
       // Order adjustments
       localAdjustmentAmount: 0,
       localAdjustmentNotes: '',
-      savingAdjustment: false
+      savingAdjustment: false,
+      formBaseline: null
     }
   },
   computed: {
@@ -562,13 +605,63 @@ export default {
              this.newAddress.city?.trim() && 
              this.newAddress.postal_code?.trim()
     },
-        finalTotal() {
-          if (!this.order) return 0
-          const baseTotal = parseFloat(this.order.total) || 0
-          // Handle empty/NaN values from number input - treat as 0
-          const adjustment = parseFloat(this.localAdjustmentAmount) || 0
-          return Number((baseTotal + adjustment).toFixed(2))
-        }
+    editableItemsSubtotal() {
+      return this.editableItems.reduce((sum, i) => {
+        return sum + (parseFloat(i.total_price) || 0)
+      }, 0)
+    },
+    editableItemsSubtotalFormatted() {
+      return this.editableItemsSubtotal.toFixed(2)
+    },
+    previewTax() {
+      return parseFloat(this.order?.tax || 0) || 0
+    },
+    previewTaxFormatted() {
+      return this.previewTax.toFixed(2)
+    },
+    previewShipping() {
+      return parseFloat(this.order?.shipping_fee || 0) || 0
+    },
+    modalShippingFeeDisplay() {
+      const n = this.previewShipping
+      if (!Number.isFinite(n) || n <= 0) return '免运费'
+      return `$${n.toFixed(2)}`
+    },
+    previewCredit() {
+      return parseFloat(this.order?.store_credit_applied || 0) || 0
+    },
+    previewCreditFormatted() {
+      return this.previewCredit.toFixed(2)
+    },
+    previewAdjustment() {
+      const a = parseFloat(this.localAdjustmentAmount)
+      return Number.isFinite(a) ? a : 0
+    },
+    previewAdjustmentAbsFormatted() {
+      return Math.abs(this.previewAdjustment).toFixed(2)
+    },
+    previewAmountDue() {
+      const pre =
+        this.editableItemsSubtotal +
+        this.previewTax +
+        this.previewShipping +
+        this.previewAdjustment
+      const due = pre - this.previewCredit
+      return Math.max(0, Number(due.toFixed(2)))
+    },
+    previewAmountDueFormatted() {
+      return this.previewAmountDue.toFixed(2)
+    },
+    hasMissingFinalWeight() {
+      return this.editableItems.some((row) => rowNeedsFinalWeight(row))
+    },
+    missingFinalWeightCount() {
+      return this.editableItems.filter((row) => rowNeedsFinalWeight(row)).length
+    },
+    hasUnsavedChanges() {
+      if (!this.show || this.formBaseline === null) return false
+      return this.serializeFormState() !== this.formBaseline
+    }
   },
   watch: {
     show(newVal) {
@@ -634,7 +727,72 @@ export default {
       }
     }
   },
+  mounted() {
+    this._onBeforeUnload = (e) => {
+      if (this.show && this.hasUnsavedChanges) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', this._onBeforeUnload)
+  },
+  beforeUnmount() {
+    if (this._onBeforeUnload) {
+      window.removeEventListener('beforeunload', this._onBeforeUnload)
+    }
+  },
   methods: {
+    rowMissingFinalWeight(row) {
+      return rowNeedsFinalWeight(row)
+    },
+    snapshotWeight(w) {
+      if (w === null || w === undefined || w === '') return null
+      const n = parseFloat(w)
+      if (!Number.isFinite(n)) return '__nan__'
+      return Math.round(n * 1e6) / 1e6
+    },
+    snapshotMoney(v) {
+      const n = parseFloat(v)
+      if (!Number.isFinite(n)) return 0
+      return Math.round(n * 100) / 100
+    },
+    serializeFormState() {
+      const items = this.editableItems.map((i) => ({
+        id: i.id ?? null,
+        tempId: typeof i.tempId === 'string' || typeof i.tempId === 'number' ? i.tempId : null,
+        product_id: i.product_id,
+        quantity: Math.max(1, parseInt(i.quantity, 10) || 1),
+        final_weight: this.snapshotWeight(i.final_weight)
+      }))
+      return JSON.stringify({
+        st: this.localOrderStatus || '',
+        pm: this.localPaymentMethod || '',
+        dm: this.localDeliveryMethod || '',
+        pl: this.localPickupLocation || '',
+        aid: this.localAddressId,
+        notes: String(this.localOrderNotes ?? ''),
+        adj: this.snapshotMoney(this.localAdjustmentAmount),
+        adjN: String(this.localAdjustmentNotes ?? ''),
+        items
+      })
+    },
+    captureBaseline() {
+      if (!this.show || !this.order) {
+        this.formBaseline = null
+        return
+      }
+      this.formBaseline = this.serializeFormState()
+    },
+    async requestClose() {
+      if (this.hasUnsavedChanges) {
+        const ok = await this.confirm(
+          '您有未保存的修改（商品、称重、配送、备注等）。确定关闭吗？未保存的修改将丢失。',
+          { type: 'warning', title: '未保存的修改' }
+        )
+        if (!ok) return
+      }
+      this.$emit('close')
+    },
     initializeOrder() {
       if (!this.order || !this.show) {
         return
@@ -735,6 +893,7 @@ export default {
       // Use nextTick to ensure watcher checks complete before we clear the flag
       this.$nextTick(() => {
         this.isInitializingOrder = false
+        this.captureBaseline()
       })
     },
     resetModal() {
@@ -767,6 +926,7 @@ export default {
       this.localAdjustmentAmount = 0
       this.localAdjustmentNotes = ''
       this.savingAdjustment = false
+      this.formBaseline = null
     },
     updateOrderData(updatedOrder) {
       // Update local state from updated order without full reinitialization
@@ -848,10 +1008,15 @@ export default {
         this.localOrderNotes = updatedOrder.notes || ''
       }
       
-      // Update lastOrderId to prevent reinitialization
       if (updatedOrder.id) {
         this.lastOrderId = updatedOrder.id
       }
+
+      this.$nextTick(() => {
+        if (!this.isInitializingOrder) {
+          this.captureBaseline()
+        }
+      })
     },
     async openAddProductModal() {
       // If products are already loaded, just show the modal
@@ -1069,8 +1234,8 @@ export default {
 
             await this.success('订单调整保存成功')
 
-            // Refresh order data
-            this.$emit('order-updated', { id: this.order.id })
+            const refreshed = await apiClient.get(`/admin/orders/${this.order.id}`)
+            this.$emit('order-updated', refreshed.data.order)
 
           } catch (err) {
             await this.error(err.response?.data?.message || err.response?.data?.error || '保存调整失败')
@@ -1091,11 +1256,11 @@ export default {
       if (!this.order || !this.localOrderStatus) {
         return
       }
-      
+
       if (this.localOrderStatus === this.order.status) {
         return
       }
-      
+
       this.$emit('status-change', this.order.id, this.localOrderStatus)
     },
     isOutOfStock(product) {
@@ -1114,7 +1279,6 @@ export default {
       }
     },
     handleMarkAsPaid() {
-      // Emit only the order ID and payment method, not the entire order object
       if (this.order && this.localPaymentMethod) {
         this.$emit('mark-paid', {
           orderId: this.order.id,
@@ -1335,7 +1499,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 10000;
   padding: var(--md-spacing-md);
 }
 
@@ -1412,15 +1576,33 @@ export default {
 .header-status-badges {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--md-spacing-sm);
   margin-left: auto;
 }
 
+.missing-weight-badge-header,
 .payment-status-badge-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   padding: 4px 10px;
   border-radius: 12px;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.missing-weight-badge-header {
+  background: #FFEBEE;
+  color: #B71C1C;
+  border: 1px solid rgba(183, 28, 28, 0.25);
+}
+
+.payment-status-badge-header {
+  border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
 }
 
 .payment-status-badge-header.payment-unpaid {
@@ -1476,6 +1658,23 @@ export default {
   overflow-y: auto;
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   background: #FAFAFA;
+}
+
+.final-weight-alert-banner {
+  margin-bottom: var(--md-spacing-md);
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #FFEBEE 0%, #FFF3E0 100%);
+  border: 1px solid rgba(183, 28, 28, 0.35);
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.final-weight-alert-banner strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #B71C1C;
 }
 
 .adjustments-actions {
@@ -2286,6 +2485,65 @@ export default {
   margin-top: var(--md-spacing-sm);
 }
 
+.items-list-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 2px solid rgba(0, 0, 0, 0.1);
+}
+
+.items-list-breakdown .breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.875rem;
+}
+
+.items-list-breakdown .breakdown-label {
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 500;
+}
+
+.items-list-breakdown .breakdown-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.items-list-breakdown .breakdown-value--credit {
+  color: #2e7d32;
+}
+
+.items-list-breakdown .adjust-positive {
+  color: #1565c0;
+}
+
+.items-list-breakdown .adjust-negative {
+  color: #c62828;
+}
+
+.items-list-breakdown .breakdown-row--due {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.14) 0%, rgba(255, 165, 0, 0.22) 100%);
+  border: 1px solid rgba(255, 140, 0, 0.45);
+}
+
+.items-list-breakdown .breakdown-row--due .breakdown-label {
+  font-weight: 700;
+  color: #e65100;
+}
+
+.items-list-breakdown .breakdown-value--due {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #bf360c;
+}
+
 .order-item-row {
   display: flex;
   justify-content: space-between;
@@ -2306,6 +2564,17 @@ export default {
   border-color: rgba(255, 140, 0, 0.3);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 2002;
+}
+
+.order-item-row--missing-weight {
+  border-color: rgba(183, 28, 28, 0.45);
+  background: #FFF8F8;
+  box-shadow: 0 0 0 2px rgba(183, 28, 28, 0.12);
+}
+
+.order-item-row--missing-weight:hover {
+  border-color: rgba(183, 28, 28, 0.55);
+  background: #FFF5F5;
 }
 
 .item-info {
@@ -2932,32 +3201,43 @@ export default {
 @media (max-width: 767px) {
   .modal-overlay {
     padding: 0;
-    align-items: flex-end;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
   }
   
   .modal-content {
     max-width: 100%;
     width: 100%;
-    max-height: 100vh;
-    height: 100vh;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    max-height: none;
     border-radius: 0;
     margin: 0;
+    align-self: stretch;
+    /* Single top inset for the full-screen sheet */
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    overflow: hidden;
   }
-  
+
   .modal-header {
     padding: var(--md-spacing-md) var(--md-spacing-md) var(--md-spacing-sm);
     border-radius: 0;
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    /* Not sticky: sticky + fixed modal on iOS often uses the viewport and covers body */
+    position: relative;
+    flex-shrink: 0;
+    z-index: 2;
     background: var(--gradient-primary);
-    /* Add top safe area */
-    padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+    /* Inset already on .modal-content — only content padding here */
+    padding-top: var(--md-spacing-md);
   }
   
-  /* Extend background into safe area on mobile */
+  /* Remove the ::before pseudo-element on mobile - not needed with full screen modal */
   .modal-header::before {
-    border-radius: 0;
+    display: none;
   }
   
   .header-content {
@@ -2988,9 +3268,11 @@ export default {
     margin-left: auto;
   }
   
+  .missing-weight-badge-header,
   .payment-status-badge-header {
     font-size: 0.625rem;
     padding: 2px 6px;
+    border-radius: 8px;
   }
   
   .close-btn {
@@ -3001,6 +3283,7 @@ export default {
   .modal-body {
     padding: var(--md-spacing-sm);
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
@@ -3159,8 +3442,8 @@ export default {
     flex-direction: column;
     gap: var(--md-spacing-sm);
     padding: var(--md-spacing-sm);
-    position: sticky;
-    bottom: 0;
+    flex-shrink: 0;
+    position: relative;
     background: #FFFFFF;
     border-top: 2px solid rgba(0, 0, 0, 0.08);
     /* Add bottom safe area */

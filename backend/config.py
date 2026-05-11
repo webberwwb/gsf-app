@@ -61,7 +61,11 @@ class Config:
         'pool_pre_ping': True,
         'pool_recycle': 300,
         'pool_size': 10,
-        'max_overflow': 20
+        'max_overflow': 20,
+        'connect_args': {
+            'ssl_disabled': True,
+            'charset': 'utf8mb4'
+        }
     }
     
     # Twilio Verify configuration

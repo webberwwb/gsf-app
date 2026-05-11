@@ -58,6 +58,7 @@ export default {
   --md-on-surface: #1C1B1F;
   --md-on-surface-variant: #49454F;
   --md-outline: #79747E;
+  --md-outline-variant: #CAC4D0;
   --md-shadow: rgba(0, 0, 0, 0.15);
   
   /* Gradient Colors */
@@ -196,6 +197,43 @@ body {
   /* Prevent pull-to-refresh on mobile */
   body {
     overscroll-behavior-y: contain;
+  }
+}
+
+/*
+ * Narrow viewports + installed PWA (tablet/phone): hide scrollbars on
+ * horizontal regions. Scroll / swipe still works.
+ */
+@media (max-width: 767px), ((display-mode: standalone) and (max-width: 1024px)) {
+  .hide-x-scrollbar,
+  .tabs,
+  .tabs-container,
+  .table-wrap,
+  .repurchase-table-wrap,
+  .products-table-container,
+  .order-tabs,
+  .table-container,
+  .records-table-container,
+  .attempts-table,
+  .markdown-body pre {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .hide-x-scrollbar::-webkit-scrollbar,
+  .tabs::-webkit-scrollbar,
+  .tabs-container::-webkit-scrollbar,
+  .table-wrap::-webkit-scrollbar,
+  .repurchase-table-wrap::-webkit-scrollbar,
+  .products-table-container::-webkit-scrollbar,
+  .order-tabs::-webkit-scrollbar,
+  .table-container::-webkit-scrollbar,
+  .records-table-container::-webkit-scrollbar,
+  .attempts-table::-webkit-scrollbar,
+  .markdown-body pre::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 }
 

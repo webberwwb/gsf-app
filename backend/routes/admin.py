@@ -40,6 +40,10 @@ from utils.shipping import calculate_shipping_fee
 from utils.stock_management import restore_stock
 import csv
 import io
+from models.credit_transaction import CreditTransaction
+from models.referral_program import ReferralProgramConfig, ReferralRecord
+from services import credit_service
+from services import referral_service
 
 # Optional imports for image upload
 try:
@@ -625,14 +629,20 @@ def get_users():
         # Apply search filter
         if search:
             search_term = f'%{search}%'
-            query = query.filter(
-                db.or_(
-                    User.phone.like(search_term),
-                    User.nickname.like(search_term),
-                    User.email.like(search_term),
-                    User.wechat.like(search_term)
-                )
-            )
+            search_conds = [
+                User.phone.like(search_term),
+                User.nickname.like(search_term),
+                User.email.like(search_term),
+                User.wechat.like(search_term),
+            ]
+            if search.isdigit():
+                try:
+                    uid = int(search)
+                    if uid > 0:
+                        search_conds.append(User.id == uid)
+                except ValueError:
+                    pass
+            query = query.filter(db.or_(*search_conds))
         
         # Apply status filter
         if status_filter:
@@ -1184,13 +1194,15 @@ def get_group_deal(deal_id):
         ).first_or_404()
         deal_dict = deal.to_dict()
         
-        # Get products for this deal
-        deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
+        # Products for this deal (single query + joinedload — avoid N+1 Product.query.get per row)
+        deal_products = GroupDealProduct.query.options(
+            joinedload(GroupDealProduct.product).joinedload(Product.category),
+            joinedload(GroupDealProduct.product).joinedload(Product.supplier)
+        ).filter(GroupDealProduct.group_deal_id == deal.id).all()
         products_data = []
         for dp in deal_products:
-            product = Product.query.get(dp.product_id)
-            if product:
-                product_dict = product.to_dict()
+            if dp.product:
+                product_dict = dp.product.to_dict()
                 product_dict['deal_stock_limit'] = dp.deal_stock_limit
                 product_dict['group_deal_product_id'] = dp.id
                 products_data.append(product_dict)
@@ -2031,6 +2043,8 @@ def update_order_status(order_id):
             
             current_app.logger.info(f'Auto-marked pickup cash order {order_id} as paid when completing')
         
+        referral_service.on_order_first_completed(order, old_status)
+        
         db.session.commit()
         
         current_app.logger.info(f'Updated order {order_id} status from {old_status} to {status}')
@@ -2123,6 +2137,7 @@ def bulk_update_order_status():
             old_status = order.status
             order.status = new_status
             order.updated_at = utc_now()
+            referral_service.on_order_first_completed(order, old_status)
             updated_count += 1
             current_app.logger.info(f'Bulk updated order {order.id} status from {old_status} to {new_status}')
         
@@ -2207,6 +2222,7 @@ def update_order_payment(order_id):
         if order.status == OrderStatus.CANCELLED.value:
             return jsonify({'error': 'Cannot update payment for cancelled order'}), 400
         
+        old_order_status = order.status
         old_payment_status = order.payment_status
         order.payment_status = payment_status
         
@@ -2235,6 +2251,8 @@ def update_order_payment(order_id):
                 # For other orders, also auto-complete (existing behavior)
                 order.status = OrderStatus.COMPLETED.value
                 current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {total_cents}')
+        
+        referral_service.on_order_first_completed(order, old_order_status)
         
         db.session.commit()
         
@@ -5287,4 +5305,149 @@ def delete_action_item(item_id):
         db.session.rollback()
         current_app.logger.error(f'Error deleting action item: {e}', exc_info=True)
         return jsonify({'error': 'Failed to delete action item', 'message': str(e)}), 500
+
+
+# --- Store credit & referrals (admin) ---
+
+@admin_bp.route('/referral-program-config', methods=['GET'])
+def admin_get_referral_program_config():
+    _, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    cfg = referral_service.get_active_referral_config()
+    return jsonify({'config': cfg.to_dict()}), 200
+
+
+@admin_bp.route('/referral-program-config', methods=['PUT'])
+def admin_put_referral_program_config():
+    _, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    data = request.get_json() or {}
+    cfg = ReferralProgramConfig.query.filter_by(is_active=True).order_by(
+        ReferralProgramConfig.id.desc()
+    ).first()
+    if not cfg:
+        cfg = ReferralProgramConfig(
+            invitee_bonus_amount=Decimal('5'),
+            inviter_reward_amount=Decimal('5'),
+            is_active=True,
+        )
+        db.session.add(cfg)
+    if 'invitee_bonus_amount' in data:
+        cfg.invitee_bonus_amount = Decimal(str(data['invitee_bonus_amount']))
+    if 'inviter_reward_amount' in data:
+        cfg.inviter_reward_amount = Decimal(str(data['inviter_reward_amount']))
+    if 'is_active' in data:
+        cfg.is_active = bool(data['is_active'])
+    db.session.commit()
+    return jsonify({'config': cfg.to_dict()}), 200
+
+
+@admin_bp.route('/credit-transactions', methods=['GET'])
+def admin_list_credit_transactions():
+    _, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    uid = request.args.get('user_id', type=int)
+    limit = min(request.args.get('limit', default=50, type=int), 200)
+    offset = request.args.get('offset', default=0, type=int)
+    q = CreditTransaction.query.options(joinedload(CreditTransaction.user)).order_by(CreditTransaction.created_at.desc())
+    if uid:
+        q = q.filter(CreditTransaction.user_id == uid)
+    total = q.count()
+    rows = q.offset(offset).limit(limit).all()
+    return jsonify({
+        'transactions': [t.to_dict(include_user=True) for t in rows],
+        'total': total,
+        'limit': limit,
+        'offset': offset,
+    }), 200
+
+
+@admin_bp.route('/users/<int:target_user_id>/credit', methods=['POST'])
+def admin_grant_user_credit(target_user_id):
+    admin_uid, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    data = request.get_json() or {}
+    if 'amount' not in data:
+        return jsonify({'error': 'amount is required'}), 400
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({'error': 'reason is required'}), 400
+    amount = Decimal(str(data['amount']))
+    if amount == 0:
+        return jsonify({'error': 'amount cannot be zero'}), 400
+    user = User.query.get(target_user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    try:
+        credit_service.apply_credit_change(
+            user,
+            amount,
+            credit_service.TX_ADMIN_GRANT,
+            reason=reason,
+            created_by_admin_user_id=admin_uid,
+        )
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    db.session.refresh(user)
+    return jsonify({'user': user.to_dict()}), 200
+
+
+def _referral_record_user_summary(user):
+    """Admin list: human-facing fields only (ids stay on the record for support)."""
+    if not user:
+        return None
+    return {
+        'id': user.id,
+        'nickname': user.nickname or None,
+        'wechat': user.wechat or None,
+        'phone': user.phone or None,
+    }
+
+
+_REFERRAL_RECORD_STATUS_LABEL_ZH = {
+    ReferralRecord.STATUS_PENDING_ORDER: '已绑定，未下单',
+    ReferralRecord.STATUS_REWARDED: '已发放奖励',
+}
+
+
+def _referral_record_status_label_zh(status):
+    if not status:
+        return '—'
+    return _REFERRAL_RECORD_STATUS_LABEL_ZH.get(status, f'未知（{status}）')
+
+
+@admin_bp.route('/referrals', methods=['GET'])
+def admin_list_referral_records():
+    _, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    limit = min(request.args.get('limit', default=100, type=int), 500)
+    offset = request.args.get('offset', default=0, type=int)
+    q = ReferralRecord.query.order_by(ReferralRecord.created_at.desc())
+    inviter_q = request.args.get('inviter_user_id', type=int)
+    if inviter_q:
+        q = q.filter(ReferralRecord.inviter_user_id == inviter_q)
+    total = q.count()
+    rows = q.offset(offset).limit(limit).all()
+    payload = []
+    for r in rows:
+        inviter = User.query.get(r.inviter_user_id)
+        invitee = User.query.get(r.invitee_user_id)
+        completed = bool(r.first_completed_order_id)
+        payload.append({
+            **r.to_dict(),
+            'status_label': _referral_record_status_label_zh(r.status),
+            'inviter': _referral_record_user_summary(inviter),
+            'invitee': _referral_record_user_summary(invitee),
+            'invitee_has_completed_order': completed or (
+                referral_service.user_has_completed_order(r.invitee_user_id) if not completed else True
+            ),
+        })
+    return jsonify({'referrals': payload, 'total': total, 'limit': limit, 'offset': offset}), 200
 

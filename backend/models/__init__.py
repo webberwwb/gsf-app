@@ -16,4 +16,6 @@ from models.delivery_fee_config import DeliveryFeeConfig
 from models.sdr import SDR, CommissionRule, CommissionRecord, QuarterlyBonus
 from models.customer_feedback import CustomerFeedback, FeedbackContext, FeedbackOutcome
 from models.work_document import WorkDocument, ActionItem
+from models.credit_transaction import CreditTransaction
+from models.referral_program import ReferralProgramConfig, ReferralRecord
 

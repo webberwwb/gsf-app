@@ -3,6 +3,7 @@ from models import db
 from datetime import datetime, timezone
 from models.base import utc_now
 from constants.status_enums import UserStatus
+from sqlalchemy import Numeric
 
 class User(BaseModel):
     """User model"""
@@ -14,8 +15,15 @@ class User(BaseModel):
     # Optional: nickname
     nickname = db.Column(db.String(255), nullable=True)
     
-    # Points: default 0, accumulate 1 point per dollar spent
+    # Points: default 0, accumulate via orders (loyalty); separate from store credit
     points = db.Column(db.Integer, default=0, nullable=False)
+
+    # Store credit (CAD) — checkout / referrals / admin
+    store_credit_balance = db.Column(Numeric(10, 2), default=0, nullable=False)
+
+    # Referrals (code assigned after first completed order)
+    referral_code = db.Column(db.String(32), unique=True, nullable=True, index=True)
+    referred_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     
     # Dates
     creation_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -43,7 +51,13 @@ class User(BaseModel):
     # User source (e.g., "花泽", "default")
     user_source = db.Column(db.String(50), nullable=True, default='default')
     
-    # Relationships
+    # Self-referential referrer
+    referrer = db.relationship(
+        'User',
+        remote_side='User.id',
+        foreign_keys=[referred_by_user_id],
+        backref=db.backref('referred_users', lazy='dynamic'),
+    )
     addresses = db.relationship('Address', backref='user', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', backref='user', lazy=True)
     tokens = db.relationship('AuthToken', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -72,12 +86,16 @@ class User(BaseModel):
         """Get count of orders for this user"""
         return len(self.orders) if self.orders else 0
     
-    def to_dict(self, include_order_count=False):
+    def to_dict(self, include_order_count=False, include_referrer=False):
         data = super().to_dict()
         data.update({
             'phone': self.phone,
             'nickname': self.nickname,
             'points': self.points,
+            'store_credit_balance': float(self.store_credit_balance) if self.store_credit_balance is not None else 0.0,
+            'referral_code': self.referral_code,
+            'referral_unlocked': bool(self.referral_code),
+            'referred_by_user_id': self.referred_by_user_id,
             'creation_date': self.creation_date.isoformat() if self.creation_date else None,
             'last_login_date': self.last_login_date.isoformat() if self.last_login_date else None,
             'status': self.status,
@@ -88,11 +106,32 @@ class User(BaseModel):
             'is_admin': self.is_admin,
             'roles': self.get_roles()
         })
+
+        if include_referrer and self.referred_by_user_id:
+            inv = self.referrer
+            if inv:
+                data['referrer_display_name'] = inv.nickname or inv.phone or f'用户{inv.id}'
+            else:
+                data['referrer_display_name'] = None
+        elif include_referrer:
+            data['referrer_display_name'] = None
         
         if include_order_count:
             data['order_count'] = self.order_count
         
         return data
+
+    def to_credit_tx_summary_dict(self):
+        """Minimal user fields for admin credit transaction lists."""
+        return {
+            'id': self.id,
+            'nickname': self.nickname,
+            'phone': self.phone,
+            'wechat': self.wechat,
+            'wechat_nickname': self.wechat_nickname,
+            'email': self.email,
+        }
+
 
 class AuthToken(BaseModel):
     """Authentication token model for bearer token validation"""

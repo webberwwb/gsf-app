@@ -178,12 +178,15 @@ def update_stock_after_order_modification(group_deal_id, old_items, new_items):
             # Check if stock management is enabled
             if deal_product.deal_stock_limit is not None:
                 if net_change > 0:
-                    # Increasing quantity - check if enough stock
+                    # Increasing quantity - check if enough stock available
+                    # This prevents adding more items when stock is insufficient
                     if deal_product.deal_stock_limit < net_change:
                         return False, f'库存不足。商品当前库存: {deal_product.deal_stock_limit}，需要增加: {net_change}'
                     deal_product.deal_stock_limit -= net_change
                 else:
                     # Decreasing quantity - restore stock
+                    # IMPORTANT: Always allow removing items, even if product is currently out of stock
+                    # Removing items frees up stock for other users
                     deal_product.deal_stock_limit += abs(net_change)
                 
                 current_app.logger.info(

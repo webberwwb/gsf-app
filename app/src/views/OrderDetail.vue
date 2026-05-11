@@ -127,18 +127,18 @@
               </div>
 
               <!-- Product Selection Controls -->
-              <div class="product-selection" :class="{ 'disabled': isOutOfStock(product) || !canEditProducts || isOrderCompleted }">
+              <div class="product-selection" :class="{ 'disabled': !canEditProducts || isOrderCompleted }">
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
                   <div class="quantity-control">
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
                       :max="product.deal_stock_limit || 999"
-                      :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted"
+                      :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
                     <button @click="increaseQuantity(product)" :disabled="(product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit) || !canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
@@ -152,13 +152,13 @@
                 <div v-else-if="product.pricing_type === 'weight_range'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
-                      :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted"
+                      :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
                     <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
@@ -177,13 +177,13 @@
                 <div v-else-if="product.pricing_type === 'unit_weight'" class="selection-controls">
                   <div class="quantity-control">
                     <label>数量:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
-                      :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted"
+                      :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
                     <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
@@ -202,14 +202,14 @@
                 <div v-else-if="product.pricing_type === 'bundled_weight'" class="selection-controls">
                   <div class="quantity-control">
                     <label>份数:</label>
-                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">-</button>
+                    <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
                       type="number"
                       :value="getQuantity(product)"
                       @input="setQuantity(product, $event.target.value)"
                       min="0"
                       step="1"
-                      :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted"
+                      :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
                     <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
@@ -468,21 +468,152 @@
         <p class="notes-hint">{{ notes.length }}/1000</p>
       </div>
 
-      <!-- Order Summary -->
-      <div v-if="order && deal && hasSelectedItems()" class="order-summary-section">
+      <!-- Credit / referral (same flow as checkout; PATCH must send store_credit_to_apply) -->
+      <div
+        v-if="order && deal && canUpdateOrder && !isOrderCompleted && currentUser"
+        class="credit-referral-section"
+      >
+        <h3 class="section-title">优惠与推荐</h3>
+        <p v-if="currentUser?.referrer_display_name" class="referrer-bound-note">
+          已绑定邀请人：{{ currentUser.referrer_display_name }}
+        </p>
+        <div class="credit-referral-stack">
+          <div
+            v-if="showReferralInviteRow"
+            :class="['delivery-option', 'credit-promo-row', { active: referralRowActive }]"
+          >
+            <div class="option-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h17.25c.621 0 1.125-.504 1.125-1.125V11.25c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v2.625c0 .621.504 1.125 1.125 1.125z" />
+              </svg>
+            </div>
+            <div class="option-content">
+              <h4>好友推荐码（选填）</h4>
+              <p class="form-hint subtle">若尚未绑定过推荐人，可在此填写，并获取代金券（仅一次）</p>
+              <input
+                v-model="referralCodeInput"
+                type="text"
+                class="form-input credit-input"
+                placeholder="推荐码"
+                autocomplete="off"
+                autocapitalize="characters"
+              />
+              <p v-if="referralFeedback?.kind === 'loading'" class="referral-live-msg referral-live-msg--muted">
+                验证中…
+              </p>
+              <p v-else-if="referralFeedback?.kind === 'err'" class="referral-live-msg referral-live-msg--err">
+                {{ referralFeedback.text }}
+              </p>
+            </div>
+            <div class="option-check">
+              <svg
+                v-if="referralRowActive"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </div>
+          <button
+            type="button"
+            :class="[
+              'delivery-option',
+              'credit-promo-row',
+              'credit-voucher-summary',
+              'credit-voucher-toggle',
+              {
+                active: creditApplyActive,
+                'credit-voucher-toggle--disabled': maxStoreCreditApplicable <= 0
+              }
+            ]"
+            :aria-pressed="creditApplyActive ? 'true' : 'false'"
+            :aria-disabled="maxStoreCreditApplicable <= 0 ? 'true' : 'false'"
+            @click="toggleApplyStoreCredit"
+          >
+            <div class="option-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 003 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m0 0H15M3.75 19.5h-.375A1.5 1.5 0 012.25 18V9.75a1.5 1.5 0 011.5-1.5h.375m0 0V9.75A2.25 2.25 0 015.25 7.5h13.5a2.25 2.25 0 012.25 2.25v9.75A2.25 2.25 0 0118.75 21H5.25a2.25 2.25 0 01-2.25-2.25V9.75m9 0v9.75" />
+              </svg>
+            </div>
+            <div class="option-content">
+              <h4>代金券</h4>
+              <div class="credit-voucher-summary-rows">
+                <p class="credit-voucher-summary-line">
+                  <span class="credit-voucher-summary-label">账户余额</span>
+                  <span class="credit-voucher-summary-value">${{ storeCreditBalanceDisplay }}</span>
+                </p>
+                <p class="credit-voucher-summary-line">
+                  <span class="credit-voucher-summary-label">本单抵扣</span>
+                  <span class="credit-voucher-summary-value">${{ storeCreditAppliedDisplay }}</span>
+                </p>
+              </div>
+            </div>
+            <div class="option-check">
+              <svg
+                v-if="creditApplyActive"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Order Summary (API totals: subtotal, tax, adjustment, shipping, credit, amount due) -->
+      <div v-if="order" class="order-summary-section">
         <h3 class="section-title">订单摘要</h3>
         <div class="order-breakdown">
           <div class="breakdown-row">
-            <span class="breakdown-label">小计:</span>
-            <span class="breakdown-amount">${{ calculateSubtotal() }}</span>
+            <span class="breakdown-label">商品小计:</span>
+            <span class="breakdown-amount">${{ formatOrderSummaryMoney(orderSubtotalNumber(order)) }}</span>
           </div>
-          <div v-if="deliveryMethod === 'delivery'" class="breakdown-row">
-            <span class="breakdown-label">运费:</span>
-            <span class="breakdown-amount">{{ shippingFeeDisplay }}</span>
+          <div
+            v-if="orderTaxNumber(order) > 0"
+            class="breakdown-row"
+          >
+            <span class="breakdown-label">税费:</span>
+            <span class="breakdown-amount">${{ formatOrderSummaryMoney(orderTaxNumber(order)) }}</span>
           </div>
-          <div class="breakdown-row total-row">
-            <span class="total-label">{{ hasEstimatedTotal() ? '预估总计' : '总计' }}:</span>
-            <span class="total-amount">${{ calculateTotal().total }}</span>
+          <div
+            v-if="orderAdjustmentNumber(order) !== 0"
+            class="breakdown-row"
+          >
+            <span class="breakdown-label">价格调整:</span>
+            <span
+              :class="[
+                'breakdown-amount',
+                orderAdjustmentNumber(order) >= 0 ? 'breakdown-amount--adjust-pos' : 'breakdown-amount--adjust-neg'
+              ]"
+            >
+              {{ orderAdjustmentNumber(order) >= 0 ? '+' : '-' }}${{ formatOrderSummaryMoney(Math.abs(orderAdjustmentNumber(order))) }}
+            </span>
+          </div>
+          <div
+            v-if="order.delivery_method === 'delivery'"
+            class="breakdown-row"
+          >
+            <span class="breakdown-label">配送费:</span>
+            <span class="breakdown-amount">{{ orderDetailShippingDisplay }}</span>
+          </div>
+          <div
+            v-if="displayedStoreCreditApplied > 0"
+            class="breakdown-row breakdown-row--store-credit"
+          >
+            <span class="breakdown-label">代金券:</span>
+            <span class="breakdown-amount breakdown-amount--credit">-${{ formatOrderSummaryMoney(displayedStoreCreditApplied) }}</span>
+          </div>
+          <div class="breakdown-row breakdown-row--due">
+            <span class="breakdown-label">应付金额:</span>
+            <span class="breakdown-amount breakdown-amount--due">${{ formatOrderSummaryMoney(displayedAmountDue) }}</span>
           </div>
         </div>
       </div>
@@ -634,7 +765,21 @@ import apiClient from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
-import { fetchShippingConfig, calculateShippingFee } from '../utils/shipping'
+import { REFERRAL_BIND_DEBOUNCE_MS } from '../utils/referralLiveBind'
+import {
+  getUserHasCompletedOrderCached,
+  invalidateReferralInviteCompletedCache
+} from '../utils/referralInviteUi'
+import {
+  orderSubtotalNumber,
+  orderTaxNumber,
+  orderAdjustmentNumber,
+  orderShippingFeeNumber,
+  orderStoreCreditAppliedNumber,
+  orderAmountDueNumber,
+  orderFinalTotalNumber,
+  formatOrderMoney2
+} from '../utils/orderPricing'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import Modal from '../components/Modal.vue'
 
@@ -669,7 +814,11 @@ export default {
       cancelling: false,
       cancelError: null,
       reactivating: false,
-      shippingConfig: null
+      referralCodeInput: '',
+      referralFeedback: null,
+      referralBindTimer: null,
+      applyStoreCredit: true,
+      referralUiHadCompletedOrder: null
     }
   },
   setup() {
@@ -678,6 +827,9 @@ export default {
     return { authStore, warning, showError, success }
   },
   computed: {
+    currentUser() {
+      return this.authStore.currentUser
+    },
     isAuthenticated() {
       return this.authStore.isAuthenticated
     },
@@ -723,12 +875,80 @@ export default {
       const orderEndDate = this.deal.order_end_date ? new Date(this.deal.order_end_date) : null
       return this.deal.status === 'closed' || (orderEndDate && orderEndDate < now)
     },
-    shippingFeeDisplay() {
-      const shipping = this.calculateShippingFee()
-      if (shipping === 0) {
-        return '免运费'
+    orderDetailShippingDisplay() {
+      if (!this.order || this.order.delivery_method !== 'delivery') return '免运费'
+      const n = orderShippingFeeNumber(this.order)
+      if (!Number.isFinite(n) || n <= 0) return '免运费'
+      return `$${formatOrderMoney2(n)}`
+    },
+    profileCompleteForReferral() {
+      const u = this.currentUser
+      return !!(u?.phone && u.wechat && u.nickname)
+    },
+    maxStoreCreditApplicable() {
+      if (!this.order || !this.currentUser) return 0
+      const bal = Number(this.currentUser.store_credit_balance) || 0
+      const already = orderStoreCreditAppliedNumber(this.order)
+      const cap = orderFinalTotalNumber(this.order)
+      return Math.min(bal + already, cap)
+    },
+    storeCreditBalanceDisplay() {
+      return Number(this.currentUser?.store_credit_balance || 0).toFixed(2)
+    },
+    storeCreditAppliedDisplay() {
+      if (!this.applyStoreCredit) return '0.00'
+      return Number(this.maxStoreCreditApplicable || 0).toFixed(2)
+    },
+    referralRowActive() {
+      const s =
+        this.referralCodeInput != null ? String(this.referralCodeInput).trim() : ''
+      return s.length > 0
+    },
+    showReferralInviteRow() {
+      const u = this.currentUser
+      if (!u || u.referred_by_user_id) return false
+      return this.referralUiHadCompletedOrder === false
+    },
+    creditApplyActive() {
+      return this.applyStoreCredit && Number(this.maxStoreCreditApplicable) > 0
+    },
+    /** Credit line in summary: live preview while order is editable, else server value */
+    displayedStoreCreditApplied() {
+      if (!this.order) return 0
+      if (!this.canUpdateOrder || this.isOrderCompleted) {
+        return orderStoreCreditAppliedNumber(this.order)
       }
-      return `$${shipping.toFixed(2)}`
+      if (!this.applyStoreCredit) return 0
+      return Number(this.maxStoreCreditApplicable) || 0
+    },
+    displayedAmountDue() {
+      if (!this.order) return 0
+      if (!this.canUpdateOrder || this.isOrderCompleted) {
+        return orderAmountDueNumber(this.order)
+      }
+      const finalT = orderFinalTotalNumber(this.order)
+      const credit = this.displayedStoreCreditApplied
+      return Math.max(0, finalT - credit)
+    }
+  },
+  watch: {
+    referralCodeInput() {
+      this.scheduleReferralCodeLiveBind()
+    },
+    'currentUser.referred_by_user_id'(id) {
+      if (id) {
+        this.referralFeedback = null
+        this.referralCodeInput = ''
+      }
+    },
+    'currentUser.id'(uid) {
+      if (uid) this.refreshReferralInviteUiGate()
+    }
+  },
+  beforeUnmount() {
+    if (this.referralBindTimer) {
+      clearTimeout(this.referralBindTimer)
+      this.referralBindTimer = null
     }
   },
   async mounted() {
@@ -741,9 +961,6 @@ export default {
       this.loading = false
       return
     }
-    
-    // Load shipping config
-    this.shippingConfig = await fetchShippingConfig()
     
     await this.loadOrder()
   },
@@ -793,11 +1010,99 @@ export default {
             this.selectedAddress = addr
           }
         }
+
+        if (!this.error) {
+          await this.authStore.checkAuth()
+          await this.refreshReferralInviteUiGate()
+          this.syncPromoUiFromLoadedOrder()
+        }
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '加载订单失败'
         console.error('Failed to load order:', error)
       } finally {
         this.loading = false
+      }
+    },
+    syncPromoUiFromLoadedOrder() {
+      this.referralCodeInput = ''
+      this.referralFeedback = null
+      if (!this.order) return
+      const max = this.maxStoreCreditApplicable
+      const applied = orderStoreCreditAppliedNumber(this.order)
+      this.applyStoreCredit = applied > 0 || max > 0
+    },
+    async refreshReferralInviteUiGate() {
+      const u = this.currentUser
+      if (!u?.id) {
+        this.referralUiHadCompletedOrder = null
+        return
+      }
+      this.referralUiHadCompletedOrder = await getUserHasCompletedOrderCached(u.id)
+    },
+    toggleApplyStoreCredit() {
+      if (this.maxStoreCreditApplicable <= 0) return
+      this.applyStoreCredit = !this.applyStoreCredit
+    },
+    scheduleReferralCodeLiveBind() {
+      if (this.referralBindTimer) {
+        clearTimeout(this.referralBindTimer)
+        this.referralBindTimer = null
+      }
+      const raw = this.referralCodeInput != null ? String(this.referralCodeInput).trim() : ''
+      if (!raw) {
+        this.referralFeedback = null
+        return
+      }
+      if (
+        !this.isAuthenticated ||
+        !this.currentUser ||
+        this.currentUser.referred_by_user_id ||
+        !this.showReferralInviteRow
+      ) {
+        this.referralFeedback = null
+        return
+      }
+      if (!this.profileCompleteForReferral) {
+        this.referralFeedback = null
+        return
+      }
+      this.referralBindTimer = setTimeout(() => {
+        this.referralBindTimer = null
+        this.runReferralCodeLiveBind(raw)
+      }, REFERRAL_BIND_DEBOUNCE_MS)
+    },
+    async runReferralCodeLiveBind(raw) {
+      if (
+        !this.isAuthenticated ||
+        this.currentUser?.referred_by_user_id ||
+        !this.showReferralInviteRow
+      ) {
+        return
+      }
+      if (!this.profileCompleteForReferral) return
+      const latest = this.referralCodeInput != null ? String(this.referralCodeInput).trim() : ''
+      if (latest !== raw) return
+      this.referralFeedback = { kind: 'loading' }
+      try {
+        const v = await apiClient.get('/referrals/validate-code', { params: { code: raw } })
+        const d = v.data || {}
+        if (!d.valid) {
+          this.referralFeedback = { kind: 'err', text: d.message || '邀请码无效' }
+          return
+        }
+        if ((this.referralCodeInput || '').trim() !== raw) return
+        const r = await apiClient.post('/referrals/apply', { code: raw })
+        if (r.data?.user) {
+          this.authStore.setUser(r.data.user)
+        } else {
+          await this.authStore.checkAuth()
+        }
+        this.referralCodeInput = ''
+        this.applyStoreCredit = true
+        this.referralFeedback = null
+      } catch (e) {
+        const msg = e.response?.data?.error || e.response?.data?.message || '绑定失败'
+        this.referralFeedback = { kind: 'err', text: msg }
       }
     },
     async loadGroupDeal(dealId) {
@@ -937,11 +1242,16 @@ export default {
       return this.selectedItems[product.id]?.quantity || 0
     },
     setQuantity(product, value) {
-      if (this.isOutOfStock(product)) {
+      const qty = parseInt(value) || 0
+      const currentQty = this.getQuantity(product)
+      
+      // Allow decreasing quantity even if out of stock
+      // Only block increasing quantity when out of stock
+      if (this.isOutOfStock(product) && qty > currentQty) {
+        // Trying to increase quantity on out-of-stock item - block it
         return
       }
       
-      const qty = parseInt(value) || 0
       const maxQty = product.deal_stock_limit || 999
       const finalQty = Math.max(0, Math.min(qty, maxQty))
       
@@ -974,6 +1284,7 @@ export default {
       return this.selectedItems[product.id]?.weight != null && this.selectedItems[product.id].weight > 0
     },
     increaseQuantity(product) {
+      // Only check out-of-stock for increasing quantity
       if (this.isOutOfStock(product)) {
         return
       }
@@ -983,6 +1294,8 @@ export default {
       this.setQuantity(product, Math.min(current + 1, maxQty))
     },
     decreaseQuantity(product) {
+      // Always allow decreasing quantity, even if out of stock
+      // This allows users to remove items they already have
       const current = this.getQuantity(product)
       this.setQuantity(product, Math.max(current - 1, 0))
     },
@@ -1064,59 +1377,16 @@ export default {
         return `$${estimatedPrice.toFixed(2)}`
       }
     },
-    calculateSubtotal() {
-      if (!this.deal || !this.deal.products) return '0.00'
-      
-      let subtotal = 0
-      this.deal.products.forEach(product => {
-        const itemTotal = parseFloat(this.calculateItemTotal(product))
-        subtotal += itemTotal
-      })
-      
-      return subtotal.toFixed(2)
-    },
-    calculateShippingFee() {
-      if (this.deliveryMethod === 'pickup') {
-        return 0
-      }
-      
-      // Calculate free shipping subtotal (excluding products that don't count)
-      const freeShippingSubtotal = this.deal.products.reduce((sum, product) => {
-        const quantity = this.getQuantity(product)
-        if (quantity === 0) return sum
-        const countsTowardFreeShipping = product.counts_toward_free_shipping !== false
-        if (countsTowardFreeShipping) {
-          const itemTotal = parseFloat(this.calculateItemTotal(product))
-          return sum + itemTotal
-        }
-        return sum
-      }, 0)
-      
-      // Use dynamic config if available
-      return calculateShippingFee(freeShippingSubtotal, this.shippingConfig)
-    },
-    calculateTotal() {
-      if (!this.deal || !this.deal.products) return { total: '0.00', hasEstimated: false }
-      
-      const subtotal = parseFloat(this.calculateSubtotal())
-      const shipping = this.calculateShippingFee()
-      let hasEstimatedItems = false
-      
-      this.deal.products.forEach(product => {
-        const quantity = this.getQuantity(product)
-        if (quantity > 0 && (product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight')) {
-          hasEstimatedItems = true
-        }
-      })
-      
-      return { total: (subtotal + shipping).toFixed(2), hasEstimated: hasEstimatedItems }
+    orderSubtotalNumber,
+    orderTaxNumber,
+    orderAdjustmentNumber,
+    orderStoreCreditAppliedNumber,
+    orderAmountDueNumber,
+    formatOrderSummaryMoney(value) {
+      return formatOrderMoney2(value)
     },
     hasSelectedItems() {
       return Object.values(this.selectedItems).some(item => item.quantity > 0)
-    },
-    hasEstimatedTotal() {
-      const result = this.calculateTotal()
-      return result.hasEstimated
     },
     async updateOrder() {
       if (!this.canUpdateOrder) {
@@ -1200,6 +1470,12 @@ export default {
           pickup_location: this.deliveryMethod === 'pickup' ? this.selectedPickupLocation : null,
           notes: this.notes.trim() || null
         }
+        const rawRef = (this.referralCodeInput || '').trim()
+        if (this.showReferralInviteRow && !this.currentUser?.referred_by_user_id && rawRef) {
+          orderData.referral_code = rawRef
+        }
+        const useCredit = this.applyStoreCredit ? Number(this.maxStoreCreditApplicable) || 0 : 0
+        orderData.store_credit_to_apply = Number(useCredit).toFixed(2)
         
         const response = await apiClient.patch(`/orders/${this.order.id}`, orderData)
         
@@ -1259,6 +1535,11 @@ export default {
         } else {
           this.selectedAddress = null
         }
+
+        await this.authStore.checkAuth()
+        invalidateReferralInviteCompletedCache(this.currentUser?.id)
+        await this.refreshReferralInviteUiGate()
+        this.syncPromoUiFromLoadedOrder()
         
         await this.success('订单已更新')
       } catch (error) {
@@ -1637,6 +1918,7 @@ export default {
 .delivery-section,
 .payment-section,
 .notes-section,
+.credit-referral-section,
 .order-summary-section {
   background: var(--md-surface);
   border-radius: var(--md-radius-lg);
@@ -1649,6 +1931,134 @@ export default {
   font-size: var(--md-title-size);
   color: var(--md-on-surface);
   margin-bottom: var(--md-spacing-lg);
+  font-weight: 500;
+}
+
+.credit-referral-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-md);
+}
+
+.credit-promo-row {
+  align-items: flex-start;
+  cursor: default;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.credit-promo-row:active {
+  transform: none;
+}
+
+.credit-referral-section .credit-promo-row .option-content {
+  min-width: 0;
+}
+
+.credit-referral-section .credit-promo-row .form-input.credit-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  margin-top: var(--md-spacing-xs);
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border-radius: var(--md-radius-md);
+  border: 2px solid var(--md-outline-variant);
+  font-size: var(--md-body-size);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+
+.credit-referral-section .credit-promo-row .form-input.credit-input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+}
+
+.credit-promo-field-label {
+  display: block;
+  margin: 0;
+  margin-top: var(--md-spacing-sm);
+  margin-bottom: var(--md-spacing-xs);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  color: var(--md-on-surface);
+}
+
+.credit-voucher-summary {
+  font-family: inherit;
+  text-align: left;
+}
+
+.credit-voucher-summary.credit-voucher-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.credit-voucher-summary.credit-voucher-toggle:not(.credit-voucher-toggle--disabled) {
+  cursor: pointer;
+}
+
+.credit-voucher-summary.credit-voucher-toggle--disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+  opacity: 0.88;
+}
+
+.credit-voucher-summary-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--md-spacing-xs);
+}
+
+.credit-voucher-summary-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--md-spacing-md);
+  margin: 0;
+  font-size: var(--md-label-size);
+  line-height: 1.35;
+}
+
+.credit-voucher-summary-label {
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+}
+
+.credit-voucher-summary-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface);
+}
+
+.credit-referral-section .form-hint.subtle {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  margin-top: var(--md-spacing-xs);
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.referrer-bound-note {
+  font-size: var(--md-label-size);
+  color: var(--md-primary);
+  font-weight: 500;
+  margin: 0 0 var(--md-spacing-sm);
+  line-height: 1.4;
+}
+
+.referral-live-msg {
+  margin: var(--md-spacing-sm) 0 0;
+  font-size: var(--md-label-size);
+  line-height: 1.4;
+}
+
+.referral-live-msg--muted {
+  color: var(--md-on-surface-variant);
+}
+
+.referral-live-msg--err {
+  color: #c62828;
   font-weight: 500;
 }
 
@@ -1945,6 +2355,7 @@ export default {
   background: var(--md-surface);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
 }
 
 .delivery-option:disabled {
@@ -1977,6 +2388,8 @@ export default {
 
 .option-content {
   flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .option-content h4 {
@@ -2030,6 +2443,7 @@ export default {
   background: var(--md-surface);
   cursor: pointer;
   transition: all 0.2s;
+  text-align: left;
 }
 
 .pickup-location-card.active {
@@ -2052,6 +2466,8 @@ export default {
 
 .location-content {
   flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .location-content h5 {
@@ -2607,21 +3023,33 @@ export default {
   color: var(--md-on-surface);
 }
 
-.total-row {
-  margin-top: var(--md-spacing-xs);
-  padding-top: var(--md-spacing-sm);
-  border-top: 1px solid var(--md-surface-variant);
+.breakdown-amount--credit {
+  color: #2e7d32;
 }
 
-.total-label {
+.breakdown-amount--adjust-pos {
+  color: #1565c0;
+}
+
+.breakdown-amount--adjust-neg {
+  color: #c62828;
+}
+
+.breakdown-row--due {
+  margin-top: var(--md-spacing-xs);
+  padding-top: var(--md-spacing-sm);
+  border-top: 1px solid var(--md-outline-variant);
+}
+
+.breakdown-row--due .breakdown-label {
   font-size: var(--md-title-size);
   font-weight: 600;
   color: var(--md-on-surface);
 }
 
-.total-amount {
+.breakdown-amount--due {
   font-size: var(--md-title-size);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--md-primary);
 }
 

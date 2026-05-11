@@ -15,12 +15,15 @@
       <div class="order-id">{{ order.order_number }}</div>
       <div class="header-right">
         <div class="status-badges">
-          <div class="order-status" :class="`status-${order.status}`">
+          <span v-if="hasMissingFinalWeight" class="missing-weight-badge" title="有按重计价商品未填写有效实际重量">
+            缺称重
+          </span>
+          <span class="order-status" :class="`status-${order.status}`">
             {{ getStatusText(order.status) }}
-          </div>
-          <div class="payment-status" :class="`payment-${order.payment_status}`">
+          </span>
+          <span class="payment-status" :class="`payment-${order.payment_status}`">
             {{ getPaymentStatusText(order.payment_status) }}
-          </div>
+          </span>
         </div>
         <!-- Quick Action Button: Mark Packing Complete -->
         <button 
@@ -54,10 +57,6 @@
           </svg>
           代登录
         </button>
-      </div>
-      <div class="order-info-price">
-        <span class="value price">${{ parseFloat(order.final_total || order.total || 0).toFixed(2) }}</span>
-        <span v-if="order.final_total && order.final_total !== order.total" class="price-note-small">(含调整)</span>
       </div>
     </div>
     
@@ -117,8 +116,7 @@
         </button>
       </div>
       
-      <div v-if="showOrderItems">
-        <div class="items-list">
+      <div v-if="showOrderItems" class="items-list">
         <div 
           v-for="item in order.items" 
           :key="item.id"
@@ -172,10 +170,47 @@
           <span class="item-price">${{ parseFloat(item.total_price || item.unit_price * item.quantity || 0).toFixed(2) }}</span>
         </div>
       </div>
-      <div class="items-subtotal">
-        <span class="subtotal-label">小计:</span>
-        <span class="subtotal-amount">${{ calculateSubtotal().toFixed(2) }}</span>
-      </div>
+      <div class="items-breakdown">
+        <div class="breakdown-row">
+          <span class="breakdown-label">商品小计:</span>
+          <span class="breakdown-value">${{ orderSubtotalFormatted(order) }}</span>
+        </div>
+        <div
+          v-if="orderTaxNumber(order) > 0"
+          class="breakdown-row"
+        >
+          <span class="breakdown-label">税费:</span>
+          <span class="breakdown-value">${{ orderTaxFormatted(order) }}</span>
+        </div>
+        <div
+          v-if="orderAdjustmentNumber(order) !== 0"
+          class="breakdown-row"
+        >
+          <span class="breakdown-label">价格调整:</span>
+          <span
+            :class="['breakdown-value', orderAdjustmentNumber(order) >= 0 ? 'adjust-positive' : 'adjust-negative']"
+          >
+            {{ orderAdjustmentNumber(order) >= 0 ? '+' : '-' }}${{ orderAdjustmentAbsFormatted(order) }}
+          </span>
+        </div>
+        <div
+          v-if="order.delivery_method === 'delivery'"
+          class="breakdown-row"
+        >
+          <span class="breakdown-label">配送费:</span>
+          <span class="breakdown-value">{{ shippingFeeDisplay(order) }}</span>
+        </div>
+        <div
+          v-if="storeCreditApplied(order) > 0"
+          class="breakdown-row"
+        >
+          <span class="breakdown-label">代金券:</span>
+          <span class="breakdown-value breakdown-value--credit">-${{ moneyCredit(order) }}</span>
+        </div>
+        <div class="breakdown-row breakdown-row--due">
+          <span class="breakdown-label">应付金额:</span>
+          <span class="breakdown-value breakdown-value--due">${{ moneyDue(order) }}</span>
+        </div>
       </div>
     </div>
     
@@ -240,6 +275,12 @@
 <script>
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
+import { orderHasMissingFinalWeight } from '../utils/orderWeightValidation'
+import {
+  orderStoreCreditAppliedNumber,
+  orderAmountDueNumber,
+  formatOrderMoney2
+} from '../utils/orderPricing'
 
 export default {
   name: 'OrderCard',
@@ -271,6 +312,11 @@ export default {
       showOrderItems: this.itemsExpandedByDefault
     }
   },
+  computed: {
+    hasMissingFinalWeight() {
+      return orderHasMissingFinalWeight(this.order)
+    }
+  },
   methods: {
     toggleOrderItems() {
       this.showOrderItems = !this.showOrderItems
@@ -298,6 +344,43 @@ export default {
         'paid': '已付款'
       }
       return paymentMap[paymentStatus] || paymentStatus
+    },
+    moneyCredit(o) {
+      return formatOrderMoney2(orderStoreCreditAppliedNumber(o))
+    },
+    moneyDue(o) {
+      return formatOrderMoney2(orderAmountDueNumber(o))
+    },
+    storeCreditApplied(o) {
+      return orderStoreCreditAppliedNumber(o)
+    },
+    orderSubtotalFormatted(o) {
+      if (!o) return '0.00'
+      const s = parseFloat(o.subtotal)
+      if (Number.isFinite(s)) return s.toFixed(2)
+      return this.calculateSubtotal().toFixed(2)
+    },
+    orderAdjustmentNumber(o) {
+      if (!o) return 0
+      const a = parseFloat(o.adjustment_amount)
+      return Number.isFinite(a) ? a : 0
+    },
+    orderAdjustmentAbsFormatted(o) {
+      return Math.abs(this.orderAdjustmentNumber(o)).toFixed(2)
+    },
+    orderTaxNumber(o) {
+      if (!o) return 0
+      const t = parseFloat(o.tax)
+      return Number.isFinite(t) ? t : 0
+    },
+    orderTaxFormatted(o) {
+      return this.orderTaxNumber(o).toFixed(2)
+    },
+    shippingFeeDisplay(o) {
+      if (!o) return '免运费'
+      const n = parseFloat(o.shipping_fee)
+      if (!Number.isFinite(n) || n <= 0) return '免运费'
+      return `$${n.toFixed(2)}`
     },
     formatAddress(address) {
       if (!address) return 'N/A'
@@ -460,7 +543,35 @@ export default {
 
 .status-badges {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--md-spacing-sm);
+}
+
+.missing-weight-badge,
+.order-status,
+.payment-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.missing-weight-badge {
+  background: #FFEBEE;
+  color: #B71C1C;
+  border: 1px solid rgba(183, 28, 28, 0.25);
+}
+
+.order-status,
+.payment-status {
+  border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
 }
 
 /* Laptop screens - smaller badges */
@@ -468,18 +579,10 @@ export default {
   .status-badges {
     gap: 4px;
   }
-}
 
-.order-status, .payment-status {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-/* Laptop screens - even smaller badges */
-@media (max-width: 1366px) {
-  .order-status, .payment-status {
+  .missing-weight-badge,
+  .order-status,
+  .payment-status {
     padding: 3px 8px;
     font-size: 0.6875rem;
     border-radius: 10px;
@@ -597,11 +700,6 @@ export default {
   border-radius: 8px;
   border-left: 3px solid #FFC107;
   line-height: 1.4;
-}
-
-.order-info-price {
-  display: flex;
-  align-items: center;
 }
 
 .order-info-row .value {
@@ -944,25 +1042,63 @@ export default {
   text-align: right;
 }
 
-.items-subtotal {
+.items-breakdown {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
   margin-top: var(--md-spacing-sm);
   padding-top: var(--md-spacing-sm);
   border-top: 2px solid rgba(0, 0, 0, 0.12);
-  font-weight: 600;
 }
 
-.subtotal-label {
-  color: rgba(0, 0, 0, 0.87);
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
   font-size: 0.875rem;
 }
 
-.subtotal-amount {
-  color: var(--md-primary);
-  font-size: 0.9375rem;
+.breakdown-label {
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 500;
+}
+
+.breakdown-value {
+  color: rgba(0, 0, 0, 0.87);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdown-value--credit {
+  color: #2e7d32;
+}
+
+.breakdown-value.adjust-positive {
+  color: #1565c0;
+}
+
+.breakdown-value.adjust-negative {
+  color: #c62828;
+}
+
+.breakdown-row--due {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.14) 0%, rgba(255, 165, 0, 0.22) 100%);
+  border: 1px solid rgba(255, 140, 0, 0.45);
+}
+
+.breakdown-row--due .breakdown-label {
+  font-weight: 700;
+  color: #e65100;
+}
+
+.breakdown-value--due {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #bf360c;
 }
 
 .quick-action-btn-header {
@@ -1193,6 +1329,76 @@ export default {
   
   .order-info-user {
     flex-wrap: wrap;
+  }
+}
+
+/* Phone: full-width pricing, stacked rows */
+@media (max-width: 767px) {
+  .order-card {
+    padding: 12px 12px 14px;
+  }
+
+  .order-header {
+    gap: 8px;
+  }
+
+  .order-id {
+    font-size: 0.8125rem;
+    word-break: break-all;
+  }
+
+  .header-right {
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .status-badges {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .packing-complete-btn {
+    width: 100%;
+    justify-content: center;
+    margin-top: 4px;
+  }
+
+  .order-info-row .order-info-user {
+    width: 100%;
+    min-width: 0;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  /* Second row: full-width, easy to tap */
+  .order-info-user .impersonate-btn-small {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-top: 2px;
+    box-sizing: border-box;
+    justify-content: center;
+    min-height: 40px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    align-self: stretch;
+  }
+
+  .breakdown-value--due {
+    font-size: 1rem;
+  }
+
+  .order-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 
