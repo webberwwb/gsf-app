@@ -70,7 +70,10 @@
       <!-- Products Section -->
       <div class="products-section">
         <h3 class="section-title">商品选择</h3>
-        
+        <div v-if="hasUnavailableItems" class="unavailable-banner">
+          部分商品无货，请确认是否接受替代品
+        </div>
+
         <div v-if="deal.products && deal.products.length === 0" class="empty-products">
           <p>暂无商品</p>
         </div>
@@ -128,6 +131,25 @@
 
               <!-- Product Selection Controls -->
               <div class="product-selection" :class="{ 'disabled': !canEditProducts || isOrderCompleted }">
+                <ProductDetailsSection
+                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
+                  :product-id="product.id"
+                  :variants="product.variants || []"
+                  :substitute="product.substitute_enabled || product.substitute?.enabled
+                    ? (product.substitute || {
+                        name: product.substitute_name,
+                        description: product.substitute_description,
+                        images: product.substitute_images,
+                        pricing_type: product.pricing_type,
+                        pricing_data: product.substitute?.pricing_data,
+                        price: product.substitute_price
+                      })
+                    : null"
+                  :variant-id="getSelection(product).variant_id"
+                  :accept-substitute="getSelection(product).accept_substitute"
+                  @update:variant-id="(v) => setVariantId(product, v)"
+                  @update:accept-substitute="(v) => setAcceptSubstitute(product, v)"
+                />
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
                   <div class="quantity-control">
@@ -255,35 +277,18 @@
       </div>
 
       <!-- Confirmed Order Items Section (shows actual items with weights when order is confirmed/completed) -->
-      <div v-if="order && order.items && order.items.length > 0 && (order.status === 'confirmed' || order.status === 'preparing' || order.status === 'ready_for_pickup' || order.status === 'out_for_delivery' || order.status === 'completed')" class="confirmed-items-section">
+      <div
+        v-if="order && order.items && order.items.length > 0 && showOrderItemsSummary"
+        class="confirmed-items-section"
+      >
         <h3 class="section-title">订单商品明细</h3>
         <div class="confirmed-items-list">
-          <div 
-            v-for="item in order.items" 
+          <OrderLineDisplay
+            v-for="item in order.items"
             :key="item.id"
+            :item="toOrderLineDisplay(item)"
             class="confirmed-item-row"
-          >
-            <div class="confirmed-item-info">
-              <div class="confirmed-item-name">{{ item.product?.name || '商品已下架' }}</div>
-              <div class="confirmed-item-meta">
-                <span class="confirmed-item-quantity">数量: {{ item.quantity }}</span>
-                <span v-if="item.product && (item.product.pricing_type === 'weight_range' || item.product.pricing_type === 'unit_weight' || item.product.pricing_type === 'bundled_weight') && item.final_weight" class="confirmed-item-weight">
-                  重量: {{ parseFloat(item.final_weight).toFixed(3) }} {{ item.product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
-                </span>
-                <span v-else-if="item.product && (item.product.pricing_type === 'weight_range' || item.product.pricing_type === 'unit_weight' || item.product.pricing_type === 'bundled_weight')" class="confirmed-item-weight pending">
-                  重量: 待确认
-                </span>
-              </div>
-            </div>
-            <div class="confirmed-item-price">
-              <template v-if="item.product && item.product.pricing_type === 'bundled_weight' && item.final_weight && item.product.pricing_data?.price_per_unit">
-                ${{ (parseFloat(item.product.pricing_data.price_per_unit) * parseFloat(item.final_weight)).toFixed(2) }}
-              </template>
-              <template v-else>
-                ${{ parseFloat(item.total_price || 0).toFixed(2) }}
-              </template>
-            </div>
-          </div>
+          />
         </div>
       </div>
 
@@ -782,12 +787,22 @@ import {
 } from '../utils/orderPricing'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import Modal from '../components/Modal.vue'
+import ProductDetailsSection from '../components/ProductDetailsSection.vue'
+import OrderLineDisplay from '../components/OrderLineDisplay.vue'
+import {
+  estimateLinePrice,
+  isSelectionComplete,
+  getSelectionIncompleteMessage,
+  toOrderLineDisplay
+} from '../utils/orderItemPricing'
 
 export default {
   name: 'OrderDetail',
   components: {
     ProductDetailModal,
-    Modal
+    Modal,
+    ProductDetailsSection,
+    OrderLineDisplay
   },
   data() {
     return {
@@ -827,6 +842,9 @@ export default {
     return { authStore, warning, showError, success }
   },
   computed: {
+    hasUnavailableItems() {
+      return (this.order?.items || []).some(i => i.is_unavailable)
+    },
     currentUser() {
       return this.authStore.currentUser
     },
@@ -867,6 +885,19 @@ export default {
       if (!this.order) return false
       const updatableStatuses = ['submitted', 'confirmed', 'preparing']
       return updatableStatuses.includes(this.order.status)
+    },
+    showOrderItemsSummary() {
+      if (!this.order?.items?.length) return false
+      const summaryStatuses = [
+        'confirmed',
+        'preparing',
+        'ready_for_pickup',
+        'out_for_delivery',
+        'completed'
+      ]
+      if (summaryStatuses.includes(this.order.status)) return true
+      // Submitted but product picker locked — show read-only line summary
+      return this.order.status === 'submitted' && !this.canEditProducts
     },
     isDealClosed() {
       // Check if group deal is closed
@@ -988,7 +1019,9 @@ export default {
               this.selectedItems[item.product_id] = { quantity: 0 }
             }
             this.selectedItems[item.product_id].quantity = item.quantity
-            // Load weight if available (for bundled_weight products)
+            this.selectedItems[item.product_id].variant_id = item.variant_id || null
+            this.selectedItems[item.product_id].accept_substitute = item.accept_substitute
+            this.selectedItems[item.product_id].item_id = item.id
             if (item.final_weight != null && item.final_weight > 0) {
               this.selectedItems[item.product_id].weight = parseFloat(item.final_weight)
             }
@@ -1388,6 +1421,18 @@ export default {
     hasSelectedItems() {
       return Object.values(this.selectedItems).some(item => item.quantity > 0)
     },
+    getSelection(product) {
+      if (!this.selectedItems[product.id]) {
+        this.selectedItems[product.id] = { quantity: 0, variant_id: null, accept_substitute: null }
+      }
+      return this.selectedItems[product.id]
+    },
+    setVariantId(product, variantId) {
+      this.getSelection(product).variant_id = variantId
+    },
+    setAcceptSubstitute(product, value) {
+      this.getSelection(product).accept_substitute = value
+    },
     async updateOrder() {
       if (!this.canUpdateOrder) {
         await this.warning('订单无法修改')
@@ -1399,22 +1444,28 @@ export default {
       
       if (this.canEditProducts) {
         // Can edit products - build from current selections
-        this.deal.products.forEach(product => {
+        for (const product of this.deal.products) {
           const selection = this.selectedItems[product.id]
-          if (selection && selection.quantity > 0) {
-            const itemData = {
-              product_id: product.id,
-              quantity: selection.quantity,
-              pricing_type: product.pricing_type
-            }
-            // Include weight for bundled_weight products if provided
-            // Always send final_weight if it exists, even if 0 (though 0 is unlikely)
-            if (product.pricing_type === 'bundled_weight' && selection.weight != null) {
-              itemData.final_weight = parseFloat(selection.weight)
-            }
-            orderItems.push(itemData)
+          if (!selection || selection.quantity <= 0) continue
+
+          if (!isSelectionComplete(product, selection)) {
+            await this.warning(getSelectionIncompleteMessage(product, selection))
+            return
           }
-        })
+
+          const itemData = {
+            id: selection.item_id,
+            product_id: product.id,
+            quantity: selection.quantity,
+            pricing_type: product.pricing_type,
+            variant_id: selection.variant_id || undefined,
+            accept_substitute: selection.accept_substitute
+          }
+          if (product.pricing_type === 'bundled_weight' && selection.weight != null) {
+            itemData.final_weight = parseFloat(selection.weight)
+          }
+          orderItems.push(itemData)
+        }
         
         if (orderItems.length === 0) {
           await this.warning('请至少选择一个商品')
@@ -1425,9 +1476,12 @@ export default {
         if (this.order.items && this.order.items.length > 0) {
           orderItems = this.order.items.map(item => {
             const itemData = {
+              id: item.id,
               product_id: item.product_id,
               quantity: item.quantity,
-              pricing_type: item.product?.pricing_type || 'per_item'
+              pricing_type: item.product?.pricing_type || 'per_item',
+              variant_id: item.variant_id || undefined,
+              accept_substitute: item.accept_substitute
             }
             // For bundled_weight products, check if user has entered a new weight in selectedItems
             // If so, use that instead of the existing weight
@@ -1650,6 +1704,9 @@ export default {
       // Find the order item for this product if order exists
       if (!this.order || !this.order.items) return null
       return this.order.items.find(item => item.product_id === product.id) || null
+    },
+    toOrderLineDisplay(item) {
+      return toOrderLineDisplay(item)
     },
     async reactivateOrder() {
       if (!this.order || !this.deal) return
@@ -2202,6 +2259,16 @@ export default {
 .stock-info.out-of-stock {
   color: #D32F2F;
   font-weight: 600;
+}
+
+.unavailable-banner {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  color: #5d4037;
+  padding: 0.75rem 1rem;
+  border-radius: var(--md-radius-md);
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
 }
 
 .product-selection.disabled {

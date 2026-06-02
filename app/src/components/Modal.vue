@@ -304,6 +304,27 @@ export default {
   white-space: pre-wrap;
 }
 
+.modal-message p {
+  margin: 0 0 0.5rem;
+}
+
+.modal-message p:last-child {
+  margin-bottom: 0;
+}
+
+.modal-message ul {
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.modal-message li {
+  margin-bottom: 0.35rem;
+}
+
+.modal-message li:last-child {
+  margin-bottom: 0;
+}
+
 .modal-footer {
   padding: 16px 24px;
   background: #f9fafb;

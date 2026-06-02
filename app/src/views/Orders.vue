@@ -81,21 +81,10 @@
                 </svg>
               </div>
               <div class="item-details">
-                <h4>{{ item.product ? item.product.name : '商品已下架' }}</h4>
-                <div class="item-meta">
-                  <span>数量: {{ item.quantity }}</span>
-                  <span v-if="item.product && (item.product.pricing_type === 'weight_range' || item.product.pricing_type === 'unit_weight' || item.product.pricing_type === 'bundled_weight') && item.final_weight" class="item-weight">
-                    重量: {{ parseFloat(item.final_weight).toFixed(3) }} {{ item.product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
-                  </span>
-                  <span class="item-price">
-                    <template v-if="item.product && item.product.pricing_type === 'bundled_weight' && item.final_weight && item.product.pricing_data?.price_per_unit">
-                      ${{ (parseFloat(item.product.pricing_data.price_per_unit) * parseFloat(item.final_weight)).toFixed(2) }}
-                    </template>
-                    <template v-else>
-                      ${{ parseFloat(item.total_price || 0).toFixed(2) }}
-                    </template>
-                  </span>
-                </div>
+                <OrderLineDisplay
+                  :item="toOrderLineDisplay(item)"
+                  class="order-line-in-card"
+                />
               </div>
             </div>
           </div>
@@ -368,9 +357,12 @@ import {
   orderShippingFeeNumber,
   formatOrderMoney2
 } from '../utils/orderPricing'
+import OrderLineDisplay from '../components/OrderLineDisplay.vue'
+import { toOrderLineDisplay } from '../utils/orderItemPricing'
 
 export default {
   name: 'Orders',
+  components: { OrderLineDisplay },
   setup() {
     const { success, error } = useModal()
     const authStore = useAuthStore()
@@ -436,6 +428,13 @@ export default {
     })
   },
   methods: {
+    toOrderLineDisplay(item) {
+      const line = toOrderLineDisplay(item)
+      if (!item?.product && line) {
+        line.display_name = '商品已下架'
+      }
+      return line
+    },
     async loadUser() {
       if (!this.user) {
         // Try to fetch from API
@@ -1078,7 +1077,13 @@ export default {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  min-width: 0;
+}
+
+.item-details :deep(.order-line-in-card) {
+  padding: 0;
+  width: 100%;
 }
 
 .item-details h4 {

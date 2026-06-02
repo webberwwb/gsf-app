@@ -98,13 +98,49 @@
     </aside>
 
     <main class="main-content">
-      <header class="top-header">
-        <button class="hamburger-btn" @click="toggleSidebar" aria-label="Toggle sidebar">
+      <header class="top-header" :class="{ 'top-header--detail-nav': isGroupDealDetail }">
+        <button
+          v-if="isGroupDealDetail"
+          type="button"
+          class="header-icon-btn header-back-btn"
+          aria-label="返回"
+          @click="handleDetailBack"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button
+          v-if="!isGroupDealDetail"
+          class="hamburger-btn"
+          @click="toggleSidebar"
+          aria-label="Toggle sidebar"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <button
+          v-if="isGroupDealDetail"
+          class="hamburger-btn header-detail-desktop-menu"
+          @click="toggleSidebar"
+          aria-label="Toggle sidebar"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
         <h1>{{ pageTitle }}</h1>
+        <button
+          v-if="isGroupDealDetail"
+          class="hamburger-btn header-detail-mobile-menu"
+          @click="toggleSidebar"
+          aria-label="Toggle sidebar"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
       </header>
       <div class="content-area">
         <router-view />
@@ -116,12 +152,14 @@
 <script>
 import { getCurrentUser, clearAuth } from '../utils/auth'
 import { useModal } from '../composables/useModal'
+import { usePageHeader } from '../stores/pageHeader'
 
 export default {
   name: 'Dashboard',
   setup() {
     const { confirm } = useModal()
-    return { confirm }
+    const { state: pageHeaderState } = usePageHeader()
+    return { confirm, pageHeaderState }
   },
   data() {
     return {
@@ -131,7 +169,13 @@ export default {
     }
   },
   computed: {
+    isGroupDealDetail() {
+      return this.$route.name === 'GroupDealDetail'
+    },
     pageTitle() {
+      if (this.isGroupDealDetail) {
+        return this.pageHeaderState.title || '团购详情'
+      }
       const titles = {
         // '/': '仪表盘', // Hidden for now
         '/products': '商品管理',
@@ -164,13 +208,24 @@ export default {
     this.loadUser()
     this.loadVersion()
     // Close sidebar when route changes on tablets and smaller laptops
-    this.$watch('$route', () => {
+    this.$watch('$route', (to, from) => {
+      if (from.name === 'GroupDealDetail' && to.name !== 'GroupDealDetail') {
+        const { reset } = usePageHeader()
+        reset()
+      }
       if (window.innerWidth < 1024) {
         this.sidebarOpen = false
       }
     })
   },
   methods: {
+    handleDetailBack() {
+      if (this.pageHeaderState.onBack) {
+        this.pageHeaderState.onBack()
+        return
+      }
+      this.$router.push('/group-deals')
+    },
     async loadVersion() {
       // First try: Read directly from sw.js (most reliable and fastest)
       try {
@@ -611,11 +666,13 @@ export default {
 .hamburger-btn {
   display: none;
   flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   color: var(--md-on-surface);
   cursor: pointer;
-  padding: var(--md-spacing-xs);
+  padding: 0;
   border-radius: var(--md-radius-sm);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -629,10 +686,45 @@ export default {
   height: 24px;
 }
 
-/* Show hamburger on tablets and below */
+.header-back-btn,
+.header-detail-mobile-menu,
+.header-detail-desktop-menu {
+  display: none;
+}
+
+.header-icon-btn {
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--md-radius-sm);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.header-icon-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.header-icon-btn:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Show hamburger on tablets and below (standard pages only) */
 @media (max-width: 1024px) {
-  .hamburger-btn {
-    display: block;
+  .hamburger-btn:not(.header-detail-desktop-menu):not(.header-detail-mobile-menu) {
+    display: flex;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -643,6 +735,7 @@ export default {
   letter-spacing: -0.5px;
   flex: 1;
   min-width: 0;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -650,8 +743,76 @@ export default {
 
 /* Mobile - smaller title */
 @media (max-width: 767px) {
-  .top-header h1 {
-    font-size: 1.125rem;
+  .top-header {
+    gap: var(--md-spacing-sm);
+    padding-left: var(--md-spacing-sm);
+    padding-right: var(--md-spacing-sm);
+    padding-bottom: var(--md-spacing-sm);
+    padding-top: calc(var(--md-spacing-sm) + env(safe-area-inset-top));
+  }
+
+  .top-header:not(.top-header--detail-nav) h1 {
+    font-size: 1.0625rem;
+    text-align: left;
+  }
+
+  .top-header--detail-nav {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 0;
+    padding-left: var(--md-spacing-xs);
+    padding-right: var(--md-spacing-xs);
+    padding-bottom: var(--md-spacing-sm);
+    padding-top: calc(var(--md-spacing-sm) + env(safe-area-inset-top));
+  }
+
+  .top-header--detail-nav .header-detail-desktop-menu {
+    display: none;
+  }
+
+  .top-header--detail-nav .header-back-btn {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .top-header--detail-nav h1 {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1.0625rem;
+    text-align: center;
+    justify-self: stretch;
+    height: 44px;
+    min-height: 44px;
+    line-height: 44px;
+  }
+
+  .top-header--detail-nav .header-detail-mobile-menu {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .top-header--detail-nav .header-back-btn,
+  .top-header--detail-nav .header-detail-mobile-menu {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    margin: 0;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .top-header--detail-nav .header-detail-desktop-menu {
+    display: flex;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

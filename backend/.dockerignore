@@ -1,0 +1,4 @@
+# Prevent local secrets and dev URLs from being baked into Cloud Run images
+.env
+.env.*
+!.env.example

@@ -26,7 +26,23 @@ from schemas.product_category import CreateProductCategorySchema, UpdateProductC
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
 from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateUserSchema
 from schemas.work_document import CreateWorkDocumentSchema, UpdateWorkDocumentSchema, CreateActionItemSchema, UpdateActionItemSchema
-from schemas.order import UpdateOrderWeightsSchema, AdminUpdateOrderSchema
+from schemas.order import (
+    UpdateOrderWeightsSchema,
+    AdminUpdateOrderSchema,
+    AdminOrderItemAvailabilitySchema,
+    AdminOrderItemSubstituteSchema,
+    AdminProductFulfillmentSchema,
+)
+from utils.order_item_pricing import (
+    priced_items_from_request,
+    create_order_item_rows,
+    enrich_order_item_dict,
+    recalculate_existing_item,
+    recalculate_order_totals,
+    bulk_set_product_fulfillment,
+    apply_product_substitute_fields,
+    sync_product_variants,
+)
 from schemas.utils import validate_request
 from urllib.parse import quote
 import os
@@ -246,14 +262,17 @@ def create_product():
             category_id=validated_data.get('category_id'),
             counts_toward_free_shipping=validated_data.get('counts_toward_free_shipping', True)
         )
+        apply_product_substitute_fields(product, validated_data)
         
         db.session.add(product)
+        db.session.flush()
+        sync_product_variants(product, validated_data.get('variants'))
         db.session.commit()
         
         current_app.logger.info(f'Created product: {product.id} - {product.name}')
         
         return jsonify({
-            'product': product.to_dict()
+            'product': product.to_dict(include_all_variants=True)
         }), 201
         
     except Exception as e:
@@ -334,13 +353,16 @@ def update_product(product_id):
             product.category_id = validated_data['category_id'] if validated_data['category_id'] else None
         if 'counts_toward_free_shipping' in validated_data:
             product.counts_toward_free_shipping = validated_data['counts_toward_free_shipping']
+        apply_product_substitute_fields(product, validated_data)
+        if 'variants' in validated_data:
+            sync_product_variants(product, validated_data.get('variants'))
         
         db.session.commit()
         
         current_app.logger.info(f'Updated product: {product.id} - {product.name}')
         
         return jsonify({
-            'product': product.to_dict()
+            'product': product.to_dict(include_all_variants=True)
         }), 200
         
     except Exception as e:
@@ -1807,6 +1829,26 @@ def get_otp_stats():
             'message': str(e)
         }), 500
 
+def _build_admin_order_dict(order):
+    """Full order payload for admin modal refresh after partial line updates."""
+    order_dict = order.to_dict()
+    user = User.query.get(order.user_id)
+    if user:
+        order_dict['user'] = user.to_dict()
+    group_deal = GroupDeal.query.filter(
+        GroupDeal.id == order.group_deal_id,
+        GroupDeal.deleted_at.is_(None),
+    ).first()
+    if group_deal:
+        order_dict['group_deal'] = group_deal.to_dict()
+    if order.address_id:
+        address = Address.query.get(order.address_id)
+        if address:
+            order_dict['address'] = address.to_dict()
+    order_dict['items'] = [enrich_order_item_dict(i) for i in order.items]
+    return order_dict
+
+
 # Orders Management
 @admin_bp.route('/orders', methods=['GET'])
 def get_admin_orders():
@@ -1902,20 +1944,9 @@ def get_admin_orders():
             if order.address:
                 order_dict['address'] = order.address.to_dict()
             
-            # Get order items with product details (already loaded via selectinload)
-            items_data = []
-            for item in order.items:
-                item_dict = item.to_dict()
-                if item.product:
-                    item_dict['product'] = {
-                        'id': item.product.id,
-                        'name': item.product.name,
-                        'image': item.product.image,
-                        'pricing_type': item.product.pricing_type,
-                        'pricing_data': item.product.pricing_data
-                    }
-                items_data.append(item_dict)
-            
+            items_data = [
+                enrich_order_item_dict(item, item.product) for item in order.items
+            ]
             order_dict['items'] = items_data
             order_dict['items_count'] = len(items_data)
             
@@ -1969,16 +2000,7 @@ def get_admin_order(order_id):
             if address:
                 order_dict['address'] = address.to_dict()
         
-        # Get order items with product details
-        items_data = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = product.to_dict()
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
+        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
         
         return jsonify({
             'order': order_dict
@@ -2571,130 +2593,21 @@ def update_admin_order(order_id):
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
         
-        # Delete all existing order items
+        filtered_items = [
+            i for i in items_data
+            if i.get('product_id') and i.get('quantity', 1) > 0
+        ]
+        try:
+            priced_items, subtotal = priced_items_from_request(filtered_items)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
         OrderItem.query.filter_by(order_id=order_id).delete()
-        
-        # Calculate new order totals
-        from decimal import Decimal
-        subtotal = Decimal('0')
-        new_order_items = []
-        
-        for item_data in items_data:
-            product_id = item_data.get('product_id')
-            quantity = item_data.get('quantity', 1)
-            final_weight = item_data.get('final_weight')
-            
-            if not product_id:
-                continue
-            
-            if quantity <= 0:
-                continue
-            
-            # Get product
-            product = Product.query.get(product_id)
-            if not product:
-                continue
-            
-            # ============================================================================
-            # CRITICAL: Calculate item price based on pricing type
-            # ============================================================================
-            # This logic MUST handle ALL pricing types correctly, especially when
-            # final_weight is provided. DO NOT REMOVE OR SIMPLIFY WITHOUT TESTING!
-            #
-            # Pricing types:
-            # 1. bundled_weight: Price = final_weight × price_per_unit (e.g., 3.77 lb × $6.99/lb)
-            # 2. weight_range: Price based on weight ranges
-            # 3. unit_weight: Price = weight × price_per_unit
-            # 4. per_item: Fixed price per item
-            #
-            # REGRESSION WARNING: This code was previously missing bundled_weight handling,
-            # causing incorrect prices when final_weight was provided. The bug was:
-            # - User enters final_weight = 3.77 lb for a $6.99/lb product
-            # - Expected: $26.35 (3.77 × 6.99)
-            # - Bug caused: $38.45 (using estimated mid-weight instead)
-            # ============================================================================
-            
-            if product.pricing_type == 'bundled_weight':
-                # BUNDLED WEIGHT: Products are weighed individually, not stacked
-                # unit_price = price_per_unit (the rate)
-                # total_price = price_per_unit * final_weight (or estimated weight)
-                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                
-                unit_price = price_per_unit  # Unit price is the rate itself
-                
-                if final_weight is not None and final_weight > 0 and price_per_unit > 0:
-                    # ACTUAL WEIGHT PROVIDED: Use exact weight for precise calculation
-                    total_price = float(final_weight) * price_per_unit
-                else:
-                    # NO WEIGHT PROVIDED: Use mid-weight estimation
-                    if price_per_unit > 0:
-                        min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
-                        max_weight = float(product.pricing_data.get('max_weight', 15) if product.pricing_data else 15)
-                        mid_weight = (min_weight + max_weight) / 2
-                        total_price = price_per_unit * mid_weight
-                    else:
-                        # price_per_unit is 0 or missing - unit_price stays as price_per_unit (0)
-                        # No fallback - unit_price should always be price_per_unit from DB
-                        total_price = 0
-                        
-            elif product.pricing_type == 'unit_weight':
-                # UNIT WEIGHT: Products are weighed individually, not stacked
-                # unit_price = price_per_unit (the rate)
-                # total_price = price_per_unit * final_weight (or estimated weight)
-                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                
-                unit_price = price_per_unit  # Unit price is the rate itself
-                
-                if final_weight is not None and final_weight > 0 and price_per_unit > 0:
-                    total_price = price_per_unit * float(final_weight)
-                else:
-                    # Use estimated weight if not provided
-                    estimated_weight = 1
-                    total_price = price_per_unit * estimated_weight
-                    
-            elif final_weight is not None and product.pricing_type == 'weight_range':
-                # WEIGHT RANGE: Find matching range based on final_weight
-                ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
-                matched_price = None
-                for range_item in ranges:
-                    min_weight = range_item.get('min', 0)
-                    max_weight = range_item.get('max')
-                    if float(final_weight) >= min_weight and (max_weight is None or float(final_weight) < max_weight):
-                        matched_price = float(range_item.get('price', 0))
-                        break
-                
-                if matched_price is not None:
-                    unit_price = matched_price
-                    total_price = matched_price * quantity
-                else:
-                    # No matching range, use first range (lowest weight) for estimation
-                    unit_price = float(ranges[0].get('price', 0)) if ranges else 0
-                    total_price = unit_price * quantity
-                
-            else:
-                # PER ITEM or NO WEIGHT: Use fixed price per item
-                unit_price = product.get_display_price() or 0
-                total_price = unit_price * quantity
-            
-            # Ensure unit_price and total_price are set
-            if 'unit_price' not in locals() or 'total_price' not in locals():
-                unit_price = 0
-                total_price = 0
-            
-            # Create order item
-            order_item = OrderItem(
-                order_id=order_id,
-                product_id=product_id,
-                quantity=quantity,
-                unit_price=unit_price,
-                total_price=total_price,
-                final_weight=float(final_weight) if final_weight is not None else None
-            )
-            db.session.add(order_item)
-            new_order_items.append(order_item)
-            subtotal += Decimal(str(total_price))
+        create_order_item_rows(order_id, priced_items, db.session)
+        db.session.flush()
+        new_order_items = OrderItem.query.filter_by(order_id=order_id).all()
+        for order_item in new_order_items:
+            recalculate_existing_item(order_item)
         
         # Update payment method if provided
         if payment_method:
@@ -2729,40 +2642,7 @@ def update_admin_order(order_id):
         if notes is not None:
             order.notes = notes if notes else None
         
-        # Recalculate order totals (after delivery method and address updates)
-        from decimal import Decimal
-        subtotal_decimal = Decimal(str(subtotal))
-        tax = Decimal('0')
-        
-        # Recalculate shipping fee for delivery orders (may be waived with new price)
-        from utils.shipping import calculate_shipping_fee
-        from models.address import Address
-        
-        address = None
-        if order.delivery_method == DeliveryMethod.DELIVERY.value and order.address_id:
-            address = Address.query.get(order.address_id)
-        
-        # Prepare order items for shipping calculation
-        order_items_for_shipping = []
-        for order_item in new_order_items:
-            product = Product.query.get(order_item.product_id)
-            if product:
-                order_items_for_shipping.append({
-                    'product': product,
-                    'total_price': float(order_item.total_price)
-                })
-        
-        shipping_fee = calculate_shipping_fee(subtotal_decimal, order.delivery_method, address, order_items_for_shipping)
-        
-        total = subtotal_decimal + tax + shipping_fee
-        # Calculate points excluding shipping fee: 1 point per cent
-        points_earned = int((subtotal_decimal + tax) * 100)
-        
-        order.subtotal = subtotal_decimal
-        order.tax = tax
-        order.shipping_fee = shipping_fee
-        order.total = total
-        order.points_earned = points_earned
+        recalculate_order_totals(order)
         
         db.session.commit()
         
@@ -2786,16 +2666,7 @@ def update_admin_order(order_id):
             if address:
                 order_dict['address'] = address.to_dict()
         
-        # Get order items with product details
-        items_data_response = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = product.to_dict()
-            items_data_response.append(item_dict)
-        
-        order_dict['items'] = items_data_response
+        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
         
         return jsonify({
             'message': 'Order updated successfully',
@@ -2809,6 +2680,106 @@ def update_admin_order(order_id):
             'error': 'Failed to update order',
             'message': str(e)
         }), 500
+
+
+@admin_bp.route('/orders/<int:order_id>/items/<int:item_id>/availability', methods=['PATCH'])
+def update_order_item_availability(order_id, item_id):
+    """Mark order line unavailable and recalculate order totals (admin only)."""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    validated_data, error_response, status_code = validate_request(AdminOrderItemAvailabilitySchema)
+    if error_response:
+        return error_response, status_code
+
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first_or_404()
+        item.is_unavailable = bool(validated_data['is_unavailable'])
+        recalculate_existing_item(item)
+        recalculate_order_totals(order)
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Item availability updated',
+            'order': _build_admin_order_dict(order),
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating item availability: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update item availability', 'message': str(e)}), 500
+
+
+@admin_bp.route('/orders/<int:order_id>/items/<int:item_id>/substitute-preference', methods=['PATCH'])
+def update_order_item_substitute_preference(order_id, item_id):
+    """Update accept/decline substitute on an order line and recalculate totals (admin only)."""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    validated_data, error_response, status_code = validate_request(AdminOrderItemSubstituteSchema)
+    if error_response:
+        return error_response, status_code
+
+    try:
+        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first_or_404()
+        product = Product.query.get(item.product_id)
+        if not product or not product.substitute_enabled:
+            return jsonify({'error': '此商品未配置备选'}), 400
+
+        item.accept_substitute = bool(validated_data['accept_substitute'])
+        recalculate_existing_item(item, product)
+        recalculate_order_totals(order)
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Substitute preference updated',
+            'order': _build_admin_order_dict(order),
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating substitute preference: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update substitute preference', 'message': str(e)}), 500
+
+
+@admin_bp.route('/group-deals/<int:deal_id>/products/<int:product_id>/fulfillment', methods=['PATCH'])
+def bulk_update_product_fulfillment(deal_id, product_id):
+    """Mark all order lines for a product in a group deal unavailable or restore availability."""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    validated_data, error_response, status_code = validate_request(AdminProductFulfillmentSchema)
+    if error_response:
+        return error_response, status_code
+
+    try:
+        GroupDeal.query.filter(
+            GroupDeal.id == deal_id,
+            GroupDeal.deleted_at.is_(None),
+        ).first_or_404()
+
+        stats = bulk_set_product_fulfillment(
+            deal_id,
+            product_id,
+            bool(validated_data['is_unavailable']),
+        )
+
+        msg = '已恢复原商品' if not validated_data['is_unavailable'] else (
+            f'已切换备选，处理 {stats["items_updated"]} 条商品行：'
+            f'{stats["will_substitute"]} 条换备选，{stats["will_pending"]} 条待处理（不要备选，保留订单行）'
+        )
+        return jsonify({'message': msg, 'stats': stats}), 200
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error bulk product fulfillment: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to update product fulfillment', 'message': str(e)}), 500
+
 
 @admin_bp.route('/orders/<int:order_id>', methods=['DELETE'])
 def delete_order(order_id):

@@ -8,6 +8,7 @@ from models.otp_attempt import OTPAttempt
 from models.address import Address
 from models.product_category import ProductCategory
 from models.product import Product
+from models.product_variant import ProductVariant
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.order import Order, OrderItem
 from models.supplier import Supplier

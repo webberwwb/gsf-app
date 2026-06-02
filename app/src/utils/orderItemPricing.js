@@ -1,0 +1,286 @@
+/**
+ * Client-side order line price estimation (mirrors backend order_item_pricing.py).
+ */
+
+function parseWeight(w) {
+  if (w == null || w === '') return null
+  const n = parseFloat(w)
+  return n > 0 ? n : null
+}
+
+export function computeBasePrice(product, quantity = 1, finalWeight = null) {
+  const pricingType = product.pricing_type || 'per_item'
+  const qty = parseInt(quantity, 10) || 1
+  const pd = product.pricing_data || {}
+  const fw = parseWeight(finalWeight)
+
+  let unitPrice = 0
+  let totalPrice = 0
+
+  if (pricingType === 'per_item') {
+    unitPrice = parseFloat(product.price ?? pd.price ?? 0)
+    totalPrice = unitPrice * qty
+  } else if (pricingType === 'weight_range') {
+    const ranges = pd.ranges || []
+    if (fw != null && ranges.length) {
+      let matched = null
+      for (const r of ranges) {
+        const min = r.min ?? 0
+        const max = r.max
+        if (fw >= min && (max == null || fw < max)) {
+          matched = parseFloat(r.price || 0)
+          break
+        }
+      }
+      unitPrice = matched != null ? matched : parseFloat(ranges[0]?.price || 0)
+    } else {
+      unitPrice = parseFloat(ranges[0]?.price || 0)
+    }
+    totalPrice = unitPrice * qty
+  } else if (pricingType === 'unit_weight') {
+    unitPrice = parseFloat(pd.price_per_unit || 0)
+    const weight = fw ?? 1
+    totalPrice = unitPrice * weight
+  } else if (pricingType === 'bundled_weight') {
+    unitPrice = parseFloat(pd.price_per_unit || 0)
+    if (fw != null) {
+      totalPrice = unitPrice * fw
+    } else {
+      const minW = parseFloat(pd.min_weight || 7)
+      totalPrice = unitPrice * minW
+    }
+  } else {
+    unitPrice = parseFloat(product.price || 0)
+    totalPrice = unitPrice * qty
+  }
+
+  return { unitPrice, totalPrice }
+}
+
+export function applyVariantDelta(unitPrice, totalPrice, delta, pricingType, quantity, finalWeight, product) {
+  const d = parseFloat(delta || 0)
+  if (!d) return { unitPrice, totalPrice }
+  unitPrice += d
+  const qty = parseInt(quantity, 10) || 1
+  const fw = parseWeight(finalWeight)
+
+  if (pricingType === 'per_item' || pricingType === 'weight_range') {
+    totalPrice = unitPrice * qty
+  } else if (pricingType === 'unit_weight') {
+    totalPrice = unitPrice * (fw ?? 1)
+  } else if (pricingType === 'bundled_weight') {
+    const pd = product?.pricing_data || {}
+    totalPrice = unitPrice * (fw ?? parseFloat(pd.min_weight || 7))
+  }
+  return { unitPrice, totalPrice }
+}
+
+export function estimateLinePrice(product, selection = {}) {
+  const { quantity = 1, final_weight: finalWeight = null, variant_id: variantId = null } = selection
+  const variant = (product.variants || []).find(v => v.id === variantId)
+  const delta = variant ? parseFloat(variant.price_delta || 0) : 0
+
+  let { unitPrice, totalPrice } = computeBasePrice(product, quantity, finalWeight)
+  ;({ unitPrice, totalPrice } = applyVariantDelta(
+    unitPrice,
+    totalPrice,
+    delta,
+    product.pricing_type,
+    quantity,
+    finalWeight,
+    product
+  ))
+  return { unitPrice, totalPrice, variant }
+}
+
+export function getDisplayPriceFromConfig(pricingType, pricingData = {}) {
+  const pd = pricingData || {}
+  if (pricingType === 'per_item') {
+    return pd.price != null ? parseFloat(pd.price) : null
+  }
+  if (pricingType === 'weight_range') {
+    const ranges = pd.ranges || []
+    return ranges.length ? parseFloat(ranges[0].price || 0) : null
+  }
+  if (pricingType === 'unit_weight') {
+    return pd.price_per_unit != null ? parseFloat(pd.price_per_unit) : null
+  }
+  if (pricingType === 'bundled_weight') {
+    const ppu = parseFloat(pd.price_per_unit || 0)
+    const minW = parseFloat(pd.min_weight || 7)
+    const maxW = parseFloat(pd.max_weight || 15)
+    return ppu > 0 ? ppu * ((minW + maxW) / 2) : null
+  }
+  return null
+}
+
+export function formatSubstitutePriceLabel(substitute) {
+  if (!substitute) return null
+  const pricingType = substitute.pricing_type || 'per_item'
+  const pricingData = substitute.pricing_data || {}
+  const display =
+    getDisplayPriceFromConfig(pricingType, pricingData) ??
+    (substitute.price != null ? parseFloat(substitute.price) : null)
+  if (display == null || Number.isNaN(display)) return null
+
+  if (pricingType === 'per_item') {
+    return `$${display.toFixed(2)}`
+  }
+  if (pricingType === 'unit_weight' || pricingType === 'bundled_weight') {
+    const unit = pricingData.unit === 'kg' ? 'kg' : 'lb'
+    const suffix = pricingType === 'bundled_weight' ? '（按实际重量）' : ''
+    return `$${parseFloat(pricingData.price_per_unit || display).toFixed(2)}/${unit}${suffix}`
+  }
+  if (pricingType === 'weight_range') {
+    return `按重量区间计价（参考 $${display.toFixed(2)}）`
+  }
+  return `$${display.toFixed(2)}`
+}
+
+export function productRequiresVariant(product) {
+  return (product.variants || []).length > 0
+}
+
+export function productRequiresSubstituteChoice(product) {
+  return !!(product.substitute_enabled || product.substitute?.enabled)
+}
+
+export function isSelectionComplete(product, selection = {}) {
+  if (productRequiresVariant(product) && !selection.variant_id) return false
+  if (productRequiresSubstituteChoice(product) && selection.accept_substitute == null) return false
+  return true
+}
+
+export function formatSubstitutePreferenceLabel(acceptSubstitute) {
+  if (acceptSubstitute === true) return '接受备选'
+  if (acceptSubstitute === false) return '不要备选'
+  return null
+}
+
+/** Reference weight for estimate when final_weight is missing (min weight / first band). */
+export function getReferenceWeight(product) {
+  if (!product) return null
+  const pt = product.pricing_type
+  const pd = product.pricing_data || {}
+  if (pt === 'bundled_weight') {
+    const w = parseFloat(pd.min_weight)
+    return Number.isFinite(w) && w > 0 ? w : 7
+  }
+  if (pt === 'unit_weight') return 1
+  if (pt === 'weight_range') {
+    const ranges = pd.ranges || []
+    if (!ranges.length) return null
+    let minRef = null
+    for (const r of ranges) {
+      const m = parseFloat(r.min ?? 0)
+      if (Number.isFinite(m) && (minRef == null || m < minRef)) minRef = m
+    }
+    return minRef
+  }
+  return null
+}
+
+export function isDeclinedSubstituteLine(item) {
+  if (!item) return false
+  if (item.is_declined_substitute != null) return !!item.is_declined_substitute
+  return !!item.is_unavailable && item.accept_substitute === false
+}
+
+export function isPendingSubstituteLine(item) {
+  if (!item) return false
+  if (item.is_pending_substitute != null) return !!item.is_pending_substitute
+  return !!item.is_unavailable && item.accept_substitute == null
+}
+
+/** Line total for display: stored price, or estimate using min weight / first range. */
+export function resolveOrderLineTotal(item) {
+  if (!item) return 0
+  if (item.is_unavailable && item.accept_substitute !== true) return 0
+
+  const stored = parseFloat(item.total_price ?? item.estimated_price)
+  if (Number.isFinite(stored) && stored > 0) return stored
+
+  const product = item.product
+  if (!product) return 0
+
+  const fw = parseWeight(item.final_weight)
+  const pricingWeight = fw ?? getReferenceWeight(product)
+
+  const { totalPrice } = estimateLinePrice(product, {
+    quantity: item.quantity,
+    final_weight: pricingWeight,
+    variant_id: item.variant_id
+  })
+  return totalPrice
+}
+
+export function isOrderLinePriceEstimated(item) {
+  const stored = parseFloat(item.total_price ?? item.estimated_price)
+  if (Number.isFinite(stored) && stored > 0) return false
+  const p = item?.product
+  if (!p) return false
+  if (!['weight_range', 'unit_weight', 'bundled_weight'].includes(p.pricing_type)) return false
+  return !parseWeight(item?.final_weight)
+}
+
+export function getOrderLineWeightLabel(item) {
+  const p = item.product
+  if (!p) return null
+  const pt = p.pricing_type
+  if (!['weight_range', 'unit_weight', 'bundled_weight'].includes(pt)) return null
+  const fw = parseWeight(item.final_weight)
+  if (fw != null) return `重量 ${fw.toFixed(3)} lb`
+  const ref = getReferenceWeight(p)
+  if (ref != null) return `约 ${ref} lb（待称重）`
+  return '重量待确认'
+}
+
+/** Build display fields for checkout / summary line items. */
+export function toCheckoutLineDisplay(item, product) {
+  const variant = (product?.variants || []).find((v) => v.id === item.variant_id)
+  const variantName = item.variant_name || variant?.name || null
+  let priceDisplay = null
+  if (item.pricing_type === 'bundled_weight' && item.price_range) {
+    priceDisplay = item.price_range
+  }
+  return {
+    product_id: item.product_id,
+    quantity: item.quantity,
+    total_price: item.estimated_price,
+    estimated_price: item.estimated_price,
+    display_name: product?.name || '商品',
+    variant_name: variantName,
+    variant: variantName ? { name: variantName } : null,
+    accept_substitute: item.accept_substitute,
+    show_substitute_preference: productRequiresSubstituteChoice(product || {}),
+    substitute_name: product?.substitute?.name,
+    price_display: priceDisplay,
+    is_substituted: false,
+    is_struck_out: false
+  }
+}
+
+/** Normalize API order item for OrderLineDisplay. */
+export function toOrderLineDisplay(item) {
+  if (!item) return item
+  const product = item.product || {}
+  const variantName = item.variant?.name || item.variant_name
+  return {
+    ...item,
+    display_name: item.display_name || product.name || '商品',
+    variant_name: variantName,
+    show_substitute_preference: product.substitute_enabled || !!product.substitute?.enabled,
+    substitute_name: product.substitute?.name
+  }
+}
+
+export function getSelectionIncompleteMessage(product, selection = {}) {
+  const name = product?.name || '该商品'
+  if (productRequiresVariant(product) && !selection.variant_id) {
+    return `请完成「${name}」的产品细节`
+  }
+  if (productRequiresSubstituteChoice(product) && selection.accept_substitute == null) {
+    return `请确认「${name}」的备选产品`
+  }
+  return null
+}

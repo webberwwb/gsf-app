@@ -32,6 +32,9 @@ instance/
 .env
 .env.local
 .env.*.local
+backend-env.yaml
+backend-env-temp.yaml
+backend-env-nonsensitive.yaml
 
 # Node
 node_modules/

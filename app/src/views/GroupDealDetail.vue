@@ -309,6 +309,25 @@
 
               <!-- Product Selection Controls -->
               <div class="product-selection" :class="{ 'disabled': isOutOfStock(product) }">
+                <ProductDetailsSection
+                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
+                  :product-id="product.id"
+                  :variants="product.variants || []"
+                  :substitute="product.substitute_enabled || product.substitute?.enabled
+                    ? (product.substitute || {
+                        name: product.substitute_name,
+                        description: product.substitute_description,
+                        images: product.substitute_images,
+                        pricing_type: product.pricing_type,
+                        pricing_data: product.substitute?.pricing_data,
+                        price: product.substitute_price
+                      })
+                    : null"
+                  :variant-id="getSelection(product).variant_id"
+                  :accept-substitute="getSelection(product).accept_substitute"
+                  @update:variant-id="(v) => setVariantId(product, v)"
+                  @update:accept-substitute="(v) => setAcceptSubstitute(product, v)"
+                />
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
                   <div class="quantity-control">
@@ -457,12 +476,19 @@ import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN } from 
 import { useModal } from '../composables/useModal'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import Modal from '../components/Modal.vue'
+import ProductDetailsSection from '../components/ProductDetailsSection.vue'
+import {
+  estimateLinePrice,
+  isSelectionComplete,
+  getSelectionIncompleteMessage
+} from '../utils/orderItemPricing'
 
 export default {
   name: 'GroupDealDetail',
   components: {
     ProductDetailModal,
-    Modal
+    Modal,
+    ProductDetailsSection
   },
   data() {
     return {
@@ -497,7 +523,11 @@ export default {
       return this.deal && ['preparing', 'ready_for_pickup'].includes(this.deal.status)
     },
     isOrderEditable() {
-      return this.deal && this.deal.status === 'active'
+      if (!this.deal) return false
+      if (this.deal.status === 'active') return true
+      // Admins can place test orders on draft deals (draft is admin-only in the API)
+      if (this.isAdmin && this.deal.status === 'draft') return true
+      return false
     },
     showNoDealPlaceholder() {
       return !this.loading && !this.error && !this.deal
@@ -947,19 +977,30 @@ export default {
       const qty = parseInt(value) || 0
       const maxQty = product.deal_stock_limit || 999
       const finalQty = Math.max(0, Math.min(qty, maxQty))
-      
-      // Vue 3 handles reactivity automatically, no need for $set
+
+      if (finalQty > 0) {
+        const selection = this.getSelection(product)
+        if (!isSelectionComplete(product, selection)) {
+          this.warning(getSelectionIncompleteMessage(product, selection))
+          return
+        }
+      }
+
       if (!this.selectedItems[product.id]) {
-        this.selectedItems[product.id] = { quantity: 0 }
+        this.selectedItems[product.id] = { quantity: 0, variant_id: null, accept_substitute: null }
       }
       this.selectedItems[product.id].quantity = finalQty
     },
     increaseQuantity(product) {
-      // Check if product is out of stock
       if (this.isOutOfStock(product)) {
         return
       }
-      
+      const selection = this.getSelection(product)
+      if (!isSelectionComplete(product, selection)) {
+        this.warning(getSelectionIncompleteMessage(product, selection))
+        return
+      }
+
       const current = this.getQuantity(product)
       const maxQty = product.deal_stock_limit || 999
       this.setQuantity(product, Math.min(current + 1, maxQty))
@@ -979,43 +1020,27 @@ export default {
       const current = this.getQuantity(product)
       this.setQuantity(product, Math.max(current - 1, 0))
     },
+    getSelection(product) {
+      if (!this.selectedItems[product.id]) {
+        this.selectedItems[product.id] = { quantity: 0, variant_id: null, accept_substitute: null }
+      }
+      return this.selectedItems[product.id]
+    },
+    setVariantId(product, variantId) {
+      this.getSelection(product).variant_id = variantId
+    },
+    setAcceptSubstitute(product, value) {
+      this.getSelection(product).accept_substitute = value
+    },
     calculateItemTotal(product) {
       const quantity = this.getQuantity(product)
       if (quantity === 0) return '0.00'
-      
-      if (product.pricing_type === 'per_item') {
-        const price = product.display_price || product.price || 0
-        return (parseFloat(price) * quantity).toFixed(2)
-      } else if (product.pricing_type === 'weight_range') {
-        // Use LOWEST price for estimation (conservative estimate)
-        const ranges = product.pricing_data?.ranges || []
-        if (ranges.length === 0) return '0.00'
-        
-        // Find the minimum price across all ranges for conservative estimate
-        const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
-        
-        return (minPrice * quantity).toFixed(2)
-      } else if (product.pricing_type === 'unit_weight') {
-        // unit_weight: products are weighed individually, not stacked
-        // unit_price = price_per_unit (the rate)
-        // total_price = price_per_unit * final_weight (or estimated weight)
-        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
-        return (parseFloat(pricePerUnit) * estimatedWeight).toFixed(2)
-      } else if (product.pricing_type === 'bundled_weight') {
-        // bundled_weight: products sold by bundle (quantity can be > 1)
-        // unit_price = price_per_unit (the rate)
-        // total_price = price_per_unit * min_weight * quantity (for estimation)
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const minWeight = product.pricing_data?.min_weight || 7
-        
-        if (pricePerUnit === 0) return '0.00'
-        
-        // Return estimated price using min-weight, multiplied by quantity
-        return (pricePerUnit * minWeight * quantity).toFixed(2)
-      }
-      return '0.00'
+      const sel = this.getSelection(product)
+      const { totalPrice } = estimateLinePrice(product, {
+        quantity,
+        variant_id: sel.variant_id
+      })
+      return totalPrice.toFixed(2)
     },
     calculateBundledItemTotal(product) {
       // bundled_weight: products sold by bundle (quantity can be > 1)
@@ -1052,55 +1077,36 @@ export default {
       return result.hasEstimated
     },
     async confirmOrder() {
-      // Build order items from current selections
       const orderItems = []
       
-      this.deal.products.forEach(product => {
+      for (const product of this.deal.products) {
         const selection = this.selectedItems[product.id]
-        if (selection && selection.quantity > 0) {
-          // Calculate estimated price for this item
-          const quantity = selection.quantity
-          let estimatedPrice = 0
-          let isEstimated = false
-          
-          if (product.pricing_type === 'per_item') {
-            const price = product.display_price || product.price || 0
-            estimatedPrice = parseFloat(price) * quantity
-          } else if (product.pricing_type === 'weight_range') {
-            // Use LOWEST price for estimation (conservative estimate)
-            const ranges = product.pricing_data?.ranges || []
-            if (ranges.length > 0) {
-              const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
-              estimatedPrice = minPrice * quantity
-              isEstimated = true
-            }
-          } else if (product.pricing_type === 'unit_weight') {
-            // Use a default estimated weight (1 unit) for estimation
-            const pricePerUnit = product.pricing_data?.price_per_unit || 0
-            const estimatedWeight = 1 // Default 1 unit (kg or lb) for estimation
-            estimatedPrice = parseFloat(pricePerUnit) * estimatedWeight * quantity
-            isEstimated = true
-          } else if (product.pricing_type === 'bundled_weight') {
-            // quantity = number of packages
-            // Use min-weight for conservative estimation
-            const pricePerUnit = product.pricing_data?.price_per_unit || 0
-            const minWeight = product.pricing_data?.min_weight || 7
-            estimatedPrice = parseFloat(pricePerUnit) * minWeight * quantity
-            isEstimated = true
-          }
-          
-          orderItems.push({
-            product_id: product.id,
-            quantity: selection.quantity,
-            pricing_type: product.pricing_type,
-            estimated_price: estimatedPrice.toFixed(2),
-            is_estimated: isEstimated,
-            counts_toward_free_shipping: product.counts_toward_free_shipping !== undefined 
-              ? product.counts_toward_free_shipping 
-              : true
-          })
+        if (!selection || selection.quantity <= 0) continue
+
+        if (!isSelectionComplete(product, selection)) {
+          await this.warning(getSelectionIncompleteMessage(product, selection))
+          return
         }
-      })
+
+        const variant = (product.variants || []).find((v) => v.id === selection.variant_id)
+        const { totalPrice } = estimateLinePrice(product, {
+          quantity: selection.quantity,
+          variant_id: selection.variant_id
+        })
+        const isEstimated = ['weight_range', 'unit_weight', 'bundled_weight'].includes(product.pricing_type)
+
+        orderItems.push({
+          product_id: product.id,
+          quantity: selection.quantity,
+          pricing_type: product.pricing_type,
+          variant_id: selection.variant_id || undefined,
+          variant_name: variant?.name || undefined,
+          accept_substitute: selection.accept_substitute,
+          estimated_price: totalPrice.toFixed(2),
+          is_estimated: isEstimated,
+          counts_toward_free_shipping: product.counts_toward_free_shipping !== false
+        })
+      }
       
       if (orderItems.length === 0) {
         await this.warning('请至少选择一个商品')

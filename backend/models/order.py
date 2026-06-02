@@ -126,7 +126,18 @@ class OrderItem(BaseModel):
     
     # Final weight for weight-based products (set during pickup)
     final_weight = db.Column(Numeric(10, 3), nullable=True)  # Weight in lb
-    
+
+    # Variant selection (snapshot at order time)
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variants.id'), nullable=True, index=True)
+    variant_name = db.Column(db.String(255), nullable=True)
+    variant_price_delta = db.Column(Numeric(10, 2), nullable=True)
+
+    # Substitute preference and fulfillment
+    accept_substitute = db.Column(db.Boolean, nullable=True)
+    is_unavailable = db.Column(db.Boolean, default=False, nullable=False)
+
+    variant = db.relationship('ProductVariant', foreign_keys=[variant_id])
+
     def to_dict(self):
         data = super().to_dict()
         data.update({
@@ -135,7 +146,12 @@ class OrderItem(BaseModel):
             'quantity': self.quantity,
             'unit_price': float(self.unit_price) if self.unit_price else None,
             'total_price': float(self.total_price) if self.total_price else None,
-            'final_weight': float(self.final_weight) if self.final_weight else None
+            'final_weight': float(self.final_weight) if self.final_weight else None,
+            'variant_id': self.variant_id,
+            'variant_name': self.variant_name,
+            'variant_price_delta': float(self.variant_price_delta) if self.variant_price_delta is not None else None,
+            'accept_substitute': self.accept_substitute,
+            'is_unavailable': self.is_unavailable,
         })
         return data
 

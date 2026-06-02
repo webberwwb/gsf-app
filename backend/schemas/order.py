@@ -5,13 +5,45 @@ from constants.status_enums import DeliveryMethod, PaymentMethod
 
 class OrderItemSchema(Schema):
     """Schema for order item in request"""
+    id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     product_id = fields.Integer(required=True, validate=validate.Range(min=1))
     quantity = fields.Integer(required=True, validate=validate.Range(min=1))
     pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']))
     final_weight = fields.Float(allow_none=True, validate=validate.Range(min=0))
+    variant_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    accept_substitute = fields.Boolean(allow_none=True)
     
     class Meta:
         unknown = EXCLUDE
+
+
+class AdminOrderItemAvailabilitySchema(Schema):
+    """Schema for admin marking order item availability"""
+    is_unavailable = fields.Boolean(required=True)
+    
+    class Meta:
+        unknown = EXCLUDE
+
+
+class AdminOrderItemSubstituteSchema(Schema):
+    """Schema for admin updating accept/decline substitute on a line"""
+    accept_substitute = fields.Boolean(required=True)
+
+    class Meta:
+        unknown = EXCLUDE
+
+
+class AdminProductFulfillmentSchema(Schema):
+    """Bulk mark all lines for a product in a group deal unavailable/available"""
+    is_unavailable = fields.Boolean(required=True)
+
+    class Meta:
+        unknown = EXCLUDE
+
+
+class AdminOrderItemSchema(OrderItemSchema):
+    """Admin order item update — may set fulfillment unavailable flag"""
+    is_unavailable = fields.Boolean(allow_none=True)
 
 
 class CreateOrderSchema(Schema):
@@ -94,7 +126,7 @@ class UpdateOrderWeightsSchema(Schema):
 
 class AdminUpdateOrderSchema(Schema):
     """Schema for admin updating order items"""
-    items = fields.List(fields.Nested(OrderItemSchema), required=True, validate=validate.Length(min=1))
+    items = fields.List(fields.Nested(AdminOrderItemSchema), required=True, validate=validate.Length(min=1))
     payment_method = fields.String(allow_none=True, validate=validate.OneOf(PaymentMethod.get_all_values()))
     delivery_method = fields.String(allow_none=True, validate=validate.OneOf(DeliveryMethod.get_all_values()))
     address_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))

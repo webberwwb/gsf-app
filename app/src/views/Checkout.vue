@@ -116,20 +116,12 @@
         </div>
         <div class="products-section">
           <div class="items-list">
-          <div v-for="item in orderItems" :key="item.product_id" class="order-item-summary">
-            <div class="item-info">
-              <span class="item-name">{{ getProductName(item.product_id) }}</span>
-              <span class="item-quantity">x{{ item.quantity }}{{ item.pricing_type === 'bundled_weight' ? ' 份' : '' }}</span>
-            </div>
-            <span class="item-price" :class="{ 'price-range': item.pricing_type === 'bundled_weight' && item.price_range }">
-              <template v-if="item.pricing_type === 'bundled_weight' && item.price_range">
-                {{ item.price_range }}
-              </template>
-              <template v-else>
-                ${{ item.estimated_price || '0.00' }}
-              </template>
-            </span>
-          </div>
+          <OrderLineDisplay
+            v-for="item in orderItems"
+            :key="item.product_id"
+            :item="toCheckoutLineDisplay(item)"
+            class="order-item-summary"
+          />
           </div>
         </div>
         <div class="order-breakdown">
@@ -535,7 +527,9 @@
 <script>
 import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
+import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import { useCheckoutStore } from '../stores/checkout'
+import { toCheckoutLineDisplay } from '../utils/orderItemPricing'
 import { useAuthStore } from '../stores/auth'
 import { formatDateEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
@@ -548,7 +542,8 @@ import {
 export default {
   name: 'Checkout',
   components: {
-    AddressForm
+    AddressForm,
+    OrderLineDisplay
   },
   setup() {
     const checkoutStore = useCheckoutStore()
@@ -1074,10 +1069,9 @@ export default {
         this.selectedAddressId = this.addresses[0].id
       }
     },
-    getProductName(productId) {
-      if (!this.deal || !this.deal.products) return '商品'
-      const product = this.deal.products.find(p => p.id === productId)
-      return product ? product.name : '商品'
+    toCheckoutLineDisplay(item) {
+      const product = this.deal?.products?.find((p) => p.id === item.product_id)
+      return toCheckoutLineDisplay(item, product)
     },
     calculateSubtotal() {
       const subtotal = this.checkoutStore.subtotal || 0

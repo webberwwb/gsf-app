@@ -1,8 +1,12 @@
 <template>
-  <div class="order-card" @click="handleCardClick">
-    <!-- Delete Icon - Bottom Right -->
+  <div
+    class="order-card"
+    :class="{ 'order-card--deletable': showDelete }"
+    @click="handleCardClick"
+  >
     <button 
       v-if="showDelete"
+      type="button"
       @click.stop="$emit('delete', order.id)" 
       class="delete-icon-btn"
       title="删除订单">
@@ -10,7 +14,6 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
       </svg>
     </button>
-    
     <div class="order-header">
       <div class="order-id">{{ order.order_number }}</div>
       <div class="header-right">
@@ -121,9 +124,8 @@
           v-for="item in order.items" 
           :key="item.id"
           class="item-row">
-          <span class="item-name">
-            {{ item.product?.name || 'Unknown' }}
-            <div v-if="item.product" class="product-info-icon" @click.stop title="查看价格详情">
+          <OrderLineDisplay :item="toOrderLineDisplay(item)" class="item-line-display" />
+          <div v-if="item.product" class="product-info-icon item-info-icon" @click.stop title="查看价格详情">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -164,10 +166,7 @@
                   </div>
                 </div>
               </div>
-            </div>
-          </span>
-          <span class="item-quantity">x{{ item.quantity }}</span>
-          <span class="item-price">${{ parseFloat(item.total_price || item.unit_price * item.quantity || 0).toFixed(2) }}</span>
+          </div>
         </div>
       </div>
       <div class="items-breakdown">
@@ -279,11 +278,17 @@ import { orderHasMissingFinalWeight } from '../utils/orderWeightValidation'
 import {
   orderStoreCreditAppliedNumber,
   orderAmountDueNumber,
+  orderSubtotalNumber,
+  orderTaxNumber as computeOrderTax,
+  orderAdjustmentNumber as computeOrderAdjustment,
   formatOrderMoney2
 } from '../utils/orderPricing'
+import OrderLineDisplay from './OrderLineDisplay.vue'
+import { toOrderLineDisplay } from '../utils/orderItemPricing'
 
 export default {
   name: 'OrderCard',
+  components: { OrderLineDisplay },
   setup() {
     const { confirm, success, error } = useModal()
     return { confirm, success, error }
@@ -318,6 +323,7 @@ export default {
     }
   },
   methods: {
+    toOrderLineDisplay,
     toggleOrderItems() {
       this.showOrderItems = !this.showOrderItems
     },
@@ -355,23 +361,16 @@ export default {
       return orderStoreCreditAppliedNumber(o)
     },
     orderSubtotalFormatted(o) {
-      if (!o) return '0.00'
-      const s = parseFloat(o.subtotal)
-      if (Number.isFinite(s)) return s.toFixed(2)
-      return this.calculateSubtotal().toFixed(2)
+      return formatOrderMoney2(orderSubtotalNumber(o))
     },
     orderAdjustmentNumber(o) {
-      if (!o) return 0
-      const a = parseFloat(o.adjustment_amount)
-      return Number.isFinite(a) ? a : 0
+      return computeOrderAdjustment(o)
     },
     orderAdjustmentAbsFormatted(o) {
-      return Math.abs(this.orderAdjustmentNumber(o)).toFixed(2)
+      return Math.abs(computeOrderAdjustment(o)).toFixed(2)
     },
     orderTaxNumber(o) {
-      if (!o) return 0
-      const t = parseFloat(o.tax)
-      return Number.isFinite(t) ? t : 0
+      return computeOrderTax(o)
     },
     orderTaxFormatted(o) {
       return this.orderTaxNumber(o).toFixed(2)
@@ -468,8 +467,9 @@ export default {
 
 .delete-icon-btn {
   position: absolute;
-  bottom: var(--md-spacing-md);
+  top: var(--md-spacing-md);
   right: var(--md-spacing-md);
+  z-index: 25;
   width: 36px;
   height: 36px;
   display: flex;
@@ -498,6 +498,21 @@ export default {
 .delete-icon-btn svg {
   width: 18px;
   height: 18px;
+}
+
+@media (max-width: 1366px) {
+  .delete-icon-btn {
+    top: var(--md-spacing-sm);
+    right: var(--md-spacing-md);
+  }
+
+  .order-card--deletable .order-header {
+    padding-right: 40px;
+  }
+}
+
+.order-card--deletable .order-header {
+  padding-right: 42px;
 }
 
 .order-header {
@@ -1005,7 +1020,7 @@ export default {
 
 .item-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--md-spacing-sm);
   padding: 8px 12px;
   background: rgba(0, 0, 0, 0.02);
@@ -1019,27 +1034,14 @@ export default {
   z-index: 1001;
 }
 
-.item-name {
+.item-line-display {
   flex: 1;
-  color: rgba(0, 0, 0, 0.87);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  min-width: 0;
 }
 
-.item-quantity {
-  color: rgba(0, 0, 0, 0.6);
-  font-weight: 500;
-  min-width: 40px;
-  text-align: right;
-}
-
-.item-price {
-  color: var(--md-primary);
-  font-weight: 600;
-  min-width: 60px;
-  text-align: right;
+.item-info-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .items-breakdown {

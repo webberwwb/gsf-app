@@ -1,13 +1,29 @@
 <template>
-  <div class="group-deal-detail-page">
+  <div
+    ref="pageRef"
+    class="group-deal-detail-page"
+    :class="{ 'is-pulling': showIndicator }"
+    :style="{ transform: contentTransform }"
+  >
+    <PullToRefreshIndicator
+      v-if="showIndicator"
+      :height="indicatorHeight"
+      :refreshing="refreshing"
+      :ready-to-refresh="readyToRefresh"
+      :status-text="statusText"
+    />
     <div class="page-header">
-      <button @click="goBack" class="back-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-        返回
-      </button>
-      
+      <div class="page-nav">
+        <button @click="goBack" class="back-btn" aria-label="返回">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          <span class="back-label">返回</span>
+        </button>
+        <h1 class="page-nav-title">{{ groupDeal?.title || '团购详情' }}</h1>
+        <div class="nav-spacer" aria-hidden="true"></div>
+      </div>
+
       <div class="header-actions">
         <button @click="viewCommission" class="commission-btn" :disabled="loading || !groupDeal">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -236,17 +252,18 @@
           <div class="product-stats-list">
             <div 
               v-for="productStat in statistics.productCounts" 
-              :key="productStat.productId"
-              :class="['product-stat-item', { 'active': isProductFilterActive(productStat.productId) }]"
-              @click="toggleProductFilter(productStat.productId)">
+              :key="productStat.statKey"
+              :class="['product-stat-item', { active: isProductFilterActive(productStat.statKey), 'is-variant-row': productStat.variantId != null }]"
+              @click="toggleProductFilter(productStat.statKey)"
+            >
               <div class="product-stat-content">
-                <div class="product-stat-name">{{ productStat.productName }}</div>
+                <div class="product-stat-name">{{ productStat.displayName }}</div>
                 <div class="product-stat-details">
                   <div class="product-stat-value">数量: {{ productStat.totalQuantity }}</div>
                   <div class="product-stat-sales">${{ productStat.totalSalesValue.toFixed(2) }}</div>
                 </div>
               </div>
-              <div v-if="isProductFilterActive(productStat.productId)" class="product-stat-check">
+              <div v-if="isProductFilterActive(productStat.statKey)" class="product-stat-check">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
@@ -256,6 +273,14 @@
           </div>
         </div>
       </div>
+
+      <GroupDealFulfillmentPanel
+        v-if="groupDeal?.products?.some(p => p.substitute_enabled || p.substitute?.enabled)"
+        :group-deal-id="groupDeal.id"
+        :products="groupDeal.products"
+        :orders="orders"
+        @fulfillment-updated="onFulfillmentUpdated"
+      />
 
       <!-- Orders List -->
       <div class="orders-section">
@@ -270,7 +295,7 @@
         </div>
         <template v-else>
         <div class="orders-header">
-          <h3>订单列表 ({{ filteredOrders.length }}{{ selectedProductFilters.length > 0 ? ' - 已筛选' : '' }})</h3>
+          <h3>订单列表 ({{ filteredOrders.length }}{{ hasActiveOrderFilters ? ' - 已筛选' : '' }})</h3>
           <div class="orders-header-actions">
             <div class="search-box">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="search-icon">
@@ -355,6 +380,23 @@
                 <input type="checkbox" v-model="showCompletedOrders" class="checkbox-input">
                 <span class="checkbox-text">显示已完成订单</span>
               </label>
+              <select v-model="weightFilter" class="source-filter-select">
+                <option value="">全部称重状态</option>
+                <option value="not_weighed">未称重</option>
+                <option value="weighed">已称重</option>
+              </select>
+              <select v-model="packingFilter" class="source-filter-select">
+                <option value="">全部配货状态</option>
+                <option value="not_packed">未配货</option>
+                <option value="packing_complete">配货完成</option>
+              </select>
+              <select v-model="orderSort" class="source-filter-select">
+                <option value="payment">排序: 未付款优先</option>
+                <option value="weight_asc">排序: 未称重优先</option>
+                <option value="weight_desc">排序: 已称重优先</option>
+                <option value="packing_asc">排序: 未配货优先</option>
+                <option value="packing_desc">排序: 配货完成优先</option>
+              </select>
               <select v-model="userSourceFilter" class="source-filter-select">
                 <option value="">全部获客渠道</option>
                 <option value="花泽">花泽</option>
@@ -369,10 +411,11 @@
               v-for="order in filteredOrders"
               :key="order.id"
               :order="order"
-              :show-delete="false"
+              :show-delete="true"
               :show-actions="false"
               :items-expanded-by-default="true"
               @click="viewOrderDetail(order)"
+              @delete="deleteOrder"
               @mark-packing-complete="handleMarkPackingComplete"
             />
           </div>
@@ -473,17 +516,26 @@
 </template>
 
 <script>
+import { ref, getCurrentInstance } from 'vue'
 import apiClient from '../api/client'
 import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
+import { usePullToRefresh } from '../composables/usePullToRefresh'
 import { useOrdersStore } from '../stores/orders'
+import { usePageHeader } from '../stores/pageHeader'
 import OrderCard from '../components/OrderCard.vue'
 import GroupDealOrderListView from '../components/GroupDealOrderListView.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
 import OrderMergeModal from '../components/OrderMergeModal.vue'
 import CommissionBreakdownModal from '../components/CommissionBreakdownModal.vue'
+import GroupDealFulfillmentPanel from '../components/GroupDealFulfillmentPanel.vue'
+import PullToRefreshIndicator from '../components/PullToRefreshIndicator.vue'
 import { orderHasMissingFinalWeight, statusChangeWarnsIfMissingFinalWeight } from '../utils/orderWeightValidation'
 import { orderAmountDueNumber, formatOrderMoney2, orderFinalTotalNumber, orderStoreCreditAppliedNumber } from '../utils/orderPricing'
+import { resolveOrderLineTotal } from '../utils/orderItemPricing'
+import { loadGroupDealOrderPrefs, saveGroupDealOrderPrefs } from '../utils/groupDealOrderPrefs'
+
+const PACKING_COMPLETE_STATUSES = ['packing_complete', 'ready_for_pickup', 'out_for_delivery', 'delivering', 'completed']
 
 export default {
   name: 'GroupDealDetail',
@@ -492,12 +544,44 @@ export default {
     GroupDealOrderListView,
     OrderDetailModal,
     OrderMergeModal,
-    CommissionBreakdownModal
+    CommissionBreakdownModal,
+    GroupDealFulfillmentPanel,
+    PullToRefreshIndicator
   },
   setup() {
+    const instance = getCurrentInstance()
+    const pageRef = ref(null)
     const { confirm, success, error: showError } = useModal()
     const ordersStore = useOrdersStore()
-    return { confirm, success, showError, ordersStore }
+    const {
+      showIndicator,
+      indicatorHeight,
+      contentTransform,
+      statusText,
+      readyToRefresh,
+      refreshing
+    } = usePullToRefresh({
+      hostRef: pageRef,
+      onRefresh: () => instance?.proxy?.refreshPage?.(),
+      isEnabled: () => {
+        const vm = instance?.proxy
+        if (!vm) return false
+        return !vm.showOrderDetail && !vm.showDuplicatesModal && !vm.showMergeModal && !vm.showCommissionModal
+      }
+    })
+    return {
+      pageRef,
+      showIndicator,
+      indicatorHeight,
+      contentTransform,
+      statusText,
+      readyToRefresh,
+      refreshing,
+      confirm,
+      success,
+      showError,
+      ordersStore
+    }
   },
   async beforeRouteLeave(to, from, next) {
     if (this.showOrderDetail && this.$refs.orderDetailModal?.hasUnsavedChanges) {
@@ -510,6 +594,7 @@ export default {
     next()
   },
   data() {
+    const orderPrefs = loadGroupDealOrderPrefs()
     return {
       loading: true,
       error: null,
@@ -521,11 +606,14 @@ export default {
       updateError: null,
       markingComplete: false,
       updatingGroupDealStatus: false,
-      activeOrderTab: 'pickup',
+      activeOrderTab: orderPrefs.activeOrderTab,
       selectedProductFilters: [],
       searchQuery: '',
-      showCompletedOrders: true,
-      userSourceFilter: '',
+      showCompletedOrders: orderPrefs.showCompletedOrders,
+      weightFilter: orderPrefs.weightFilter,
+      packingFilter: orderPrefs.packingFilter,
+      orderSort: orderPrefs.orderSort,
+      userSourceFilter: orderPrefs.userSourceFilter,
       // Duplicate orders
       loadingDuplicates: false,
       showDuplicatesModal: false,
@@ -537,7 +625,7 @@ export default {
       // Commission
       showCommissionModal: false,
       // View mode
-      viewMode: 'card', // 'card' or 'list'
+      viewMode: orderPrefs.viewMode, // 'card' or 'list'
       narrowMobile: false,
       mobileStatsSummaryOpen: true,
       mobileProductStatsOpen: true
@@ -553,7 +641,26 @@ export default {
       }
     }
   },
+  watch: {
+    orderListPrefs: {
+      deep: true,
+      handler(prefs) {
+        saveGroupDealOrderPrefs(prefs)
+      }
+    }
+  },
   computed: {
+    orderListPrefs() {
+      return {
+        activeOrderTab: this.activeOrderTab,
+        showCompletedOrders: this.showCompletedOrders,
+        weightFilter: this.weightFilter,
+        packingFilter: this.packingFilter,
+        orderSort: this.orderSort,
+        userSourceFilter: this.userSourceFilter,
+        viewMode: this.viewMode
+      }
+    },
     orders() {
       let orders = this.ordersStore.state.orders
       
@@ -589,10 +696,7 @@ export default {
             return false
           }
           // Check if order contains ANY of the selected products
-          return order.items.some(item => {
-            const productId = item.product?.id || item.product_id
-            return this.selectedProductFilters.includes(productId)
-          })
+          return order.items.some((item) => this.itemMatchesProductFilter(item))
         })
       }
       
@@ -627,15 +731,31 @@ export default {
           return userSource === this.userSourceFilter
         })
       }
+
+      // Filter by weight state
+      if (this.weightFilter === 'not_weighed') {
+        orders = orders.filter(order => orderHasMissingFinalWeight(order))
+      } else if (this.weightFilter === 'weighed') {
+        orders = orders.filter(order => !orderHasMissingFinalWeight(order))
+      }
+
+      // Filter by packing state
+      if (this.packingFilter === 'not_packed') {
+        orders = orders.filter(order => !this.isOrderPackingComplete(order))
+      } else if (this.packingFilter === 'packing_complete') {
+        orders = orders.filter(order => this.isOrderPackingComplete(order))
+      }
       
-      // Sort by payment status: unpaid first, then others
-      orders.sort((a, b) => {
-        const aPaid = a.payment_status === 'paid' ? 1 : 0
-        const bPaid = b.payment_status === 'paid' ? 1 : 0
-        return aPaid - bPaid
-      })
+      orders.sort((a, b) => this.compareOrdersForSort(a, b))
       
       return orders
+    },
+    hasActiveOrderFilters() {
+      return this.selectedProductFilters.length > 0
+        || !!this.searchQuery?.trim()
+        || !!this.userSourceFilter
+        || !!this.weightFilter
+        || !!this.packingFilter
     },
     filteredAllOrders() {
       return this.applyProductFilter(this.orders)
@@ -703,6 +823,8 @@ export default {
       let cashPaidCount = 0
       
       const productCountsMap = new Map()
+      const dealProducts = this.groupDeal?.products || []
+      const productById = new Map(dealProducts.map((p) => [p.id, p]))
 
       allOrders.forEach(order => {
         // Total amount
@@ -771,53 +893,34 @@ export default {
         if (order.items && Array.isArray(order.items)) {
           order.items.forEach(item => {
             const productId = item.product?.id || item.product_id
-            const productName = item.product?.name || 'Unknown Product'
-            const quantity = item.quantity || 0
-            const unit = item.product?.unit || '件'
-            const pricingType = item.product?.pricing_type || 'per_item'
-            const pricingData = item.product?.pricing_data || {}
-            
-            // Calculate sales value for this item
-            let itemSalesValue = 0
-            
-            // For weight-based products, calculate using actual or estimated weight
-            if (pricingType === 'unit_weight' || pricingType === 'bundled_weight') {
-              const pricePerUnit = pricingData?.price_per_unit || 0
-              
-              // If final_weight exists, use it; otherwise use minimum weight
-              // For bundled_weight: use min_weight from pricing_data (e.g., 8 for 8-10lb bundle)
-              // For unit_weight: use 1 as minimum
-              let weight = item.final_weight
-              if (!weight) {
-                if (pricingType === 'bundled_weight') {
-                  weight = pricingData?.min_weight || 1
-                } else {
-                  weight = 1
-                }
-              }
-              itemSalesValue = pricePerUnit * weight * quantity
-            } else if (pricingType === 'weight_range') {
-              // For weight_range, use the price from the item or calculate from ranges
-              // The item's unit_price already has the correct price for the weight range
-              itemSalesValue = (item.unit_price || 0) * quantity
-            } else {
-              // For per_item pricing, use unit_price * quantity
-              itemSalesValue = (item.unit_price || 0) * quantity
-            }
+            if (!productId) return
 
-            if (productCountsMap.has(productId)) {
-              const existing = productCountsMap.get(productId)
+            const catalogProduct = productById.get(productId) || item.product
+            const productName = catalogProduct?.name || item.product?.name || 'Unknown Product'
+            const hasVariants = ((catalogProduct?.variants || item.product?.variants) || []).length > 0
+            const variantId = hasVariants ? (item.variant_id ?? null) : null
+            const statKey = this.productStatKey(productId, variantId, hasVariants)
+            const variantName = hasVariants
+              ? this.variantLabelForItem(catalogProduct || item.product, item)
+              : null
+            const displayName = variantName ? `${productName} · ${variantName}` : productName
+            const quantity = item.quantity || 0
+            const itemSalesValue = this.computeItemSalesValue(item)
+
+            if (productCountsMap.has(statKey)) {
+              const existing = productCountsMap.get(statKey)
               existing.totalQuantity += quantity
               existing.totalSalesValue += itemSalesValue
             } else {
-              productCountsMap.set(productId, {
+              productCountsMap.set(statKey, {
+                statKey,
                 productId,
+                variantId,
                 productName,
+                variantName,
+                displayName,
                 totalQuantity: quantity,
-                totalSalesValue: itemSalesValue,
-                unit,
-                pricingType,
-                pricingData
+                totalSalesValue: itemSalesValue
               })
             }
           })
@@ -825,8 +928,13 @@ export default {
       })
 
       // Convert map to array and sort by product name
-      const productCounts = Array.from(productCountsMap.values())
-        .sort((a, b) => a.productName.localeCompare(b.productName))
+      const productCounts = Array.from(productCountsMap.values()).sort((a, b) => {
+        const nameCmp = a.productName.localeCompare(b.productName)
+        if (nameCmp !== 0) return nameCmp
+        const aVar = a.variantName || ''
+        const bVar = b.variantName || ''
+        return aVar.localeCompare(bVar)
+      })
 
       return {
         totalOrders: allOrders.length,
@@ -863,8 +971,8 @@ export default {
       }
       
       // Get selected product statistics
-      const selectedProducts = this.statistics.productCounts.filter(p => 
-        this.selectedProductFilters.includes(p.productId)
+      const selectedProducts = this.statistics.productCounts.filter((p) =>
+        this.selectedProductFilters.includes(p.statKey)
       )
       
       const totalSales = selectedProducts.reduce((sum, p) => sum + p.totalSalesValue, 0)
@@ -882,12 +990,16 @@ export default {
     }
   },
   mounted() {
+    const pageHeader = usePageHeader()
+    this._pageHeader = pageHeader
+    pageHeader.setBackHandler(() => this.goBack())
     this.fetchGroupDealDetail()
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', this.syncNarrowMobile, { passive: true })
     }
   },
   beforeUnmount() {
+    this._pageHeader?.reset()
     if (typeof window !== 'undefined') {
       window.removeEventListener('resize', this.syncNarrowMobile)
     }
@@ -916,24 +1028,84 @@ export default {
           return false
         }
         // Check if order contains ANY of the selected products
-        return order.items.some(item => {
-          const productId = item.product?.id || item.product_id
-          return this.selectedProductFilters.includes(productId)
-        })
+        return order.items.some((item) => this.itemMatchesProductFilter(item))
       })
     },
-    toggleProductFilter(productId) {
-      const index = this.selectedProductFilters.indexOf(productId)
-      if (index >= 0) {
-        // Remove filter
-        this.selectedProductFilters.splice(index, 1)
-      } else {
-        // Add filter
-        this.selectedProductFilters.push(productId)
+    isOrderPackingComplete(order) {
+      return PACKING_COMPLETE_STATUSES.includes(order?.status)
+    },
+    compareOrdersForSort(a, b) {
+      const sortKey = this.orderSort || 'payment'
+
+      if (sortKey === 'weight_asc' || sortKey === 'weight_desc') {
+        const aMissing = orderHasMissingFinalWeight(a) ? 1 : 0
+        const bMissing = orderHasMissingFinalWeight(b) ? 1 : 0
+        const diff = sortKey === 'weight_asc' ? aMissing - bMissing : bMissing - aMissing
+        if (diff !== 0) return diff
+      } else if (sortKey === 'packing_asc' || sortKey === 'packing_desc') {
+        const aComplete = this.isOrderPackingComplete(a) ? 1 : 0
+        const bComplete = this.isOrderPackingComplete(b) ? 1 : 0
+        const diff = sortKey === 'packing_asc' ? aComplete - bComplete : bComplete - aComplete
+        if (diff !== 0) return diff
+      }
+
+      const aPaid = a.payment_status === 'paid' ? 1 : 0
+      const bPaid = b.payment_status === 'paid' ? 1 : 0
+      return aPaid - bPaid
+    },
+    productStatKey(productId, variantId, hasVariants) {
+      if (!hasVariants) return String(productId)
+      const vid = variantId == null ? 'none' : String(variantId)
+      return `${productId}:${vid}`
+    },
+    parseProductStatKey(statKey) {
+      const s = String(statKey)
+      if (!s.includes(':')) {
+        return { productId: s, variantId: null, hasVariants: false }
+      }
+      const [productId, variantPart] = s.split(':')
+      return {
+        productId,
+        variantId: variantPart === 'none' ? null : variantPart,
+        hasVariants: true
       }
     },
-    isProductFilterActive(productId) {
-      return this.selectedProductFilters.includes(productId)
+    variantLabelForItem(product, item) {
+      if (item.variant_name) return item.variant_name
+      if (item.variant?.name) return item.variant.name
+      const vid = item.variant_id
+      if (vid != null) {
+        const v = (product?.variants || []).find((x) => x.id === vid || String(x.id) === String(vid))
+        if (v?.name) return v.name
+        return '未知规格'
+      }
+      return '（未选规格）'
+    },
+    computeItemSalesValue(item) {
+      return resolveOrderLineTotal(item)
+    },
+    itemMatchesProductFilter(item) {
+      const productId = item.product?.id || item.product_id
+      if (!productId) return false
+      return this.selectedProductFilters.some((statKey) => {
+        const parsed = this.parseProductStatKey(statKey)
+        if (String(parsed.productId) !== String(productId)) return false
+        if (!parsed.hasVariants) return true
+        const itemVid = item.variant_id == null ? null : String(item.variant_id)
+        const filterVid = parsed.variantId == null ? null : String(parsed.variantId)
+        return itemVid === filterVid
+      })
+    },
+    toggleProductFilter(statKey) {
+      const index = this.selectedProductFilters.indexOf(statKey)
+      if (index >= 0) {
+        this.selectedProductFilters.splice(index, 1)
+      } else {
+        this.selectedProductFilters.push(statKey)
+      }
+    },
+    isProductFilterActive(statKey) {
+      return this.selectedProductFilters.includes(statKey)
     },
     clearProductFilters() {
       this.selectedProductFilters = []
@@ -957,6 +1129,7 @@ export default {
         // Store previous status for change detection
         if (this.groupDeal) {
           this.groupDeal._previousStatus = this.groupDeal.status
+          this._pageHeader?.setTitle(this.groupDeal.title)
         }
         
         // Show the page immediately with group deal info
@@ -968,6 +1141,24 @@ export default {
         this.error = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to load group deal'
         console.error('Failed to fetch group deal detail:', error)
         this.loading = false
+      }
+    },
+    async refreshPage() {
+      const dealId = this.$route.params.id
+      if (!dealId) return
+
+      try {
+        this.error = null
+        const dealResponse = await apiClient.get(`/admin/group-deals/${dealId}`)
+        this.groupDeal = dealResponse.data.group_deal
+        if (this.groupDeal) {
+          this.groupDeal._previousStatus = this.groupDeal.status
+          this._pageHeader?.setTitle(this.groupDeal.title)
+        }
+        await this.fetchOrders(dealId)
+      } catch (error) {
+        this.error = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to refresh group deal'
+        console.error('Failed to refresh group deal detail:', error)
       }
     },
     async fetchOrders(dealId) {
@@ -999,6 +1190,11 @@ export default {
         this.ordersStore.setError(error.response?.data?.message || error.response?.data?.error || 'Failed to load orders')
       } finally {
         this.ordersStore.setLoading(false)
+      }
+    },
+    async onFulfillmentUpdated() {
+      if (this.groupDeal?.id) {
+        await this.fetchOrders(this.groupDeal.id)
       }
     },
     goBack() {
@@ -1295,6 +1491,38 @@ export default {
       this.availableProducts = []
       this.updateError = null
     },
+    async deleteOrder(orderId) {
+      const confirmed = await this.confirm(
+        '确认删除此订单? 订单将被软删除，不会在列表中显示，但数据仍保留在数据库中。此操作无法撤销。',
+        {
+          type: 'warning',
+          title: '确认删除'
+        }
+      )
+      if (!confirmed) {
+        return
+      }
+
+      try {
+        await apiClient.delete(`/admin/orders/${orderId}`)
+
+        const orders = this.ordersStore.state.orders.filter((o) => o.id !== orderId)
+        this.ordersStore.setOrders(orders)
+
+        if (this.selectedOrder?.id === orderId) {
+          this.closeOrderDetail()
+        }
+
+        await this.success('订单已删除')
+      } catch (error) {
+        const errorMsg =
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          'Failed to delete order'
+        await this.error(`删除失败: ${errorMsg}`)
+        console.error('Failed to delete order:', error)
+      }
+    },
     async handleUpdateOrder(orderId, updateData) {
       this.updatingOrder = true
       this.updateError = null
@@ -1319,7 +1547,6 @@ export default {
       }
     },
     handleOrderUpdated(order) {
-      // Update the selected order after update from modal
       this.selectedOrder = order
       this.ordersStore.updateOrder(order)
     },
@@ -1705,28 +1932,48 @@ export default {
 <style scoped>
 .group-deal-detail-page {
   max-width: 1200px;
+  transition: transform 0.2s ease;
+  will-change: transform;
+}
+
+.group-deal-detail-page.is-pulling {
+  transition: none;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--md-spacing-md);
   margin-bottom: var(--md-spacing-lg);
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  min-width: 0;
+}
+
+.page-nav-title,
+.nav-spacer {
+  display: none;
 }
 
 .back-btn {
   display: flex;
   align-items: center;
   gap: var(--md-spacing-sm);
-  padding: var(--md-spacing-md) var(--md-spacing-lg);
-  background: rgba(0, 0, 0, 0.05);
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  background: transparent;
   color: rgba(0, 0, 0, 0.87);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: var(--md-radius-md);
+  border: none;
+  border-radius: var(--md-radius-sm);
   font-size: var(--md-body-size);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
 }
 
 .back-btn svg {
@@ -1735,8 +1982,7 @@ export default {
 }
 
 .back-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
-  border-color: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .header-actions {
@@ -2291,6 +2537,10 @@ export default {
   background: rgba(255, 140, 0, 0.15);
   border-color: var(--md-primary);
   box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.3);
+}
+
+.product-stat-item.is-variant-row .product-stat-name {
+  padding-left: 0.35rem;
 }
 
 .product-stat-content {
@@ -3049,17 +3299,25 @@ export default {
     flex-direction: column;
     align-items: stretch;
     gap: var(--md-spacing-sm);
+    margin-left: calc(-1 * var(--md-spacing-sm));
+    margin-right: calc(-1 * var(--md-spacing-sm));
+    margin-top: calc(-1 * var(--md-spacing-sm));
+    margin-bottom: var(--md-spacing-md);
   }
-  
-  .back-btn {
-    width: 100%;
-    justify-content: center;
+
+  .page-nav {
+    display: none;
   }
-  
+
+  .deal-header h2 {
+    display: none;
+  }
+
   .header-actions {
     flex-direction: column;
     width: 100%;
     gap: var(--md-spacing-sm);
+    padding: 0 var(--md-spacing-sm);
   }
   
   .commission-btn,

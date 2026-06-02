@@ -134,7 +134,7 @@ wait_for_build $BUILD_ID $PROJECT_ID || {
     exit 1
 }
 
-ENV_VARS="MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca,APP_VERSION=$FRONTEND_VERSION"
+ENV_VARS="MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca,APP_FRONTEND_URL=https://app.grainstoryfarm.ca,APP_VERSION=$FRONTEND_VERSION"
 SECRETS="MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest"
 
 BACKEND_URL=$(gcloud run deploy gsf-app-backend \
@@ -169,7 +169,7 @@ fi
 echo "✅ Google Maps API key retrieved from Secret Manager"
 
 # Build with substitutions for Vite env vars (needed at build time)
-BUILD_SUBSTITUTIONS="--substitutions=_VITE_API_BASE_URL=$BACKEND_URL/api,_VITE_APP_PUBLIC_URL=https://app.grainstoryfarm.ca,_VITE_GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
+BUILD_SUBSTITUTIONS="--substitutions=_VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api,_VITE_APP_PUBLIC_URL=https://app.grainstoryfarm.ca,_VITE_GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
 
 BUILD_OUTPUT=$(gcloud builds submit --async --config=cloudbuild.yaml $BUILD_SUBSTITUTIONS --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
@@ -194,7 +194,7 @@ FRONTEND_URL=$(gcloud run deploy gsf-app-frontend \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --update-env-vars VITE_API_BASE_URL=$BACKEND_URL/api \
+    --update-env-vars VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 
@@ -227,7 +227,7 @@ ADMIN_URL=$(gcloud run deploy gsf-app-admin \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --update-env-vars VITE_API_BASE_URL=$BACKEND_URL/api \
+    --update-env-vars VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 

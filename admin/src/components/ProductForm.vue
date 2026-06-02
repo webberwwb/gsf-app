@@ -250,6 +250,105 @@
           </div>
         </div>
 
+        <!-- Variants -->
+        <div class="form-section">
+          <h3 class="section-title">规格选项</h3>
+          <p class="form-hint section-hint">用户下单时必须选择一项（可设置价格增减）</p>
+          <div v-for="(variant, index) in formData.variants" :key="index" class="variant-row">
+            <input v-model="variant.name" type="text" placeholder="规格名称" class="form-input variant-name" />
+            <input v-model.number="variant.price_delta" type="number" step="0.01" placeholder="价格增减" class="form-input variant-delta" />
+            <button type="button" @click="removeVariant(index)" class="remove-range-btn">×</button>
+          </div>
+          <button type="button" @click="addVariant" class="add-range-btn">+ 添加规格</button>
+        </div>
+
+        <!-- Substitute -->
+        <div class="form-section">
+          <h3 class="section-title">替代品</h3>
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="formData.substitute_enabled" class="checkbox-input" />
+            <span>启用替代品（缺货时可替换）</span>
+          </label>
+          <template v-if="formData.substitute_enabled">
+            <div class="form-group">
+              <label>替代品名称 *</label>
+              <input v-model="formData.substitute_name" type="text" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label>替代品描述</label>
+              <textarea v-model="formData.substitute_description" rows="2" class="form-textarea" />
+            </div>
+            <p class="form-hint">替代品定价方式与主商品相同（{{ pricingTypeLabel }}）</p>
+            <div v-if="formData.pricing_type === 'per_item'" class="form-group">
+              <label>替代品价格 ($) *</label>
+              <input v-model.number="formData.substitute_pricing_data.price" type="number" step="0.01" min="0" class="form-input" />
+            </div>
+            <div v-else-if="formData.pricing_type === 'weight_range'" class="form-group">
+              <label>替代品重量区间价格 (磅)</label>
+              <div v-for="(range, sidx) in formData.substitute_pricing_data.ranges" :key="'sub-' + sidx" class="weight-range-item">
+                <div class="range-inputs">
+                  <input v-model.number="range.min" type="number" step="0.1" min="0" class="form-input" />
+                  <span>至</span>
+                  <input v-model.number="range.max" type="number" step="0.1" min="0" class="form-input" />
+                  <span>磅:</span>
+                  <input v-model.number="range.price" type="number" step="0.01" min="0" class="form-input" />
+                  <span>$</span>
+                  <button v-if="formData.substitute_pricing_data.ranges.length > 1" type="button" @click="removeSubstituteWeightRange(sidx)" class="remove-range-btn">删除</button>
+                </div>
+              </div>
+              <button type="button" @click="addSubstituteWeightRange" class="add-range-btn">+ 添加区间</button>
+            </div>
+            <div v-else-if="formData.pricing_type === 'unit_weight'" class="form-row">
+              <div class="form-group">
+                <label>替代品单价 ($) *</label>
+                <input v-model.number="formData.substitute_pricing_data.price_per_unit" type="number" step="0.01" min="0" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>单位</label>
+                <select v-model="formData.substitute_pricing_data.unit" class="form-input">
+                  <option value="lb">磅 (lb)</option>
+                  <option value="kg">千克 (kg)</option>
+                </select>
+              </div>
+            </div>
+            <div v-else-if="formData.pricing_type === 'bundled_weight'">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>替代品单价 ($/lb) *</label>
+                  <input v-model.number="formData.substitute_pricing_data.price_per_unit" type="number" step="0.01" min="0" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label>单位</label>
+                  <select v-model="formData.substitute_pricing_data.unit" class="form-input">
+                    <option value="lb">磅 (lb)</option>
+                    <option value="kg">千克 (kg)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>最小重量 *</label>
+                  <input v-model.number="formData.substitute_pricing_data.min_weight" type="number" step="0.1" min="0" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label>最大重量 *</label>
+                  <input v-model.number="formData.substitute_pricing_data.max_weight" type="number" step="0.1" min="0" class="form-input" />
+                </div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>替代品图片</label>
+              <div v-if="substituteImagePreviews.length" class="images-preview-grid">
+                <div v-for="(preview, sidx) in substituteImagePreviews" :key="'sub-' + sidx" class="image-preview-item">
+                  <img :src="preview" alt="" />
+                  <button type="button" @click="removeSubstituteImage(sidx)" class="remove-image-btn">×</button>
+                </div>
+              </div>
+              <input type="file" accept="image/*" multiple @change="handleSubstituteImageSelect" class="file-input" />
+            </div>
+          </template>
+        </div>
+
         <!-- Supplier -->
         <div class="form-group">
           <label for="supplier_id">供应商</label>
@@ -367,11 +466,25 @@ export default {
         supplier_id: null,
         category_id: null,
         is_active: true,
-        counts_toward_free_shipping: true
+        counts_toward_free_shipping: true,
+        variants: [],
+        substitute_enabled: false,
+        substitute_name: '',
+        substitute_description: '',
+        substitute_images: [],
+        substitute_pricing_data: {
+          price: null,
+          ranges: [{ min: 0, max: null, price: null }],
+          price_per_unit: null,
+          unit: 'lb',
+          min_weight: null,
+          max_weight: null
+        }
       },
       suppliers: [],
       categories: [],
       imagePreviews: [],
+      substituteImagePreviews: [],
       uploading: false,
       uploadProgress: 0,
       submitting: false,
@@ -381,6 +494,15 @@ export default {
   computed: {
     editingProduct() {
       return this.product !== null
+    },
+    pricingTypeLabel() {
+      const labels = {
+        per_item: '按件计价',
+        weight_range: '按重量区间计价',
+        unit_weight: '按单位重量计价',
+        bundled_weight: '按份计价（可变重量）'
+      }
+      return labels[this.formData.pricing_type] || this.formData.pricing_type
     }
   },
   watch: {
@@ -400,6 +522,21 @@ export default {
     this.fetchCategories()
   },
   methods: {
+    defaultSubstitutePricingData(pricingType) {
+      if (pricingType === 'per_item') {
+        return { price: null }
+      }
+      if (pricingType === 'weight_range') {
+        return { ranges: [{ min: 0, max: null, price: null }] }
+      }
+      if (pricingType === 'unit_weight') {
+        return { price_per_unit: null, unit: 'lb' }
+      }
+      if (pricingType === 'bundled_weight') {
+        return { price_per_unit: null, unit: 'lb', min_weight: null, max_weight: null }
+      }
+      return { price: null }
+    },
     resetForm() {
       this.formData = {
         name: '',
@@ -416,9 +553,16 @@ export default {
         },
         supplier_id: null,
         is_active: true,
-        counts_toward_free_shipping: true
+        counts_toward_free_shipping: true,
+        variants: [],
+        substitute_enabled: false,
+        substitute_name: '',
+        substitute_description: '',
+        substitute_images: [],
+        substitute_pricing_data: this.defaultSubstitutePricingData('per_item')
       }
       this.imagePreviews = []
+      this.substituteImagePreviews = []
       this.error = null
       this.uploading = false
       this.uploadProgress = 0
@@ -472,27 +616,69 @@ export default {
           supplier_id: this.product.supplier_id || null,
           category_id: this.product.category_id || null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true,
-          counts_toward_free_shipping: this.product.counts_toward_free_shipping !== undefined ? this.product.counts_toward_free_shipping : true
+          counts_toward_free_shipping: this.product.counts_toward_free_shipping !== undefined ? this.product.counts_toward_free_shipping : true,
+          variants: (this.product.variants || []).map(v => ({
+            id: v.id,
+            name: v.name,
+            price_delta: v.price_delta || 0,
+            sort_order: v.sort_order || 0,
+            is_active: v.is_active !== false
+          })),
+          substitute_enabled: !!this.product.substitute_enabled,
+          substitute_name: this.product.substitute?.name || this.product.substitute_name || '',
+          substitute_description: this.product.substitute?.description || this.product.substitute_description || '',
+          substitute_images: this.product.substitute?.images || this.product.substitute_images || [],
+          substitute_pricing_data: this.normalizeSubstitutePricingData(pricingType, this.product)
         }
         this.imagePreviews = [...images]
+        this.substituteImagePreviews = [...(this.formData.substitute_images || [])]
       }
     },
+    normalizeSubstitutePricingData(pricingType, product) {
+      const sub = product.substitute || {}
+      let subPd = sub.pricing_data
+      if (!subPd) {
+        const legacyPrice = sub.price ?? product.substitute_price
+        if (legacyPrice != null) {
+          subPd = { price: legacyPrice }
+        }
+      }
+      subPd = subPd || {}
+      if (pricingType === 'per_item') {
+        return { price: subPd.price ?? null }
+      }
+      if (pricingType === 'weight_range') {
+        return {
+          ranges: subPd.ranges?.length
+            ? subPd.ranges.map(r => ({ ...r }))
+            : [{ min: 0, max: null, price: null }]
+        }
+      }
+      if (pricingType === 'unit_weight') {
+        return {
+          price_per_unit: subPd.price_per_unit ?? null,
+          unit: subPd.unit || 'lb'
+        }
+      }
+      if (pricingType === 'bundled_weight') {
+        return {
+          price_per_unit: subPd.price_per_unit ?? null,
+          unit: subPd.unit || 'lb',
+          min_weight: subPd.min_weight ?? null,
+          max_weight: subPd.max_weight ?? null
+        }
+      }
+      return this.defaultSubstitutePricingData(pricingType)
+    },
     onPricingTypeChange() {
-      // Reset pricing_data when type changes
-      if (this.formData.pricing_type === 'per_item') {
-        this.formData.pricing_data = {
-          price: null
-        }
-      } else if (this.formData.pricing_type === 'weight_range') {
-        this.formData.pricing_data = {
-          ranges: [{ min: 0, max: null, price: null }]
-        }
-      } else if (this.formData.pricing_type === 'unit_weight') {
-        this.formData.pricing_data = {
-          price_per_unit: null,
-          unit: 'lb'
-        }
-      } else if (this.formData.pricing_type === 'bundled_weight') {
+      const pricingType = this.formData.pricing_type
+      if (pricingType === 'per_item') {
+        this.formData.pricing_data = { price: null }
+      } else if (pricingType === 'weight_range') {
+        this.formData.pricing_data = { ranges: [{ min: 0, max: null, price: null }] }
+      } else if (pricingType === 'unit_weight') {
+        this.formData.pricing_data = { price_per_unit: null, unit: 'lb' }
+      } else if (pricingType === 'bundled_weight') {
         this.formData.pricing_data = {
           price_per_unit: null,
           unit: 'lb',
@@ -500,6 +686,7 @@ export default {
           max_weight: null
         }
       }
+      this.formData.substitute_pricing_data = this.defaultSubstitutePricingData(pricingType)
     },
     addWeightRange() {
       if (!this.formData.pricing_data.ranges) {
@@ -515,6 +702,18 @@ export default {
     },
     removeWeightRange(index) {
       this.formData.pricing_data.ranges.splice(index, 1)
+    },
+    addSubstituteWeightRange() {
+      if (!this.formData.substitute_pricing_data.ranges) {
+        this.formData.substitute_pricing_data.ranges = []
+      }
+      const ranges = this.formData.substitute_pricing_data.ranges
+      const lastRange = ranges[ranges.length - 1]
+      const newMin = lastRange && lastRange.max ? lastRange.max : 0
+      ranges.push({ min: newMin, max: null, price: null })
+    },
+    removeSubstituteWeightRange(index) {
+      this.formData.substitute_pricing_data.ranges.splice(index, 1)
     },
     async handleImageSelect(event) {
       const files = Array.from(event.target.files || [])
@@ -580,6 +779,30 @@ export default {
       this.formData.images.splice(index, 1)
       this.imagePreviews.splice(index, 1)
     },
+    addVariant() {
+      this.formData.variants.push({ name: '', price_delta: 0, sort_order: this.formData.variants.length, is_active: true })
+    },
+    removeVariant(index) {
+      this.formData.variants.splice(index, 1)
+    },
+    async handleSubstituteImageSelect(event) {
+      const files = Array.from(event.target.files || [])
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue
+        const formData = new FormData()
+        formData.append('image', file)
+        const response = await apiClient.post('/admin/upload-image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        const url = response.data.url
+        this.formData.substitute_images.push(url)
+        this.substituteImagePreviews.push(url)
+      }
+    },
+    removeSubstituteImage(index) {
+      this.formData.substitute_images.splice(index, 1)
+      this.substituteImagePreviews.splice(index, 1)
+    },
     async submitForm() {
       this.submitting = true
       this.error = null
@@ -631,6 +854,51 @@ export default {
           data.supplier_id = parseInt(this.formData.supplier_id)
         } else {
           data.supplier_id = null
+        }
+        if (this.formData.category_id) {
+          data.category_id = parseInt(this.formData.category_id)
+        }
+
+        data.variants = this.formData.variants
+          .filter(v => (v.name || '').trim())
+          .map((v, i) => ({
+            id: v.id,
+            name: v.name.trim(),
+            price_delta: parseFloat(v.price_delta) || 0,
+            sort_order: i,
+            is_active: v.is_active !== false
+          }))
+        data.substitute_enabled = !!this.formData.substitute_enabled
+        if (data.substitute_enabled) {
+          data.substitute_name = this.formData.substitute_name
+          data.substitute_description = this.formData.substitute_description
+          data.substitute_images = this.formData.substitute_images
+          data.substitute_pricing_type = this.formData.pricing_type
+          const subPd = { ...this.formData.substitute_pricing_data }
+          if (this.formData.pricing_type === 'per_item') {
+            data.substitute_pricing_data = {
+              price: parseFloat(subPd.price) || 0
+            }
+            data.substitute_price = data.substitute_pricing_data.price
+          } else if (this.formData.pricing_type === 'weight_range') {
+            data.substitute_pricing_data = {
+              ranges: (subPd.ranges || []).filter(r => r.price !== null && r.price !== '')
+            }
+          } else if (this.formData.pricing_type === 'unit_weight') {
+            data.substitute_pricing_data = {
+              price_per_unit: parseFloat(subPd.price_per_unit) || 0,
+              unit: subPd.unit || 'lb'
+            }
+          } else if (this.formData.pricing_type === 'bundled_weight') {
+            data.substitute_pricing_data = {
+              price_per_unit: parseFloat(subPd.price_per_unit) || 0,
+              unit: subPd.unit || 'lb',
+              min_weight: parseFloat(subPd.min_weight) || 0,
+              max_weight: parseFloat(subPd.max_weight) || 0
+            }
+          }
+        } else {
+          data.substitute_enabled = false
         }
 
         if (this.editingProduct) {
@@ -774,6 +1042,34 @@ label {
   margin-top: var(--md-spacing-xs);
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
+}
+
+.form-section {
+  margin-top: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid var(--md-outline-variant);
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 var(--md-spacing-xs);
+}
+
+.variant-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.variant-name {
+  flex: 2;
+}
+
+.variant-delta {
+  flex: 1;
+  min-width: 100px;
 }
 
 .image-upload-section {

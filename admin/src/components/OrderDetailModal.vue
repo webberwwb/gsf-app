@@ -278,11 +278,19 @@
                 v-for="(item, index) in editableItems"
                 :key="item.tempId || item.id"
                 class="order-item-row"
-                :class="{ 'order-item-row--missing-weight': rowMissingFinalWeight(item) }"
+                :class="{
+                  'order-item-row--missing-weight': rowMissingFinalWeight(item),
+                  'order-item-row--declined': item.is_unavailable && item.accept_substitute === false,
+                  'order-item-row--pending-sub': item.is_unavailable && item.accept_substitute == null
+                }"
               >
                 <div class="item-info">
                   <div class="item-name">
-                    {{ item.product?.name || 'N/A' }}
+                    {{ item.display_name || item.product?.name || 'N/A' }}
+                    <span v-if="item.variant_name" class="item-variant-tag">({{ item.variant_name }})</span>
+                    <span v-if="item.is_substituted" class="item-badge sub">替代品</span>
+                    <span v-if="item.is_unavailable && item.accept_substitute === false" class="item-badge declined">缺货·不要备选</span>
+                    <span v-else-if="item.is_unavailable && item.accept_substitute == null" class="item-badge pending">待确认备选</span>
                     <div v-if="item.product" class="product-info-icon" @click.stop title="查看价格详情">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -327,15 +335,43 @@
                     </div>
                   </div>
                   <div class="item-meta">
-                    <div class="quantity-controls">
-                      <button @click="decreaseQuantity(index)" class="qty-btn" :disabled="item.quantity <= 1">-</button>
-                      <input 
-                        type="number" 
-                        v-model.number="item.quantity" 
-                        @input="recalculateItemPrice(index)"
-                        min="1"
-                        class="quantity-input" />
-                      <button @click="increaseQuantity(index)" class="qty-btn">+</button>
+                    <div class="item-meta-left">
+                      <div class="quantity-controls">
+                        <button @click="decreaseQuantity(index)" class="qty-btn" :disabled="item.quantity <= 1">-</button>
+                        <input
+                          type="number"
+                          v-model.number="item.quantity"
+                          @input="recalculateItemPrice(index)"
+                          min="1"
+                          class="quantity-input"
+                        />
+                        <button @click="increaseQuantity(index)" class="qty-btn">+</button>
+                      </div>
+                      <div
+                        v-if="productHasSubstitute(item)"
+                        class="substitute-chips"
+                        role="group"
+                        aria-label="备选选择"
+                      >
+                        <button
+                          type="button"
+                          class="pref-chip"
+                          :class="{ 'pref-chip--on': item.accept_substitute === true }"
+                          :disabled="substitutePrefLoading === item.id"
+                        @click.stop="setAcceptSubstitute(index, true)"
+                      >
+                        接受备选
+                      </button>
+                      <button
+                        type="button"
+                        class="pref-chip"
+                        :class="{ 'pref-chip--on': item.accept_substitute === false }"
+                        :disabled="substitutePrefLoading === item.id"
+                        @click.stop="setAcceptSubstitute(index, false)"
+                        >
+                          不要备选
+                        </button>
+                      </div>
                     </div>
                     <span class="item-price">${{ parseFloat(item.total_price || 0).toFixed(2) }}</span>
                   </div>
@@ -357,11 +393,22 @@
                       class="weight-input" />
                   </div>
                 </div>
-                <button @click="removeItem(index)" class="remove-item-btn" title="删除商品">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
+                <div class="item-side-actions">
+                  <button
+                    v-if="item.id && productHasSubstitute(item)"
+                    type="button"
+                    class="side-action-btn"
+                    :class="{ 'side-action-btn--active': item.is_unavailable }"
+                    @click="toggleItemUnavailable(item)"
+                  >
+                    {{ item.is_unavailable ? '恢复原商品' : '切换备选' }}
+                  </button>
+                  <button @click="removeItem(index)" class="remove-item-btn" title="删除商品">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
             <div class="items-list-breakdown">
@@ -529,6 +576,7 @@ import { useModal } from '../composables/useModal'
 import {
   editableRowMissingFinalWeight as rowNeedsFinalWeight
 } from '../utils/orderWeightValidation'
+import { estimateAdminLinePrice, resolveOrderLineTotal } from '../utils/orderItemPricing'
 
 export default {
   name: 'OrderDetailModal',
@@ -587,6 +635,8 @@ export default {
       editableItems: [],
       showAddProductModal: false,
       tempIdCounter: 0,
+      substitutePrefLoading: null,
+      isSyncingOrderPatch: false,
       isInitializingOrder: false,
       lastOrderId: null, // Track last initialized order ID to prevent duplicate initialization
       loadingProducts: false, // Track if products are being loaded
@@ -606,9 +656,7 @@ export default {
              this.newAddress.postal_code?.trim()
     },
     editableItemsSubtotal() {
-      return this.editableItems.reduce((sum, i) => {
-        return sum + (parseFloat(i.total_price) || 0)
-      }, 0)
+      return this.editableItems.reduce((sum, i) => sum + resolveOrderLineTotal(i), 0)
     },
     editableItemsSubtotalFormatted() {
       return this.editableItemsSubtotal.toFixed(2)
@@ -683,16 +731,21 @@ export default {
     'order.items': {
       handler(newItems, oldItems) {
         // If modal is open and this is the same order (ID matches lastOrderId)
-        if (this.show && this.order && this.order.id === this.lastOrderId && !this.isInitializingOrder) {
-          // Only update if items actually changed and we have complete data
-          if (newItems && Array.isArray(newItems) && newItems.length >= 0) {
-            // Small delay to avoid race conditions with explicit calls
-            this.$nextTick(() => {
-              if (!this.isInitializingOrder) {
-                this.updateOrderData(this.order)
-              }
-            })
-          }
+        if (
+          this.isSyncingOrderPatch ||
+          !this.show ||
+          !this.order ||
+          this.order.id !== this.lastOrderId ||
+          this.isInitializingOrder
+        ) {
+          return
+        }
+        if (newItems && Array.isArray(newItems)) {
+          this.$nextTick(() => {
+            if (!this.isInitializingOrder && !this.isSyncingOrderPatch) {
+              this.updateOrderData(this.order)
+            }
+          })
         }
       },
       deep: true,
@@ -893,8 +946,12 @@ export default {
       // Use nextTick to ensure watcher checks complete before we clear the flag
       this.$nextTick(() => {
         this.isInitializingOrder = false
+        this.recalculateAllItemPrices()
         this.captureBaseline()
       })
+    },
+    recalculateAllItemPrices() {
+      this.editableItems.forEach((_, index) => this.recalculateItemPrice(index))
     },
     resetModal() {
       this.localOrderStatus = ''
@@ -1014,6 +1071,7 @@ export default {
 
       this.$nextTick(() => {
         if (!this.isInitializingOrder) {
+          this.recalculateAllItemPrices()
           this.captureBaseline()
         }
       })
@@ -1096,78 +1154,83 @@ export default {
         this.recalculateItemPrice(index)
       }
     },
-        recalculateItemPrice(index) {
-          const item = this.editableItems[index]
-          const product = item.product
+    recalculateItemPrice(index) {
+      const item = this.editableItems[index]
+      const product = item.product
+      if (!product) return
 
-          if (!product) return
+      item.quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
 
-          // Ensure quantity is a valid number (handle empty input, minimum 1)
-          const quantity = parseInt(item.quantity) || 1
-          item.quantity = Math.max(1, quantity)
+      const { unitPrice, totalPrice } = estimateAdminLinePrice(product, {
+        quantity: item.quantity,
+        final_weight: item.final_weight,
+        variant_id: item.variant_id,
+        variant_price_delta: item.variant_price_delta,
+        accept_substitute: item.accept_substitute,
+        is_unavailable: item.is_unavailable
+      })
+      item.unit_price = unitPrice
+      item.total_price = totalPrice
+    },
+    async setAcceptSubstitute(index, value) {
+      const item = this.editableItems[index]
+      if (!this.productHasSubstitute(item) || item.accept_substitute === value) return
 
-          // If weight-based product
-          if (product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight') {
-            // Ensure final_weight is a valid number (handle empty input)
-            const finalWeight = parseFloat(item.final_weight) || 0
-            item.final_weight = finalWeight
-        
-        // Must have final_weight to calculate price
-        if (finalWeight <= 0) {
-          item.unit_price = 0
-          item.total_price = 0
-          return
-        }
-        
-        // For weight_range, find the matching range
-        if (product.pricing_type === 'weight_range') {
-          if (product.pricing_data && product.pricing_data.ranges && Array.isArray(product.pricing_data.ranges)) {
-            const ranges = product.pricing_data.ranges
-            let matchedPrice = 0
-            for (const range of ranges) {
-              const min = range.min || 0
-              const max = range.max
-              if (finalWeight >= min && (max === null || max === undefined || finalWeight < max)) {
-                matchedPrice = parseFloat(range.price || 0)
-                break
-              }
-            }
-            item.unit_price = matchedPrice
-            item.total_price = matchedPrice * quantity
-          } else {
-            const basePrice = parseFloat(product.price || 0)
-            item.unit_price = basePrice
-            item.total_price = basePrice * quantity
-          }
-        } else if (product.pricing_type === 'unit_weight') {
-          if (product.pricing_data && product.pricing_data.price_per_unit) {
-            const pricePerUnit = parseFloat(product.pricing_data.price_per_unit || 0)
-            item.unit_price = pricePerUnit * finalWeight
-            item.total_price = pricePerUnit * finalWeight * quantity
-          } else {
-            const pricePerUnit = parseFloat(product.price || 0)
-            item.unit_price = pricePerUnit * finalWeight
-            item.total_price = pricePerUnit * finalWeight * quantity
-          }
-        } else if (product.pricing_type === 'bundled_weight') {
-          // Bundled weight: final_weight is total weight for all packages
-          // Price = price_per_unit * final_weight
-          // unit_price = total_price / quantity
-          if (product.pricing_data && product.pricing_data.price_per_unit) {
-            const pricePerUnit = parseFloat(product.pricing_data.price_per_unit || 0)
-            item.total_price = pricePerUnit * finalWeight
-            item.unit_price = item.total_price / quantity
-          } else {
-            const pricePerUnit = parseFloat(product.price || 0)
-            item.total_price = pricePerUnit * finalWeight
-            item.unit_price = item.total_price / quantity
-          }
-        }
-      } else {
-        // Regular pricing (per_item)
-        const unitPrice = parseFloat(product.price || 0)
-        item.unit_price = unitPrice
-        item.total_price = unitPrice * quantity
+      if (!item.id || !this.order?.id) {
+        item.accept_substitute = value
+        this.recalculateItemPrice(index)
+        return
+      }
+
+      this.substitutePrefLoading = item.id
+      const prev = item.accept_substitute
+      item.accept_substitute = value
+      this.recalculateItemPrice(index)
+      try {
+        const res = await apiClient.patch(
+          `/admin/orders/${this.order.id}/items/${item.id}/substitute-preference`,
+          { accept_substitute: value }
+        )
+        await this.syncOrderFromServer(res.data?.order)
+      } catch (err) {
+        item.accept_substitute = prev
+        this.recalculateItemPrice(index)
+        const msg = err.response?.data?.error || err.response?.data?.message
+        await this.error(msg || '更新备选选择失败')
+      } finally {
+        this.substitutePrefLoading = null
+      }
+    },
+    async syncOrderFromServer(partialOrder) {
+      let updated = partialOrder
+      if (!updated?.items?.length && this.order?.id) {
+        const refetch = await apiClient.get(`/admin/orders/${this.order.id}`)
+        updated = refetch.data?.order
+      }
+      if (!updated?.items) {
+        console.warn('syncOrderFromServer: missing items', partialOrder)
+        return
+      }
+      this.isSyncingOrderPatch = true
+      try {
+        this.$emit('order-updated', updated)
+        await this.$nextTick()
+        this.updateOrderData(updated)
+      } finally {
+        await this.$nextTick()
+        this.isSyncingOrderPatch = false
+      }
+    },
+    async toggleItemUnavailable(item) {
+      if (!item.id || !this.order?.id) return
+      try {
+        const res = await apiClient.patch(
+          `/admin/orders/${this.order.id}/items/${item.id}/availability`,
+          { is_unavailable: !item.is_unavailable }
+        )
+        await this.syncOrderFromServer(res.data?.order)
+      } catch (err) {
+        await this.error(err.response?.data?.error || err.response?.data?.message || '更新失败')
       }
     },
     handleUpdateOrder() {
@@ -1187,9 +1250,13 @@ export default {
       }
       
       const items = this.editableItems.map(item => ({
+        id: item.id,
         product_id: item.product_id,
         quantity: item.quantity,
-        final_weight: item.final_weight || null
+        final_weight: item.final_weight || null,
+        variant_id: item.variant_id || undefined,
+        accept_substitute: item.accept_substitute,
+        is_unavailable: item.is_unavailable || false
       }))
       
       const updateData = {
@@ -1482,6 +1549,10 @@ export default {
         'bundled_weight': '按捆绑重量计价'
       }
       return typeMap[pricingType] || pricingType
+    },
+    productHasSubstitute(item) {
+      const p = item?.product
+      return !!(p?.substitute_enabled || p?.substitute?.enabled)
     }
   }
 }
@@ -2564,6 +2635,130 @@ export default {
   border-color: rgba(255, 140, 0, 0.3);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 2002;
+}
+
+.order-item-row--declined {
+  background: #ffebee;
+  border-left: 3px solid #c62828;
+}
+
+.order-item-row--pending-sub {
+  background: #fff8e1;
+  border-left: 3px solid #f57c00;
+}
+
+.item-variant-tag {
+  font-size: 0.8125rem;
+  color: var(--md-on-surface-variant);
+  margin-left: 0.25rem;
+}
+
+.item-badge {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  margin-left: 0.35rem;
+}
+
+.item-meta-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.substitute-chips {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.pref-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  color: var(--md-on-surface-variant);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.pref-chip:hover:not(:disabled):not(.pref-chip--on) {
+  border-color: rgba(255, 140, 0, 0.45);
+  color: var(--md-on-surface);
+}
+
+.pref-chip--on {
+  border-color: var(--md-primary);
+  background: rgba(255, 140, 0, 0.1);
+  color: var(--md-primary);
+  font-weight: 600;
+}
+
+.pref-chip:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.item-side-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.side-action-btn {
+  font-size: 0.6875rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.side-action-btn:hover {
+  border-color: var(--md-primary);
+  color: var(--md-primary);
+}
+
+.side-action-btn--active {
+  border-color: #c62828;
+  color: #c62828;
+  background: #ffebee;
+}
+
+.item-badge.sub {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.item-badge.declined {
+  background: #ffcdd2;
+  color: #b71c1c;
+  font-weight: 600;
+}
+
+.item-badge.pending {
+  background: #ffe0b2;
+  color: #e65100;
+}
+
+.unavailable-btn {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-radius-sm);
+  background: var(--md-surface);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .order-item-row--missing-weight {

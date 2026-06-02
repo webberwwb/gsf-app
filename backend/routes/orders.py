@@ -14,6 +14,11 @@ from decimal import Decimal
 from utils.stock_management import check_and_reserve_stock, restore_stock, update_stock_after_order_modification
 from utils.shipping import calculate_shipping_fee
 from utils.sales_stats import update_product_sales_stats
+from utils.order_item_pricing import (
+    enrich_order_item_dict,
+    priced_items_from_request,
+    create_order_item_rows,
+)
 from services import credit_service
 from services import referral_service
 import random
@@ -58,6 +63,7 @@ def can_access_order(user_id, order):
         return True
     
     return False
+
 
 @orders_bp.route('/orders', methods=['GET'])
 def get_user_orders():
@@ -120,22 +126,9 @@ def get_user_orders():
                 # User can only edit/cancel when order status is 'submitted'
                 order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
             
-            # Get order items with product details
-            items_data = []
-            for item in order.items:
-                item_dict = item.to_dict()
-                product = Product.query.get(item.product_id)
-                if product:
-                    item_dict['product'] = {
-                        'id': product.id,
-                        'name': product.name,
-                        'image': product.image,
-                        'pricing_type': product.pricing_type,
-                        'pricing_data': product.pricing_data
-                    }
-                items_data.append(item_dict)
-            
-            order_dict['items'] = items_data
+            order_dict['items'] = [
+                enrich_order_item_dict(item) for item in order.items
+            ]
             
             # Get address info if delivery order
             if order.address_id:
@@ -203,22 +196,7 @@ def get_order(order_id):
             order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
         
         # Get order items with product details
-        items_data = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = {
-                    'id': product.id,
-                    'name': product.name,
-                    'image': product.image,
-                    'pricing_type': product.pricing_type,
-                    'description': product.description,
-                    'pricing_data': product.pricing_data
-                }
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
+        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
         
         return jsonify({
             'order': order_dict
@@ -288,123 +266,10 @@ def create_order():
             if payment_method == PaymentMethod.CASH.value:
                 return jsonify({'error': '配送订单必须使用电子转账支付'}), 400
         
-        # Calculate order totals
-        subtotal = Decimal('0')
-        order_items = []
-        
-        for item_data in items:
-            product_id = item_data['product_id']
-            quantity = item_data['quantity']
-            pricing_type = item_data.get('pricing_type', 'per_item')
-            
-            # Get product
-            product = Product.query.get(product_id)
-            if not product:
-                return jsonify({'error': f'Product {product_id} not found'}), 404
-            
-            # ============================================================================
-            # CRITICAL: Calculate item price based on pricing type
-            # ============================================================================
-            # This logic MUST handle ALL pricing types correctly, especially when
-            # final_weight is provided. DO NOT REMOVE OR SIMPLIFY WITHOUT TESTING!
-            #
-            # Pricing types:
-            # 1. per_item: Fixed price per item
-            # 2. weight_range: Price based on weight ranges (use lowest for estimation)
-            # 3. unit_weight: Price = weight × price_per_unit
-            # 4. bundled_weight: Price = final_weight × price_per_unit (e.g., 3.77 lb × $6.99/lb)
-            #
-            # REGRESSION WARNING: bundled_weight MUST calculate using final_weight when provided!
-            # Bug example: User enters final_weight = 3.77 lb for $6.99/lb product
-            # - Expected: $26.35 (3.77 × 6.99)
-            # - Bug: $38.45 (using estimated mid-weight instead of actual weight)
-            # ============================================================================
-            
-            # Calculate item price based on pricing type
-            if pricing_type == 'per_item':
-                # Use product's default price
-                unit_price = product.get_display_price() or 0
-                total_price = unit_price * quantity
-            elif pricing_type == 'weight_range':
-                # For estimation without final_weight, use first range (lowest weight)
-                ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
-                if ranges:
-                    unit_price = float(ranges[0].get('price', 0))
-                else:
-                    unit_price = 0
-                total_price = unit_price * quantity
-            elif pricing_type == 'unit_weight':
-                # unit_weight: price_per_unit is price per unit weight
-                # unit_price = price_per_unit (the rate)
-                # total_price = price_per_unit * final_weight (or estimated weight)
-                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                final_weight = item_data.get('final_weight')
-                
-                unit_price = price_per_unit  # Unit price is the rate itself
-                
-                if final_weight is not None:
-                    try:
-                        final_weight_float = float(final_weight)
-                        if final_weight_float > 0 and price_per_unit > 0:
-                            total_price = price_per_unit * final_weight_float
-                        else:
-                            # Invalid weight, use estimated weight
-                            estimated_weight = 1  # Minimum 1 unit for estimation
-                            total_price = price_per_unit * estimated_weight
-                    except (ValueError, TypeError):
-                        # Invalid weight, use estimated weight
-                        estimated_weight = 1  # Minimum 1 unit for estimation
-                        total_price = price_per_unit * estimated_weight
-                else:
-                    # No final_weight, use estimated weight
-                    estimated_weight = 1  # Minimum 1 unit for estimation
-                    total_price = price_per_unit * estimated_weight
-            elif pricing_type == 'bundled_weight':
-                # Bundled weight: products are weighed individually, not stacked
-                # unit_price = price_per_unit (the rate)
-                # total_price = price_per_unit * final_weight (or estimated weight)
-                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                final_weight = item_data.get('final_weight')
-                
-                unit_price = price_per_unit  # Unit price is the rate itself
-                
-                # Convert final_weight to float if provided and valid
-                if final_weight is not None:
-                    try:
-                        final_weight_float = float(final_weight)
-                        if final_weight_float > 0 and price_per_unit > 0:
-                            total_price = price_per_unit * final_weight_float
-                        else:
-                            final_weight = None  # Invalid weight or no price_per_unit, use estimation
-                    except (ValueError, TypeError):
-                        final_weight = None  # Invalid weight, use estimation
-                
-                # Use estimation if no valid final_weight or price_per_unit is 0
-                if final_weight is None:
-                    if price_per_unit > 0:
-                        # Use min-weight for conservative estimation
-                        min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
-                        total_price = price_per_unit * min_weight
-                    else:
-                        # price_per_unit is 0 or missing - unit_price stays as price_per_unit (0)
-                        # No fallback - unit_price should always be price_per_unit from DB
-                        total_price = 0
-            else:
-                unit_price = product.get_display_price() or 0
-                total_price = unit_price * quantity
-            
-            subtotal += Decimal(str(total_price))
-            
-            order_items.append({
-                'product_id': product_id,
-                'product': product,  # Include product object for shipping calculation
-                'quantity': quantity,
-                'unit_price': unit_price,
-                'total_price': total_price,
-                'final_weight': item_data.get('final_weight')  # Include weight for bundled_weight products
-            })
+        try:
+            order_items, subtotal = priced_items_from_request(items)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         
         # Calculate shipping fee
         address = None
@@ -469,28 +334,7 @@ def create_order():
         db.session.add(order)
         db.session.flush()  # Get order ID
         
-        # Create order items
-        for item_data in order_items:
-            # Get final_weight, convert to float if provided, otherwise None
-            final_weight = item_data.get('final_weight')
-            if final_weight is not None:
-                try:
-                    final_weight = float(final_weight)
-                    # Only save if weight is positive
-                    if final_weight <= 0:
-                        final_weight = None
-                except (ValueError, TypeError):
-                    final_weight = None
-            
-            order_item = OrderItem(
-                order_id=order.id,
-                product_id=item_data['product_id'],
-                quantity=item_data['quantity'],
-                unit_price=item_data['unit_price'],
-                total_price=item_data['total_price'],
-                final_weight=final_weight  # Save weight for bundled_weight products
-            )
-            db.session.add(order_item)
+        create_order_item_rows(order.id, order_items, db.session)
         
         try:
             credit_service.apply_order_store_credit_spend(user_row, order, applied)
@@ -519,21 +363,7 @@ def create_order():
         }
         
         # Get order items with product details
-        items_data = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = {
-                    'id': product.id,
-                    'name': product.name,
-                    'image': product.image,
-                    'pricing_type': product.pricing_type,
-                    'pricing_data': product.pricing_data
-                }
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
+        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
         
         return jsonify({
             'order': order_dict,
@@ -614,21 +444,7 @@ def cancel_order(order_id):
         order_dict['is_editable'] = False  # Cancelled orders are not editable
         
         # Get order items with product details
-        items_data = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = {
-                    'id': product.id,
-                    'name': product.name,
-                    'image': product.image,
-                    'pricing_type': product.pricing_type,
-                    'pricing_data': product.pricing_data
-                }
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
+        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
         
         return jsonify({
             'order': order_dict,
@@ -711,21 +527,7 @@ def reactivate_order(order_id):
         order_dict['is_editable'] = True  # Reactivated orders are editable
         
         # Get order items with product details
-        items_data = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = {
-                    'id': product.id,
-                    'name': product.name,
-                    'image': product.image,
-                    'pricing_type': product.pricing_type,
-                    'pricing_data': product.pricing_data
-                }
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
+        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
         
         return jsonify({
             'order': order_dict,
@@ -845,152 +647,11 @@ def update_order(order_id):
             if payment_method == PaymentMethod.CASH.value:
                 return jsonify({'error': '配送订单必须使用电子转账支付'}), 400
         
-        # Calculate new order totals
-        subtotal = Decimal('0')
-        new_order_items = []
-        
-        for item_data in items:
-            product_id = item_data['product_id']
-            quantity = item_data['quantity']
-            pricing_type = item_data.get('pricing_type', 'per_item')
-            
-            # Get product
-            product = Product.query.get(product_id)
-            if not product:
-                return jsonify({'error': f'Product {product_id} not found'}), 404
-            
-            # ============================================================================
-            # CRITICAL: Calculate item price based on pricing type
-            # ============================================================================
-            # This logic MUST handle ALL pricing types correctly, especially when
-            # final_weight is provided. DO NOT REMOVE OR SIMPLIFY WITHOUT TESTING!
-            #
-            # Pricing types:
-            # 1. per_item: Fixed price per item
-            # 2. weight_range: Price based on weight ranges
-            # 3. unit_weight: Price = weight × price_per_unit
-            # 4. bundled_weight: Price = final_weight × price_per_unit (e.g., 3.77 lb × $6.99/lb)
-            #
-            # REGRESSION WARNING: bundled_weight MUST calculate using final_weight when provided!
-            # Bug example: User enters final_weight = 3.77 lb for $6.99/lb product
-            # - Expected: $26.35 (3.77 × 6.99)
-            # - Bug: $38.45 (using estimated mid-weight instead of actual weight)
-            # ============================================================================
-            
-            # Calculate item price based on pricing type
-            if pricing_type == 'per_item':
-                # Use product's default price
-                unit_price = product.get_display_price() or 0
-                total_price = unit_price * quantity
-            elif pricing_type == 'weight_range':
-                final_weight = item_data.get('final_weight')
-                ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
-                
-                if final_weight is not None and ranges:
-                    try:
-                        final_weight_float = float(final_weight)
-                        if final_weight_float > 0:
-                            # Find matching range based on final_weight
-                            matched_price = None
-                            for range_item in ranges:
-                                min_weight = range_item.get('min', 0)
-                                max_weight = range_item.get('max')
-                                if final_weight_float >= min_weight and (max_weight is None or final_weight_float < max_weight):
-                                    matched_price = float(range_item.get('price', 0))
-                                    break
-                            
-                            if matched_price is not None:
-                                # Use the matched range price (selected from DB based on weight)
-                                unit_price = matched_price
-                                total_price = unit_price * quantity
-                            else:
-                                # No matching range, use first range (lowest weight) for estimation
-                                unit_price = float(ranges[0].get('price', 0)) if ranges else 0
-                                total_price = unit_price * quantity
-                        else:
-                            # Invalid weight, use first range (lowest weight) for estimation
-                            unit_price = float(ranges[0].get('price', 0)) if ranges else 0
-                            total_price = unit_price * quantity
-                    except (ValueError, TypeError):
-                        # Invalid weight, use first range (lowest weight) for estimation
-                        unit_price = float(ranges[0].get('price', 0)) if ranges else 0
-                        total_price = unit_price * quantity
-                else:
-                    # No final_weight, use first range (lowest weight) for estimation
-                    unit_price = float(ranges[0].get('price', 0)) if ranges else 0
-                    total_price = unit_price * quantity
-            elif pricing_type == 'unit_weight':
-                # unit_weight: price_per_unit is price per unit weight
-                # unit_price = price_per_unit (the rate)
-                # total_price = price_per_unit * final_weight (or estimated weight)
-                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-                final_weight = item_data.get('final_weight')
-                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                
-                unit_price = price_per_unit  # Unit price is the rate itself
-                
-                if final_weight is not None:
-                    try:
-                        final_weight_float = float(final_weight)
-                        if final_weight_float > 0 and price_per_unit > 0:
-                            total_price = price_per_unit * final_weight_float
-                        else:
-                            # Invalid weight, use estimated weight
-                            estimated_weight = 1  # Minimum 1 unit for estimation
-                            total_price = price_per_unit * estimated_weight
-                    except (ValueError, TypeError):
-                        # Invalid weight, use estimated weight
-                        estimated_weight = 1  # Minimum 1 unit for estimation
-                        total_price = price_per_unit * estimated_weight
-                else:
-                    # No final_weight, use estimated weight
-                    estimated_weight = 1  # Minimum 1 unit for estimation
-                    total_price = price_per_unit * estimated_weight
-            elif pricing_type == 'bundled_weight':
-                # Bundled weight: products are weighed individually, not stacked
-                # unit_price = price_per_unit (the rate)
-                # total_price = price_per_unit * final_weight (or estimated weight)
-                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-                price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                final_weight = item_data.get('final_weight')
-                
-                unit_price = price_per_unit  # Unit price is the rate itself
-                
-                # Convert final_weight to float if provided and valid
-                if final_weight is not None:
-                    try:
-                        final_weight_float = float(final_weight)
-                        if final_weight_float > 0 and price_per_unit > 0:
-                            total_price = price_per_unit * final_weight_float
-                        else:
-                            final_weight = None  # Invalid weight or no price_per_unit, use estimation
-                    except (ValueError, TypeError):
-                        final_weight = None  # Invalid weight, use estimation
-                
-                # Use estimation if no valid final_weight or price_per_unit is 0
-                if final_weight is None:
-                    if price_per_unit > 0:
-                        # Use min-weight for conservative estimation
-                        min_weight = float(product.pricing_data.get('min_weight', 7) if product.pricing_data else 7)
-                        total_price = price_per_unit * min_weight
-                    else:
-                        # price_per_unit is 0 or missing - unit_price stays as price_per_unit (0)
-                        # No fallback - unit_price should always be price_per_unit from DB
-                        total_price = 0
-            else:
-                unit_price = product.get_display_price() or 0
-                total_price = unit_price * quantity
-            
-            subtotal += Decimal(str(total_price))
-            
-            new_order_items.append({
-                'product_id': product_id,
-                'product': product,  # Include product object for shipping calculation
-                'quantity': quantity,
-                'unit_price': unit_price,
-                'total_price': total_price,
-                'final_weight': item_data.get('final_weight')  # Include weight for bundled_weight products
-            })
+        unavailable_by_item_id = {item.id: item.is_unavailable for item in order.items}
+        try:
+            new_order_items, subtotal = priced_items_from_request(items, unavailable_by_item_id)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         
         # Calculate shipping fee
         address = None
@@ -1030,28 +691,7 @@ def update_order(order_id):
             order.payment_method = payment_method
         order.updated_at = utc_now()
         
-        # Create new order items
-        for item_data in new_order_items:
-            # Get final_weight, convert to float if provided, otherwise None
-            final_weight = item_data.get('final_weight')
-            if final_weight is not None:
-                try:
-                    final_weight = float(final_weight)
-                    # Only save if weight is positive
-                    if final_weight <= 0:
-                        final_weight = None
-                except (ValueError, TypeError):
-                    final_weight = None
-            
-            order_item = OrderItem(
-                order_id=order.id,
-                product_id=item_data['product_id'],
-                quantity=item_data['quantity'],
-                unit_price=item_data['unit_price'],
-                total_price=item_data['total_price'],
-                final_weight=final_weight  # Save weight for bundled_weight products
-            )
-            db.session.add(order_item)
+        create_order_item_rows(order.id, new_order_items, db.session)
         
         pre_final = total + Decimal(str(order.adjustment_amount or 0))
         req_dec = Decimal(str(store_credit_raw)) if store_credit_raw is not None else Decimal('0')
@@ -1094,21 +734,7 @@ def update_order(order_id):
         order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
         
         # Get order items with product details
-        items_data = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = {
-                    'id': product.id,
-                    'name': product.name,
-                    'image': product.image,
-                    'pricing_type': product.pricing_type,
-                    'pricing_data': product.pricing_data
-                }
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
+        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
         
         return jsonify({
             'order': order_dict,

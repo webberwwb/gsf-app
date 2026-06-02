@@ -1,6 +1,6 @@
 from models.base import BaseModel
 from models import db
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Numeric
 
 class Product(BaseModel):
     """Product model"""
@@ -42,10 +42,26 @@ class Product(BaseModel):
     
     # Custom sort order (lower numbers appear first)
     sort_order = db.Column(db.Integer, default=0, nullable=False, index=True)
+
+    # Embedded substitute product (when primary is unavailable)
+    substitute_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    substitute_name = db.Column(db.String(255), nullable=True)
+    substitute_description = db.Column(db.Text, nullable=True)
+    substitute_images = db.Column(JSON, nullable=True)
+    substitute_price = db.Column(Numeric(10, 2), nullable=True)  # legacy; use substitute_pricing_*
+    substitute_pricing_type = db.Column(db.String(20), nullable=True)
+    substitute_pricing_data = db.Column(JSON, nullable=True)
     
     # Relationships
     group_deal_products = db.relationship('GroupDealProduct', backref='product', lazy=True)
     order_items = db.relationship('OrderItem', backref='product', lazy=True)
+    variants = db.relationship(
+        'ProductVariant',
+        back_populates='product',
+        lazy=True,
+        cascade='all, delete-orphan',
+        order_by='ProductVariant.sort_order',
+    )
     
     @property
     def is_available(self):
@@ -122,13 +138,60 @@ class Product(BaseModel):
             return None
         return None
     
-    def to_dict(self):
+    def get_active_variants(self):
+        return [v for v in (self.variants or []) if v.is_active]
+
+    def get_substitute_pricing_type(self):
+        """Effective substitute pricing type (falls back to product pricing_type)."""
+        if self.substitute_pricing_type:
+            return self.substitute_pricing_type
+        if self.substitute_price is not None:
+            return 'per_item'
+        return self.pricing_type
+
+    def get_substitute_pricing_data(self):
+        """Effective substitute pricing_data JSON."""
+        if self.substitute_pricing_data:
+            return self.substitute_pricing_data
+        if self.substitute_price is not None:
+            return {'price': float(self.substitute_price)}
+        return self.pricing_data
+
+    def get_substitute_display_price(self):
+        """Display price for substitute using its pricing model."""
+        from utils.order_item_pricing import get_display_price_from_config
+        return get_display_price_from_config(
+            self.get_substitute_pricing_type(),
+            self.get_substitute_pricing_data(),
+        )
+
+    def get_substitute_dict(self):
+        if not self.substitute_enabled:
+            return None
+        images = self.substitute_images if self.substitute_images and isinstance(self.substitute_images, list) else []
+        pt = self.get_substitute_pricing_type()
+        pd = self.get_substitute_pricing_data()
+        return {
+            'enabled': True,
+            'name': self.substitute_name,
+            'description': self.substitute_description,
+            'images': images,
+            'image': images[0] if images else None,
+            'pricing_type': pt,
+            'pricing_data': pd,
+            'price': self.get_substitute_display_price(),
+        }
+
+    def to_dict(self, include_all_variants=False):
         data = super().to_dict()
         # Convert images: use images array if available, otherwise convert single image to array
         images = self.images if self.images and isinstance(self.images, list) else []
         if not images and self.image:
             images = [self.image]
         
+        variant_list = self.variants if include_all_variants else self.get_active_variants()
+        variants_data = [v.to_dict() for v in sorted(variant_list, key=lambda x: x.sort_order)]
+
         data.update({
             'name': self.name,
             'image': images[0] if images else None,  # Keep for backward compatibility
@@ -145,7 +208,10 @@ class Product(BaseModel):
             'category_id': self.category_id,
             'category': self.category.to_dict() if self.category else None,
             'counts_toward_free_shipping': self.counts_toward_free_shipping,
-            'sort_order': self.sort_order
+            'sort_order': self.sort_order,
+            'variants': variants_data,
+            'substitute_enabled': self.substitute_enabled,
+            'substitute': self.get_substitute_dict(),
         })
         return data
 

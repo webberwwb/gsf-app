@@ -204,7 +204,9 @@ export const useCheckoutStore = defineStore('checkout', {
         items: this.orderItems.map(item => ({
           product_id: item.product_id,
           quantity: item.quantity,
-          pricing_type: item.pricing_type
+          pricing_type: item.pricing_type,
+          variant_id: item.variant_id ?? undefined,
+          accept_substitute: item.accept_substitute
         })),
         payment_method: this.paymentMethod,
         delivery_method: this.deliveryMethod,

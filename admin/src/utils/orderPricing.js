@@ -1,16 +1,72 @@
 /** Order money helpers (align with backend Order.to_dict). */
 
+import { resolveOrderLineTotal } from './orderItemPricing'
+
+export function orderItemsSubtotalNumber(order) {
+  if (!order?.items?.length) return 0
+  return order.items.reduce((sum, item) => sum + resolveOrderLineTotal(item), 0)
+}
+
+/** When line items are loaded, derive order totals from them (stored fields may be stale). */
+function orderTotalsFromItems(order) {
+  if (!order?.items?.length) return false
+  return orderItemsSubtotalNumber(order) > 0
+}
+
+/** Subtotal: sum line items when loaded, else fall back to stored field. */
+export function orderSubtotalNumber(order) {
+  if (!order) return 0
+  const fromItems = orderItemsSubtotalNumber(order)
+  if (orderTotalsFromItems(order)) return fromItems
+  const fromField = Number(order.subtotal)
+  return Number.isFinite(fromField) ? fromField : 0
+}
+
+export function orderTaxNumber(order) {
+  if (!order) return 0
+  const n = Number(order.tax)
+  return Number.isFinite(n) ? n : 0
+}
+
+export function orderShippingFeeNumber(order) {
+  if (!order) return 0
+  const n = Number(order.shipping_fee)
+  return Number.isFinite(n) ? n : 0
+}
+
+export function orderAdjustmentNumber(order) {
+  if (!order) return 0
+  const n = Number(order.adjustment_amount)
+  return Number.isFinite(n) ? n : 0
+}
+
+/** Order total before adjustment/credits: derive from line items when loaded. */
+export function orderTotalNumber(order) {
+  if (!order) return 0
+  const computed =
+    orderSubtotalNumber(order) + orderTaxNumber(order) + orderShippingFeeNumber(order)
+  if (orderTotalsFromItems(order)) {
+    return computed > 0 ? computed : 0
+  }
+  const fromField = Number(order.total)
+  if (Number.isFinite(fromField) && fromField > 0) return fromField
+  if (computed > 0) return computed
+  return Number.isFinite(fromField) ? fromField : 0
+}
+
 export function orderFinalTotalNumber(order) {
   if (!order) return 0
-  if (order.final_total != null && order.final_total !== '') {
-    const n = Number(order.final_total)
-    if (Number.isFinite(n)) return n
+  const base = orderTotalNumber(order)
+  const adj = orderAdjustmentNumber(order)
+  const computed = base + adj
+  if (orderTotalsFromItems(order)) {
+    return computed > 0 ? computed : 0
   }
-  const base = Number(order.total || 0)
-  const adj = Number(order.adjustment_amount || 0)
-  const adjN = Number.isFinite(adj) ? adj : 0
-  const sum = Number.isFinite(base) ? base + adjN : 0
-  return sum
+  const fromField = Number(order.final_total)
+  if (Number.isFinite(fromField) && fromField > 0) return fromField
+  if (computed > 0) return computed
+  if (Number.isFinite(fromField)) return fromField
+  return 0
 }
 
 export function orderStoreCreditAppliedNumber(order) {
@@ -21,13 +77,14 @@ export function orderStoreCreditAppliedNumber(order) {
 
 export function orderAmountDueNumber(order) {
   if (!order) return 0
-  if (order.amount_due != null && order.amount_due !== '') {
-    const n = Number(order.amount_due)
-    return Number.isFinite(n) ? Math.max(0, n) : 0
+  const computed = orderFinalTotalNumber(order) - orderStoreCreditAppliedNumber(order)
+  if (orderTotalsFromItems(order)) {
+    return Math.max(0, computed)
   }
-  const finalT = orderFinalTotalNumber(order)
-  const credit = orderStoreCreditAppliedNumber(order)
-  return Math.max(0, finalT - credit)
+  const fromField = Number(order.amount_due)
+  if (Number.isFinite(fromField) && fromField > 0) return fromField
+  if (computed > 0) return computed
+  return Number.isFinite(fromField) ? Math.max(0, fromField) : Math.max(0, computed)
 }
 
 export function formatOrderMoney2(value) {

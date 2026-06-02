@@ -71,7 +71,7 @@ FRONTEND_URL=$(gcloud run deploy gsf-app-frontend \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --set-env-vars "APP_VERSION=$VERSION,VITE_API_BASE_URL=https://gsf-app-backend-tct5yovb4q-uc.a.run.app" \
+    --set-env-vars "APP_VERSION=$VERSION,VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api" \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 
