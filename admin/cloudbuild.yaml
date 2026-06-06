@@ -1,0 +1,33 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_API_BASE_URL=${_VITE_API_BASE_URL}'
+      - '-f'
+      - 'admin/Dockerfile'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/gsf-app-admin:${BUILD_ID}'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/gsf-app-admin:latest'
+      - '.'
+    timeout: '1200s'
+
+  # Push the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/gsf-app-admin:${BUILD_ID}']
+  
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/gsf-app-admin:latest']
+
+images:
+  - 'gcr.io/$PROJECT_ID/gsf-app-admin:${BUILD_ID}'
+  - 'gcr.io/$PROJECT_ID/gsf-app-admin:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _VITE_API_BASE_URL: 'https://backend.grainstoryfarm.ca/api'

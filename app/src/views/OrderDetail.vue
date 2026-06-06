@@ -110,10 +110,10 @@
                 <span class="price-label">团购价:</span>
                 <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
                   <template v-if="getOrderItemForProduct(product) && getOrderItemForProduct(product).final_weight">
-                    ${{ (parseFloat(product.pricing_data?.price_per_unit || 0) * parseFloat(getOrderItemForProduct(product).final_weight)).toFixed(2) }}
+                    ${{ moneyPlain(parseFloat(product.pricing_data?.price_per_unit || 0) * parseFloat(getOrderItemForProduct(product).final_weight)) }}
                   </template>
                   <template v-else>
-                    ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                    ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
                   </template>
                 </span>
                 <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
@@ -573,7 +573,7 @@
         </div>
       </div>
 
-      <!-- Order Summary (API totals: subtotal, tax, adjustment, shipping, credit, amount due) -->
+      <!-- Order Summary -->
       <div v-if="order" class="order-summary-section">
         <h3 class="section-title">订单摘要</h3>
         <div class="order-breakdown">
@@ -582,11 +582,11 @@
             <span class="breakdown-amount">${{ formatOrderSummaryMoney(orderSubtotalNumber(order)) }}</span>
           </div>
           <div
-            v-if="orderTaxNumber(order) > 0"
-            class="breakdown-row"
+            v-if="displayedStoreCreditApplied > 0"
+            class="breakdown-row breakdown-row--store-credit"
           >
-            <span class="breakdown-label">税费:</span>
-            <span class="breakdown-amount">${{ formatOrderSummaryMoney(orderTaxNumber(order)) }}</span>
+            <span class="breakdown-label">代金券:</span>
+            <span class="breakdown-amount breakdown-amount--credit">-${{ formatOrderSummaryMoney(displayedStoreCreditApplied) }}</span>
           </div>
           <div
             v-if="orderAdjustmentNumber(order) !== 0"
@@ -608,13 +608,6 @@
           >
             <span class="breakdown-label">配送费:</span>
             <span class="breakdown-amount">{{ orderDetailShippingDisplay }}</span>
-          </div>
-          <div
-            v-if="displayedStoreCreditApplied > 0"
-            class="breakdown-row breakdown-row--store-credit"
-          >
-            <span class="breakdown-label">代金券:</span>
-            <span class="breakdown-amount breakdown-amount--credit">-${{ formatOrderSummaryMoney(displayedStoreCreditApplied) }}</span>
           </div>
           <div class="breakdown-row breakdown-row--due">
             <span class="breakdown-label">应付金额:</span>
@@ -777,7 +770,6 @@ import {
 } from '../utils/referralInviteUi'
 import {
   orderSubtotalNumber,
-  orderTaxNumber,
   orderAdjustmentNumber,
   orderShippingFeeNumber,
   orderStoreCreditAppliedNumber,
@@ -790,11 +782,17 @@ import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import {
-  estimateLinePrice,
+  estimateSelectionTotal,
   isSelectionComplete,
   getSelectionIncompleteMessage,
   toOrderLineDisplay
 } from '../utils/orderItemPricing'
+import {
+  formatMoney,
+  formatMoneyDisplay,
+  formatProductListPrice,
+  formatProductPriceRange
+} from '../utils/productPriceDisplay'
 
 export default {
   name: 'OrderDetail',
@@ -924,11 +922,11 @@ export default {
       return Math.min(bal + already, cap)
     },
     storeCreditBalanceDisplay() {
-      return Number(this.currentUser?.store_credit_balance || 0).toFixed(2)
+      return formatOrderMoney2(this.currentUser?.store_credit_balance || 0)
     },
     storeCreditAppliedDisplay() {
       if (!this.applyStoreCredit) return '0.00'
-      return Number(this.maxStoreCreditApplicable || 0).toFixed(2)
+      return formatOrderMoney2(this.maxStoreCreditApplicable || 0)
     },
     referralRowActive() {
       const s =
@@ -957,9 +955,8 @@ export default {
       if (!this.canUpdateOrder || this.isOrderCompleted) {
         return orderAmountDueNumber(this.order)
       }
-      const finalT = orderFinalTotalNumber(this.order)
       const credit = this.displayedStoreCreditApplied
-      return Math.max(0, finalT - credit)
+      return orderAmountDueNumber(this.order, { creditOverride: credit })
     }
   },
   watch: {
@@ -1210,66 +1207,13 @@ export default {
       return labels[status] || status
     },
     formatPrice(product) {
-      if (product.display_price) {
-        return parseFloat(product.display_price).toFixed(2)
-      }
-      if (product.price) {
-        return parseFloat(product.price).toFixed(2)
-      }
-      return '0.00'
+      return formatProductListPrice(product)
     },
     formatPriceRange(product) {
-      if (product.pricing_type === 'weight_range') {
-        const ranges = product.pricing_data?.ranges || []
-        if (ranges.length === 0) {
-          return '价格待定'
-        }
-        
-        const sortedRanges = [...ranges].sort((a, b) => (a.min || 0) - (b.min || 0))
-        const prices = sortedRanges
-          .map(r => parseFloat(r.price || 0))
-          .filter(p => p > 0)
-        
-        if (prices.length === 0) {
-          return '价格待定'
-        }
-        
-        const minPrice = Math.min(...prices)
-        const maxPrice = Math.max(...prices)
-        
-        if (minPrice === maxPrice) {
-          return `$${minPrice.toFixed(2)}`
-        }
-        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
-      } else if (product.pricing_type === 'unit_weight') {
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const unit = product.pricing_data?.unit || 'lb'
-        
-        if (pricePerUnit === 0) {
-          return '价格待定'
-        }
-        
-        return `$${parseFloat(pricePerUnit).toFixed(2)}/${unit}`
-      } else if (product.pricing_type === 'bundled_weight') {
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const minWeight = product.pricing_data?.min_weight || 7
-        const maxWeight = product.pricing_data?.max_weight || 15
-        const unit = product.pricing_data?.unit || 'lb'
-        
-        if (pricePerUnit === 0) {
-          return '价格待定'
-        }
-        
-        const minPrice = pricePerUnit * minWeight
-        const maxPrice = pricePerUnit * maxWeight
-        const unitPriceDisplay = `$${pricePerUnit.toFixed(2)}/${unit}`
-        
-        if (minPrice === maxPrice) {
-          return `$${minPrice.toFixed(2)}/份 (${minWeight}-${maxWeight}${unit}/份) · ${unitPriceDisplay}`
-        }
-        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}/份 (${minWeight}-${maxWeight}${unit}/份) · ${unitPriceDisplay}`
-      }
-      return '价格待定'
+      return formatProductPriceRange(product)
+    },
+    moneyPlain(value) {
+      return formatMoney(value)
     },
     getQuantity(product) {
       return this.selectedItems[product.id]?.quantity || 0
@@ -1346,72 +1290,20 @@ export default {
     calculateItemTotal(product) {
       const quantity = this.getQuantity(product)
       if (quantity === 0) return '0.00'
-      
-      if (product.pricing_type === 'per_item') {
-        const price = product.display_price || product.price || 0
-        return (parseFloat(price) * quantity).toFixed(2)
-      } else if (product.pricing_type === 'weight_range') {
-        const ranges = product.pricing_data?.ranges || []
-        if (ranges.length === 0) return '0.00'
-        
-        const minPrice = Math.min(...ranges.map(r => parseFloat(r.price || 0)))
-        return (minPrice * quantity).toFixed(2)
-      } else if (product.pricing_type === 'unit_weight') {
-        // unit_weight: products are weighed individually, not stacked
-        // unit_price = price_per_unit (the rate)
-        // total_price = price_per_unit * final_weight (or estimated weight)
-        // Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const weight = this.getWeight(product)
-        
-        if (weight != null && weight > 0) {
-          return (parseFloat(pricePerUnit) * weight).toFixed(2)
-        } else {
-          // Use estimated weight if not provided
-          const estimatedWeight = 1
-          return (parseFloat(pricePerUnit) * estimatedWeight).toFixed(2)
-        }
-      } else if (product.pricing_type === 'bundled_weight') {
-        // bundled_weight: products sold by bundle (quantity can be > 1)
-        // unit_price = price_per_unit (the rate)
-        // total_price = price_per_unit * total_weight (or estimated weight * quantity)
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        if (pricePerUnit === 0) return '0.00'
-        
-        // Use actual weight if provided (total weight for all bundles), otherwise estimate
-        const weight = this.getWeight(product)
-        if (weight != null && weight > 0) {
-          // Weight is already total for all bundles, no quantity multiplication needed
-          return (pricePerUnit * weight).toFixed(2)
-        } else {
-          // For estimation, use min-weight per bundle * quantity
-          const minWeight = product.pricing_data?.min_weight || 7
-          return (pricePerUnit * minWeight * quantity).toFixed(2)
-        }
-      }
-      return '0.00'
+      const sel = this.getSelection(product)
+      return formatMoney(estimateSelectionTotal(product, quantity, {
+        variant_id: sel.variant_id,
+        final_weight: this.getWeight(product)
+      }))
     },
     calculateBundledItemTotal(product) {
-      // bundled_weight: products sold by bundle (quantity can be > 1)
       const quantity = this.getQuantity(product)
-      const pricePerUnit = product.pricing_data?.price_per_unit || 0
-      if (pricePerUnit === 0 || quantity === 0) return '$0.00'
-      
-      // Use actual weight if provided (total weight), otherwise estimate using minimum weight
-      const weight = this.getWeight(product)
-      if (weight != null && weight > 0) {
-        // Weight is already total for all bundles, no quantity multiplication needed
-        const totalPrice = pricePerUnit * weight
-        return `$${totalPrice.toFixed(2)}`
-      } else {
-        // For estimation, always use minimum weight (conservative estimate, no range)
-        const minWeight = product.pricing_data?.min_weight || 7
-        const estimatedPrice = pricePerUnit * minWeight * quantity
-        return `$${estimatedPrice.toFixed(2)}`
-      }
+      if (quantity === 0) return '$0.00'
+      const sel = this.getSelection(product)
+      const total = estimateSelectionTotal(product, quantity, { variant_id: sel.variant_id })
+      return formatMoneyDisplay(total)
     },
     orderSubtotalNumber,
-    orderTaxNumber,
     orderAdjustmentNumber,
     orderStoreCreditAppliedNumber,
     orderAmountDueNumber,
@@ -1529,7 +1421,7 @@ export default {
           orderData.referral_code = rawRef
         }
         const useCredit = this.applyStoreCredit ? Number(this.maxStoreCreditApplicable) || 0 : 0
-        orderData.store_credit_to_apply = Number(useCredit).toFixed(2)
+        orderData.store_credit_to_apply = formatOrderMoney2(useCredit)
         
         const response = await apiClient.patch(`/orders/${this.order.id}`, orderData)
         

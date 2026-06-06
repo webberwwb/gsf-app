@@ -2,6 +2,7 @@
 Shipping fee calculation utilities
 """
 from decimal import Decimal
+from utils.money import round_money
 
 
 def get_delivery_fee_config():
@@ -33,13 +34,12 @@ def get_shipping_fee_for_subtotal(subtotal, config=None):
     if not config or not config.tiers:
         # Fallback to default values if no config found
         if subtotal >= Decimal('150.00'):
-            return Decimal('0.00')
-        elif subtotal >= Decimal('128.00'):
-            return Decimal('3.99')
-        elif subtotal >= Decimal('58.00'):
-            return Decimal('5.99')
-        else:
-            return Decimal('7.99')
+            return round_money('0')
+        if subtotal >= Decimal('128.00'):
+            return round_money('3.99')
+        if subtotal >= Decimal('58.00'):
+            return round_money('5.99')
+        return round_money('7.99')
     
     # Get tiers sorted by threshold (should already be sorted, but ensure it)
     tiers = sorted(config.tiers, key=lambda t: t.get('threshold', 0))
@@ -56,10 +56,10 @@ def get_shipping_fee_for_subtotal(subtotal, config=None):
     
     # If we found a tier, use it; otherwise use the first tier (base fee)
     if applicable_fee is not None:
-        return applicable_fee
-    else:
-        # This shouldn't happen if tiers[0] has threshold 0, but handle it anyway
-        return Decimal(str(tiers[0].get('fee', 0))) if tiers else Decimal('7.99')
+        return round_money(applicable_fee)
+    # This shouldn't happen if tiers[0] has threshold 0, but handle it anyway
+    base = Decimal(str(tiers[0].get('fee', 0))) if tiers else Decimal('7.99')
+    return round_money(base)
 
 # GTA cities (case-insensitive matching)
 GTA_CITIES = {

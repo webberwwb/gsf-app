@@ -9,6 +9,8 @@ from utils.order_item_pricing import (
     apply_fulfillment_price,
     compute_price_from_config,
     recalculate_existing_item,
+    combine_order_notes,
+    order_item_fields_for_merge,
 )
 
 
@@ -52,8 +54,14 @@ def test_variant_price_delta_per_item():
     assert priced['total_price'] == 24.0
 
 
-def test_unavailable_declined_zero_charge():
+def test_unavailable_declined_keeps_original_price():
     unit, total = apply_fulfillment_price(10.0, 20.0, 2, FakeProduct(), True, False)
+    assert total == 20.0
+    assert unit == 10.0
+
+
+def test_unavailable_declined_cannot_fulfill_zero():
+    unit, total = apply_fulfillment_price(10.0, 20.0, 2, FakeProduct(), True, False, cannot_fulfill=True)
     assert total == 0.0
     assert unit == 0.0
 
@@ -131,10 +139,61 @@ def test_recalculate_existing_item_restores_weight_price():
     assert float(item.unit_price) == 34.0
 
 
+class FakeOrder:
+    def __init__(self, notes=None):
+        self.notes = notes
+
+
+class FakeOrderItem:
+    def __init__(self, **kwargs):
+        self.order_id = kwargs.get('order_id', 1)
+        self.id = kwargs.get('id', 99)
+        self.product_id = kwargs.get('product_id', 1)
+        self.quantity = kwargs.get('quantity', 1)
+        self.unit_price = kwargs.get('unit_price', 10)
+        self.total_price = kwargs.get('total_price', 10)
+        self.final_weight = kwargs.get('final_weight')
+        self.variant_id = kwargs.get('variant_id')
+        self.variant_name = kwargs.get('variant_name')
+        self.variant_price_delta = kwargs.get('variant_price_delta')
+        self.accept_substitute = kwargs.get('accept_substitute')
+        self.is_unavailable = kwargs.get('is_unavailable', False)
+        self.cannot_fulfill = kwargs.get('cannot_fulfill', False)
+
+
+def test_combine_order_notes_dedupes():
+    orders = [
+        FakeOrder('note A'),
+        FakeOrder('note B'),
+        FakeOrder('note A'),
+    ]
+    assert combine_order_notes(orders) == 'note A\n---\nnote B'
+
+
+def test_order_item_fields_for_merge_carries_variant_and_substitute():
+    item = FakeOrderItem(
+        variant_id=4,
+        variant_name='未开膛',
+        variant_price_delta=0,
+        accept_substitute=False,
+        is_unavailable=True,
+        cannot_fulfill=True,
+    )
+    fields = order_item_fields_for_merge(item)
+    assert fields['variant_id'] == 4
+    assert fields['variant_name'] == '未开膛'
+    assert fields['accept_substitute'] is False
+    assert fields['is_unavailable'] is True
+    assert fields['cannot_fulfill'] is True
+
+
 if __name__ == '__main__':
-    test_unavailable_declined_zero_charge()
+    test_unavailable_declined_keeps_original_price()
+    test_unavailable_declined_cannot_fulfill_zero()
     test_substitute_per_item_pricing()
     test_substitute_bundled_weight_same_model()
     test_substitute_weight_range_at_final_weight()
     test_recalculate_existing_item_restores_weight_price()
+    test_combine_order_notes_dedupes()
+    test_order_item_fields_for_merge_carries_variant_and_substitute()
     print('variant/substitute pricing tests passed')

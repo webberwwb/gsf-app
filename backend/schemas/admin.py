@@ -64,6 +64,10 @@ class MergeOrdersSchema(Schema):
     keep_address_id = fields.Integer(allow_none=True)
     keep_pickup_location = fields.String(allow_none=True)
     keep_notes = fields.String(allow_none=True)
+    notes_action = fields.String(
+        missing='combine',
+        validate=validate.OneOf(['combine', 'replace', 'clear']),
+    )
     
     class Meta:
         unknown = EXCLUDE

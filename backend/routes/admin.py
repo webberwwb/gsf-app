@@ -37,12 +37,24 @@ from utils.order_item_pricing import (
     priced_items_from_request,
     create_order_item_rows,
     enrich_order_item_dict,
+    combine_order_notes,
+    order_item_fields_for_merge,
     recalculate_existing_item,
-    recalculate_order_totals,
     bulk_set_product_fulfillment,
     apply_product_substitute_fields,
     sync_product_variants,
 )
+from utils.order_audit import (
+    EVENT_ADMIN_ITEMS_REPLACE,
+    EVENT_MERGE,
+    active_items_for_order,
+    apply_item_sources_from_request,
+    build_order_audit_trail,
+    item_snapshot,
+    record_order_audit,
+)
+from utils.order_totals import sync_order_pricing
+from utils.order_points import award_order_points, revoke_order_points
 from schemas.utils import validate_request
 from urllib.parse import quote
 import os
@@ -2050,21 +2062,25 @@ def update_order_status(order_id):
             old_payment_status == PaymentStatus.UNPAID.value):
             
             order.payment_status = PaymentStatus.PAID.value
-            order.payment_date = utc_now()
-            
-            # Calculate and award points: 1 point per cent ($0.01), excluding shipping fee
-            subtotal_and_tax = float(order.subtotal) + float(order.tax or 0)
-            total_cents = int(subtotal_and_tax * 100)
-            order.points_earned = total_cents
-            
-            # Update user's points balance
             user = User.query.get(order.user_id)
+            points_awarded = award_order_points(order, user)
+            order.payment_date = utc_now()
             if user:
-                user.points = (user.points or 0) + total_cents
-                current_app.logger.info(f'Awarded {total_cents} points to user {user.id} for order {order_id}')
-            
+                current_app.logger.info(f'Awarded {points_awarded} points to user {user.id} for order {order_id}')
+
             current_app.logger.info(f'Auto-marked pickup cash order {order_id} as paid when completing')
         
+        points_awarded = 0
+        points_notice = None
+        if (
+            status == OrderStatus.COMPLETED.value
+            and order.payment_status == PaymentStatus.UNPAID.value
+            and old_status != OrderStatus.COMPLETED.value
+        ):
+            points_notice = (
+                'Order completed but payment is still unpaid; loyalty points are awarded when marked paid.'
+            )
+
         referral_service.on_order_first_completed(order, old_status)
         
         db.session.commit()
@@ -2086,10 +2102,14 @@ def update_order_status(order_id):
                 'is_admin': user.is_admin
             }
         
-        return jsonify({
+        payload = {
             'message': 'Order status updated successfully',
-            'order': order_dict
-        }), 200
+            'order': order_dict,
+            'points_awarded': points_awarded,
+        }
+        if points_notice:
+            payload['points_notice'] = points_notice
+        return jsonify(payload), 200
         
     except Exception as e:
         db.session.rollback()
@@ -2204,9 +2224,12 @@ def admin_cancel_order(order_id):
             # Continue with cancellation even if stock restoration fails
         
         old_status = order.status
+        user_row = User.query.get(order.user_id)
+        if user_row:
+            credit_service.refund_order_store_credit(order, user_row)
         order.status = OrderStatus.CANCELLED.value
         db.session.commit()
-        
+
         current_app.logger.info(f'Admin cancelled order {order_id} (was {old_status})')
         
         return jsonify({
@@ -2251,28 +2274,28 @@ def update_order_payment(order_id):
         if payment_method:
             order.payment_method = payment_method
         
+        points_awarded = 0
         # If changing from unpaid to paid, calculate points and complete order
         if old_payment_status == PaymentStatus.UNPAID.value and payment_status == PaymentStatus.PAID.value:
-            # Calculate points: 1 point per cent ($0.01), excluding shipping fee
-            subtotal_and_tax = float(order.subtotal) + float(order.tax or 0)
-            total_cents = int(subtotal_and_tax * 100)
-            order.points_earned = total_cents
-            order.payment_date = utc_now()
-            
-            # Update user's points balance
             user = User.query.get(order.user_id)
+            points_awarded = award_order_points(order, user)
+            order.payment_date = utc_now()
             if user:
-                user.points = (user.points or 0) + total_cents
-                current_app.logger.info(f'Awarded {total_cents} points to user {user.id} for order {order_id}')
+                current_app.logger.info(f'Awarded {points_awarded} points to user {user.id} for order {order_id}')
             
             # Auto-complete the order for pickup cash orders
             if order.delivery_method == DeliveryMethod.PICKUP.value and order.payment_method == PaymentMethod.CASH.value:
                 order.status = OrderStatus.COMPLETED.value
-                current_app.logger.info(f'Pickup cash order {order_id} marked as paid and auto-completed. Points: {total_cents}')
+                current_app.logger.info(f'Pickup cash order {order_id} marked as paid and auto-completed. Points: {points_awarded}')
             else:
                 # For other orders, also auto-complete (existing behavior)
                 order.status = OrderStatus.COMPLETED.value
-                current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {total_cents}')
+                current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {points_awarded}')
+        elif old_payment_status == PaymentStatus.PAID.value and payment_status == PaymentStatus.UNPAID.value:
+            user = User.query.get(order.user_id)
+            revoked = revoke_order_points(order, user)
+            if user and revoked:
+                current_app.logger.info(f'Revoked {revoked} points from user {user.id} for order {order_id}')
         
         referral_service.on_order_first_completed(order, old_order_status)
         
@@ -2296,7 +2319,7 @@ def update_order_payment(order_id):
         return jsonify({
             'message': 'Payment status updated successfully',
             'order': order_dict,
-            'points_awarded': order.points_earned if payment_status == PaymentStatus.PAID.value else 0
+            'points_awarded': points_awarded if payment_status == PaymentStatus.PAID.value else 0
         }), 200
         
     except Exception as e:
@@ -2331,9 +2354,11 @@ def update_order_adjustment(order_id):
         # Update adjustment notes
         if 'adjustment_notes' in data:
             order.adjustment_notes = data['adjustment_notes'] or None
-        
+
+        sync_order_pricing(order, reprice_lines=False)
+
         db.session.commit()
-        
+
         current_app.logger.info(f'Updated adjustments for order {order_id}')
         
         return jsonify({
@@ -2440,7 +2465,7 @@ def update_order_weights(order_id):
             if not item_id:
                 continue
             
-            order_item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first()
+            order_item = OrderItem.get_active(item_id, order_id)
             if not order_item:
                 continue
             
@@ -2451,76 +2476,13 @@ def update_order_weights(order_id):
             # Update final weight
             if final_weight is not None:
                 order_item.final_weight = float(final_weight)
-            
-            # Recalculate price if product is weight-based
-            if product.pricing_type in ['weight_range', 'unit_weight', 'bundled_weight'] and final_weight is not None:
-                # For weight-based products: unit_price = price_per_unit, total_price = price_per_unit * weight
-                # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-                if product.pricing_type == 'weight_range':
-                    # Find matching range based on final_weight
-                    ranges = product.pricing_data.get('ranges', []) if product.pricing_data else []
-                    matched_price = None
-                    for range_item in ranges:
-                        min_weight = range_item.get('min', 0)
-                        max_weight = range_item.get('max')
-                        if final_weight >= min_weight and (max_weight is None or final_weight < max_weight):
-                            matched_price = float(range_item.get('price', 0))
-                            break
-                    if matched_price is not None:
-                        order_item.unit_price = matched_price
-                        order_item.total_price = matched_price  # Quantity is 1 for weight-based products
-                elif product.pricing_type == 'unit_weight':
-                    price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                    if price_per_unit > 0:
-                        order_item.unit_price = price_per_unit
-                        order_item.total_price = price_per_unit * float(final_weight)
-                elif product.pricing_type == 'bundled_weight':
-                    price_per_unit = float(product.pricing_data.get('price_per_unit', 0) if product.pricing_data else 0)
-                    if price_per_unit > 0:
-                        order_item.unit_price = price_per_unit
-                        order_item.total_price = price_per_unit * float(final_weight)
-        
-        # Recalculate subtotal from ALL items in the order (not just updated ones)
-        from decimal import Decimal
-        subtotal = Decimal('0')
-        for order_item in order.items:
-            subtotal += Decimal(str(order_item.total_price))
-        
-        # Recalculate order totals
-        tax = Decimal('0')
-        
-        # Recalculate shipping fee for delivery orders (may be waived with new price)
-        from utils.shipping import calculate_shipping_fee
-        from models.address import Address
-        
-        address = None
-        if order.delivery_method == DeliveryMethod.DELIVERY.value and order.address_id:
-            address = Address.query.get(order.address_id)
-        
-        # Prepare order items for shipping calculation
-        order_items_for_shipping = []
-        for order_item in order.items:
-            product = Product.query.get(order_item.product_id)
-            if product:
-                order_items_for_shipping.append({
-                    'product': product,
-                    'total_price': float(order_item.total_price)
-                })
-        
-        shipping_fee = calculate_shipping_fee(subtotal, order.delivery_method, address, order_items_for_shipping)
-        
-        total = subtotal + tax + shipping_fee
-        # Calculate points excluding shipping fee: 1 point per cent
-        points_earned = int((subtotal + tax) * 100)
-        
-        order.subtotal = subtotal
-        order.tax = tax
-        order.shipping_fee = shipping_fee
-        order.total = total
-        order.points_earned = points_earned
-        
+
+            recalculate_existing_item(order_item)
+
+        sync_order_pricing(order, reprice_lines=False)
+
         db.session.commit()
-        
+
         current_app.logger.info(f'Updated weights and prices for order {order_id}')
         
         # Return updated order
@@ -2563,10 +2525,27 @@ def update_order_weights(order_id):
             'message': str(e)
         }), 500
 
+@admin_bp.route('/orders/<int:order_id>/audit-trail', methods=['GET'])
+def get_order_audit_trail(order_id):
+    """Merge history, item lineage, archived lines, and operation log for an order."""
+    _, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first()
+    if not order:
+        order = Order.query.get(order_id)
+    if not order:
+        return jsonify({'error': 'Order not found'}), 404
+
+    trail = build_order_audit_trail(order_id)
+    return jsonify(trail), 200
+
+
 @admin_bp.route('/orders/<int:order_id>/update', methods=['PUT'])
 def update_admin_order(order_id):
     """Update order items (add/remove items, update weights) - admin only"""
-    user_id, error_response, status_code = require_admin_auth()
+    admin_user_id, error_response, status_code = require_admin_auth()
     if error_response:
         return error_response, status_code
     
@@ -2598,17 +2577,36 @@ def update_admin_order(order_id):
             if i.get('product_id') and i.get('quantity', 1) > 0
         ]
         try:
-            priced_items, subtotal = priced_items_from_request(filtered_items)
+            priced_items, subtotal = priced_items_from_request(
+                filtered_items, require_variant=False
+            )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
 
-        OrderItem.query.filter_by(order_id=order_id).delete()
+        items_before = [
+            item_snapshot(i, order.order_number) for i in active_items_for_order(order_id)
+        ]
+        apply_item_sources_from_request(priced_items, order_id, filtered_items)
+
+        OrderItem.soft_delete_for_order(order_id, db.session)
         create_order_item_rows(order_id, priced_items, db.session)
         db.session.flush()
-        new_order_items = OrderItem.query.filter_by(order_id=order_id).all()
-        for order_item in new_order_items:
-            recalculate_existing_item(order_item)
-        
+
+        items_after = [
+            item_snapshot(i, order.order_number) for i in active_items_for_order(order_id)
+        ]
+        record_order_audit(
+            order_id,
+            EVENT_ADMIN_ITEMS_REPLACE,
+            {
+                'order_number': order.order_number,
+                'items_before': items_before,
+                'items_after': items_after,
+                'request_item_count': len(filtered_items),
+            },
+            actor_user_id=admin_user_id,
+        )
+
         # Update payment method if provided
         if payment_method:
             if payment_method in PaymentMethod.get_all_values():
@@ -2642,10 +2640,10 @@ def update_admin_order(order_id):
         if notes is not None:
             order.notes = notes if notes else None
         
-        recalculate_order_totals(order)
-        
+        sync_order_pricing(order)
+
         db.session.commit()
-        
+
         current_app.logger.info(f'Admin updated order {order_id} items')
         
         # Return updated order
@@ -2695,10 +2693,16 @@ def update_order_item_availability(order_id, item_id):
 
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
-        item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first_or_404()
+        item = OrderItem.query.filter(
+            OrderItem.id == item_id,
+            OrderItem.order_id == order_id,
+            OrderItem.active(),
+        ).first_or_404()
         item.is_unavailable = bool(validated_data['is_unavailable'])
+        if validated_data.get('cannot_fulfill') is not None:
+            item.cannot_fulfill = bool(validated_data['cannot_fulfill'])
         recalculate_existing_item(item)
-        recalculate_order_totals(order)
+        sync_order_pricing(order, reprice_lines=False)
         db.session.commit()
 
         return jsonify({
@@ -2724,14 +2728,18 @@ def update_order_item_substitute_preference(order_id, item_id):
 
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
-        item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first_or_404()
+        item = OrderItem.query.filter(
+            OrderItem.id == item_id,
+            OrderItem.order_id == order_id,
+            OrderItem.active(),
+        ).first_or_404()
         product = Product.query.get(item.product_id)
         if not product or not product.substitute_enabled:
             return jsonify({'error': '此商品未配置备选'}), 400
 
         item.accept_substitute = bool(validated_data['accept_substitute'])
         recalculate_existing_item(item, product)
-        recalculate_order_totals(order)
+        sync_order_pricing(order, reprice_lines=False)
         db.session.commit()
 
         return jsonify({
@@ -2919,7 +2927,7 @@ def find_duplicate_orders():
 @admin_bp.route('/orders/merge', methods=['POST'])
 def merge_orders():
     """Merge multiple orders into one (admin only)"""
-    user_id, error_response, status_code = require_admin_auth()
+    admin_user_id, error_response, status_code = require_admin_auth()
     if error_response:
         return error_response, status_code
     
@@ -2934,6 +2942,7 @@ def merge_orders():
     keep_address_id = validated_data.get('keep_address_id')
     keep_pickup_location = validated_data.get('keep_pickup_location')
     keep_notes = validated_data.get('keep_notes')
+    notes_action = validated_data.get('notes_action', 'combine')
     
     try:
         # Fetch all orders
@@ -2968,49 +2977,39 @@ def merge_orders():
         main_order = orders[0]
         orders_to_merge = orders[1:]
         
-        # Collect all items from all orders
-        all_items = {}  # product_id -> {'quantity': total, 'unit_price': price, 'final_weight': weight}
-        
+        merge_time = utc_now()
+        main_items_before = [
+            item_snapshot(i, main_order.order_number)
+            for i in active_items_for_order(main_order.id)
+        ]
+        lines_to_copy = []
         for order in orders:
-            for item in order.items:
-                if item.product_id not in all_items:
-                    all_items[item.product_id] = {
-                        'quantity': item.quantity,
-                        'unit_price': float(item.unit_price),
-                        'final_weight': float(item.final_weight) if item.final_weight else None
-                    }
-                else:
-                    # Add quantities
-                    all_items[item.product_id]['quantity'] += item.quantity
-                    # Add weights if applicable
-                    if item.final_weight and all_items[item.product_id]['final_weight'] is not None:
-                        all_items[item.product_id]['final_weight'] += float(item.final_weight)
-        
-        # Update main order with merged items
-        # Delete existing items from main order
-        OrderItem.query.filter_by(order_id=main_order.id).delete()
-        
-        # Create new merged items
-        subtotal = Decimal('0')
-        for product_id, item_data in all_items.items():
-            product = Product.query.get(product_id)
-            if not product:
-                continue
-            
-            unit_price = Decimal(str(item_data['unit_price']))
-            quantity = item_data['quantity']
-            total_price = unit_price * quantity
-            subtotal += total_price
-            
-            order_item = OrderItem(
+            for item in OrderItem.query.filter(
+                OrderItem.order_id == order.id,
+                OrderItem.active(),
+            ).all():
+                lines_to_copy.append((order, item))
+
+        OrderItem.soft_delete_for_order(main_order.id, db.session)
+        line_copies = []
+        new_items = []
+        for source_order, source_item in lines_to_copy:
+            new_item = OrderItem(
                 order_id=main_order.id,
-                product_id=product_id,
-                quantity=quantity,
-                unit_price=unit_price,
-                total_price=total_price,
-                final_weight=Decimal(str(item_data['final_weight'])) if item_data['final_weight'] else None
+                **order_item_fields_for_merge(source_item),
             )
-            db.session.add(order_item)
+            db.session.add(new_item)
+            new_items.append(new_item)
+            line_copies.append({
+                'source_order_id': source_order.id,
+                'source_order_number': source_order.order_number,
+                'source_item_id': source_item.id,
+                'source_snapshot': item_snapshot(source_item, source_order.order_number),
+            })
+        db.session.flush()
+        for entry, new_item in zip(line_copies, new_items):
+            entry['new_item_id'] = new_item.id
+            entry['new_snapshot'] = item_snapshot(new_item, main_order.order_number)
         
         # Update main order attributes based on admin's choices
         if keep_payment_method:
@@ -3029,46 +3028,38 @@ def merge_orders():
         elif keep_delivery_method == 'delivery':
             main_order.pickup_location = None
         
-        if keep_notes is not None:
-            main_order.notes = keep_notes
-        
-        # Recalculate totals
-        address = None
-        if main_order.delivery_method == 'delivery' and main_order.address_id:
-            address = Address.query.get(main_order.address_id)
-        
-        # Build order items for shipping calculation
-        order_items_for_shipping = []
-        for product_id, item_data in all_items.items():
-            product = Product.query.get(product_id)
-            if product:
-                order_items_for_shipping.append({
-                    'product': product,
-                    'quantity': item_data['quantity']
-                })
-        
-        shipping_fee = calculate_shipping_fee(
-            subtotal,
-            main_order.delivery_method,
-            address,
-            order_items_for_shipping
-        )
-        
-        tax = Decimal('0')
-        total = subtotal + tax + shipping_fee
-        points_earned = int(subtotal + tax)
-        
-        main_order.subtotal = subtotal
-        main_order.tax = tax
-        main_order.shipping_fee = shipping_fee
-        main_order.total = total
-        main_order.points_earned = points_earned
+        if notes_action == 'clear':
+            main_order.notes = None
+        elif notes_action == 'replace' and keep_notes is not None and str(keep_notes).strip():
+            main_order.notes = str(keep_notes).strip()
+        else:
+            main_order.notes = combine_order_notes(orders)
+
+        db.session.flush()
+        sync_order_pricing(main_order)
         main_order.updated_at = utc_now()
-        
-        # Soft delete the other orders
+
+        # Soft delete source orders and link to survivor
         for order in orders_to_merge:
-            order.deleted_at = utc_now()
-        
+            order.deleted_at = merge_time
+            order.merged_into_order_id = main_order.id
+            order.merged_at = merge_time
+
+        record_order_audit(
+            main_order.id,
+            EVENT_MERGE,
+            {
+                'main_order_id': main_order.id,
+                'main_order_number': main_order.order_number,
+                'source_order_ids': [o.id for o in orders],
+                'merged_away_order_ids': [o.id for o in orders_to_merge],
+                'notes_action': notes_action,
+                'main_items_before': main_items_before,
+                'line_copies': line_copies,
+            },
+            actor_user_id=admin_user_id,
+        )
+
         db.session.commit()
         
         # Log the merge
@@ -3094,21 +3085,15 @@ def merge_orders():
         if group_deal:
             order_dict['group_deal'] = group_deal.to_dict()
         
-        # Get order items with product details
-        items_data = []
-        for item in main_order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = product.to_dict()
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
+        order_dict['items'] = [
+            enrich_order_item_dict(item) for item in main_order.items
+        ]
         
         return jsonify({
             'message': 'Orders merged successfully',
             'merged_order': order_dict,
-            'deleted_order_ids': merged_order_ids
+            'deleted_order_ids': merged_order_ids,
+            'audit_trail': build_order_audit_trail(main_order.id),
         }), 200
         
     except Exception as e:

@@ -9,6 +9,8 @@ steps:
       - 'VITE_APP_PUBLIC_URL=${_VITE_APP_PUBLIC_URL}'
       - '--build-arg'
       - 'VITE_GOOGLE_MAPS_API_KEY=${_VITE_GOOGLE_MAPS_API_KEY}'
+      - '-f'
+      - 'app/Dockerfile'
       - '-t'
       - 'gcr.io/$PROJECT_ID/gsf-app-frontend:${BUILD_ID}'
       - '-t'

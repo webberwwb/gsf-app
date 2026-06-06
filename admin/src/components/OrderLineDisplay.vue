@@ -25,6 +25,7 @@
 <script>
 import {
   formatSubstitutePreferenceLabel,
+  formatLinePrice,
   resolveOrderLineTotal,
   isOrderLinePriceEstimated,
   getOrderLineWeightLabel,
@@ -78,9 +79,9 @@ export default {
       return `×${q}${suffix}`
     },
     displayPrice() {
-      const total = resolveOrderLineTotal(this.item)
-      const prefix = isOrderLinePriceEstimated(this.item) ? '~' : ''
-      return `${prefix}$${total.toFixed(2)}`
+      return formatLinePrice(resolveOrderLineTotal(this.item), {
+        estimated: isOrderLinePriceEstimated(this.item)
+      })
     },
     isZeroPrice() {
       const total = resolveOrderLineTotal(this.item)

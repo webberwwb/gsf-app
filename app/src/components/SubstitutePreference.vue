@@ -41,6 +41,7 @@
         不要备选
       </button>
     </div>
+    <p class="decline-hint">若原商品缺货，我们会尽量找货；若无法供应该商品会被取消，可能影响配送费档位。</p>
   </div>
 </template>
 
@@ -179,5 +180,12 @@ export default {
   color: var(--md-primary);
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.decline-hint {
+  font-size: 0.75rem;
+  color: var(--md-on-surface-variant);
+  margin: 0.5rem 0 0;
+  line-height: 1.4;
 }
 </style>

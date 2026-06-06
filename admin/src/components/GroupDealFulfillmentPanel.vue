@@ -2,7 +2,7 @@
   <div v-if="substituteProducts.length" class="fulfillment-section">
     <h3 class="section-title">备选切换</h3>
     <p class="section-hint">
-      仅显示已配置备选的商品。切换备选后：接受备选 → 换备选价；不要备选 → 保留订单行、标红待处理（$0），由管理员找货或手动删除。
+      仅显示已配置备选的商品。切换备选后：接受备选 → 换备选价；不要备选 → 保留原价待处理，由管理员找货或标记无法供应。
     </p>
     <div class="fulfillment-list">
       <div
@@ -108,7 +108,7 @@ export default {
 
       const action = isUnavailable ? '切换备选' : '恢复原商品'
       const detail = isUnavailable
-        ? `将影响该团购中此商品的全部 ${stats.lineCount} 条订单行。接受备选的用户将换备选商品计价，不要备选的将保留在订单中（$0、标红待处理），由您找货或手动删除。`
+        ? `将影响该团购中此商品的全部 ${stats.lineCount} 条订单行。接受备选的用户将换备选商品计价，不要备选的将保留原价待处理，若无法供应可标记取消。`
         : `将恢复 ${stats.unavailableCount} 条已切换备选的行并按原价重新计价。`
       if (!window.confirm(`${action}「${product.name}」？\n\n${detail}`)) return
 

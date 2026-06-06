@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { fetchShippingConfig, calculateShippingFee } from '../utils/shipping'
+import { roundMoney } from '../utils/productPriceDisplay'
 
 export const useCheckoutStore = defineStore('checkout', {
   state: () => ({
@@ -22,16 +23,19 @@ export const useCheckoutStore = defineStore('checkout', {
     notes: '',
     
     // Shipping fee configuration
-    shippingConfig: null
+    shippingConfig: null,
+
+    /** Credit to apply when computing shipping tier base (set by Checkout.vue). */
+    storeCreditToApply: 0
   }),
   
   getters: {
     hasItems: (state) => state.orderItems.length > 0,
     
     subtotal: (state) => {
-      return state.orderItems.reduce((sum, item) => {
+      return roundMoney(state.orderItems.reduce((sum, item) => {
         return sum + parseFloat(item.estimated_price || 0)
-      }, 0)
+      }, 0))
     },
     
     hasEstimatedTotal: (state) => {
@@ -50,19 +54,23 @@ export const useCheckoutStore = defineStore('checkout', {
       if (state.deliveryMethod === 'pickup') {
         return 0
       }
-      
-      // Calculate subtotal for free shipping threshold
-      // Exclude products with counts_toward_free_shipping = false
+
+      const credit = parseFloat(state.storeCreditToApply || 0) || 0
+      const tierBase = Math.max(0, state.orderItems.reduce((sum, item) => {
+        return sum + parseFloat(item.estimated_price || 0)
+      }, 0) - credit)
+
       const freeShippingSubtotal = state.orderItems.reduce((sum, item) => {
-        // Check if product counts toward free shipping (default is true)
         const countsTowardFreeShipping = item.counts_toward_free_shipping !== false
         if (countsTowardFreeShipping) {
-          return sum + parseFloat(item.estimated_price || 0)
+          const lineShare = parseFloat(item.estimated_price || 0)
+          const subtotal = state.orderItems.reduce((s, i) => s + parseFloat(i.estimated_price || 0), 0)
+          if (subtotal <= 0) return sum
+          return sum + (lineShare / subtotal) * tierBase
         }
         return sum
       }, 0)
-      
-      // Use dynamic config if available, otherwise fallback to default calculation
+
       return calculateShippingFee(freeShippingSubtotal, state.shippingConfig)
     },
     
@@ -84,11 +92,18 @@ export const useCheckoutStore = defineStore('checkout', {
         shipping = calculateShippingFee(freeShippingSubtotal, state.shippingConfig)
       }
       
-      return subtotal + shipping
+      return roundMoney(subtotal + shipping)
     }
   },
   
   actions: {
+    /**
+     * Credit applied toward shipping tier (Checkout.vue sets this from toggle).
+     */
+    setStoreCreditToApply(amount) {
+      this.storeCreditToApply = parseFloat(amount) || 0
+    },
+
     /**
      * Load shipping fee configuration
      */
@@ -194,6 +209,7 @@ export const useCheckoutStore = defineStore('checkout', {
       this.selectedPickupLocation = 'markham'
       this.selectedAddressId = null
       this.notes = ''
+      this.storeCreditToApply = 0
     },
     
     /**

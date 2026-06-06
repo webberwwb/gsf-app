@@ -66,7 +66,7 @@
               <div class="product-mini-info">
                 <div class="product-mini-name">{{ product.name }}</div>
                 <div class="product-mini-price">
-                  <span class="deal-price">${{ product.price || '0.00' }}</span>
+                  <span class="deal-price">${{ formatDealProductPrice(product) }}</span>
                 </div>
               </div>
             </div>
@@ -90,6 +90,7 @@ import apiClient from '../api/client'
 import GroupDealForm from '../components/GroupDealForm.vue'
 import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
+import { formatProductListPrice } from '../utils/productPriceDisplay'
 
 export default {
   name: 'GroupDeals',
@@ -174,6 +175,9 @@ export default {
     },
     formatPickupDate(dateString) {
       return formatPickupDateTime_CN(dateString) || 'N/A'
+    },
+    formatDealProductPrice(product) {
+      return formatProductListPrice(product)
     },
     viewDealDetail(dealId) {
       this.$router.push(`/group-deals/${dealId}`)

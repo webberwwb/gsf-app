@@ -132,7 +132,7 @@
             <div class="stat-content">
               <div class="stat-label">总收入</div>
               <div class="stat-value">{{ statistics.totalPaidOrders }} / {{ statistics.totalOrders }}</div>
-              <div class="stat-subvalue">${{ statistics.totalPaidAmount.toFixed(2) }} / ${{ statistics.totalAmount.toFixed(2) }}</div>
+              <div class="stat-subvalue">${{ formatStatMoney(statistics.totalPaidAmount) }} / ${{ formatStatMoney(statistics.totalAmount) }}</div>
             </div>
           </div>
 
@@ -172,7 +172,7 @@
             <div class="stat-content">
               <div class="stat-label">EMT收款</div>
               <div class="stat-value">{{ statistics.emtPaidCount }} / {{ statistics.emtCount }}</div>
-              <div class="stat-subvalue">${{ statistics.emtReceived.toFixed(2) }} / ${{ statistics.emtTotal.toFixed(2) }}</div>
+              <div class="stat-subvalue">${{ formatStatMoney(statistics.emtReceived) }} / ${{ formatStatMoney(statistics.emtTotal) }}</div>
             </div>
           </div>
 
@@ -186,7 +186,7 @@
             <div class="stat-content">
               <div class="stat-label">现金收款</div>
               <div class="stat-value">{{ statistics.cashPaidCount }} / {{ statistics.cashCount }}</div>
-              <div class="stat-subvalue">${{ statistics.cashReceived.toFixed(2) }} / ${{ statistics.cashTotal.toFixed(2) }}</div>
+              <div class="stat-subvalue">${{ formatStatMoney(statistics.cashReceived) }} / ${{ formatStatMoney(statistics.cashTotal) }}</div>
             </div>
           </div>
         </div>
@@ -230,7 +230,7 @@
             <div class="summary-stats-grid">
               <div class="summary-stat-card">
                 <div class="summary-stat-label">总销售额</div>
-                <div class="summary-stat-value">${{ selectedProductsSummary.totalSales.toFixed(2) }}</div>
+                <div class="summary-stat-value">${{ formatStatMoney(selectedProductsSummary.totalSales) }}</div>
               </div>
               <div class="summary-stat-card">
                 <div class="summary-stat-label">订单数量</div>
@@ -243,7 +243,7 @@
               <div class="summary-stat-card">
                 <div class="summary-stat-label">平均订单额</div>
                 <div class="summary-stat-value">
-                  ${{ selectedProductsSummary.totalOrders > 0 ? (selectedProductsSummary.totalSales / selectedProductsSummary.totalOrders).toFixed(2) : '0.00' }}
+                  ${{ formatStatMoney(selectedProductsSummary.totalOrders > 0 ? selectedProductsSummary.totalSales / selectedProductsSummary.totalOrders : 0) }}
                 </div>
               </div>
             </div>
@@ -260,7 +260,7 @@
                 <div class="product-stat-name">{{ productStat.displayName }}</div>
                 <div class="product-stat-details">
                   <div class="product-stat-value">数量: {{ productStat.totalQuantity }}</div>
-                  <div class="product-stat-sales">${{ productStat.totalSalesValue.toFixed(2) }}</div>
+                  <div class="product-stat-sales">${{ formatStatMoney(productStat.totalSalesValue) }}</div>
                 </div>
               </div>
               <div v-if="isProductFilterActive(productStat.statKey)" class="product-stat-check">
@@ -532,6 +532,7 @@ import GroupDealFulfillmentPanel from '../components/GroupDealFulfillmentPanel.v
 import PullToRefreshIndicator from '../components/PullToRefreshIndicator.vue'
 import { orderHasMissingFinalWeight, statusChangeWarnsIfMissingFinalWeight } from '../utils/orderWeightValidation'
 import { orderAmountDueNumber, formatOrderMoney2, orderFinalTotalNumber, orderStoreCreditAppliedNumber } from '../utils/orderPricing'
+import { calculateOrderPoints } from '../utils/orderPoints'
 import { resolveOrderLineTotal } from '../utils/orderItemPricing'
 import { loadGroupDealOrderPrefs, saveGroupDealOrderPrefs } from '../utils/groupDealOrderPrefs'
 
@@ -827,8 +828,7 @@ export default {
       const productById = new Map(dealProducts.map((p) => [p.id, p]))
 
       allOrders.forEach(order => {
-        // Total amount
-        const orderTotal = parseFloat(order.total || 0)
+        const orderTotal = orderFinalTotalNumber(order)
         totalAmount += orderTotal
 
         // Payment status
@@ -1005,6 +1005,9 @@ export default {
     }
   },
   methods: {
+    formatStatMoney(value) {
+      return formatOrderMoney2(value)
+    },
     syncNarrowMobile() {
       if (typeof window === 'undefined') return
       const n = window.innerWidth <= 767
@@ -1678,10 +1681,10 @@ export default {
         }
       }
       
-      const amount = parseFloat(orderToMark.total || 0).toFixed(2)
-      const pointsToEarn = Math.floor(parseFloat(orderToMark.total) * 100)
+      const amount = formatOrderMoney2(orderAmountDueNumber(orderToMark))
+      const pointsToEarn = calculateOrderPoints(orderToMark)
       
-      const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
+      const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为已付款?\n\n应付金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
       if (!confirmed) {
         return
       }
@@ -1735,7 +1738,7 @@ export default {
         return
       }
       
-      const amount = parseFloat(orderToMark.total || 0).toFixed(2)
+      const amount = formatOrderMoney2(orderFinalTotalNumber(orderToMark))
       
       const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为未付款?\n\n金额: $${amount}\n\n此操作将撤销已发放的积分。`)
       if (!confirmed) {
@@ -1777,7 +1780,12 @@ export default {
         }
       }
       
-      const confirmed = await this.confirm(`确认标记订单 #${this.selectedOrder.order_number} 为已完成?`)
+      let confirmMsg = `确认标记订单 #${this.selectedOrder.order_number} 为已完成?`
+      if (this.selectedOrder.payment_status === 'unpaid') {
+        const pts = calculateOrderPoints(this.selectedOrder)
+        confirmMsg += `\n\n注意：订单仍为「未付款」，不会发放积分（预计 ${pts} 分）。\n请先点击「标记已付款」发放积分。`
+      }
+      const confirmed = await this.confirm(confirmMsg, { type: 'warning' })
       if (!confirmed) {
         return
       }
@@ -1791,7 +1799,11 @@ export default {
         this.ordersStore.updateOrder(updatedOrder)
         this.selectedOrder = updatedOrder
         
-        await this.success('订单已标记为已完成')
+        let successMsg = '订单已标记为已完成'
+        if (response.data.points_notice || updatedOrder.payment_status === 'unpaid') {
+          successMsg += '\n积分未发放：请标记为「已付款」后才会计入用户积分。'
+        }
+        await this.success(successMsg)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)

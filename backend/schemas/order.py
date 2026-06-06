@@ -20,7 +20,8 @@ class OrderItemSchema(Schema):
 class AdminOrderItemAvailabilitySchema(Schema):
     """Schema for admin marking order item availability"""
     is_unavailable = fields.Boolean(required=True)
-    
+    cannot_fulfill = fields.Boolean(allow_none=True)
+
     class Meta:
         unknown = EXCLUDE
 

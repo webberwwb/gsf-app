@@ -73,17 +73,17 @@
           <div class="record-totals">
             <div class="total-item">
               <span class="total-label">计算提成:</span>
-              <span class="total-value">${{ record.total_commission.toFixed(2) }}</span>
+              <span class="total-value">${{ formatMoney(record.total_commission) }}</span>
             </div>
             <div v-if="record.manual_adjustment !== 0" class="total-item adjustment">
               <span class="total-label">手动调整:</span>
               <span :class="['total-value', record.manual_adjustment >= 0 ? 'positive' : 'negative']">
-                {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ record.manual_adjustment.toFixed(2) }}
+                {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ formatMoney(record.manual_adjustment) }}
               </span>
             </div>
             <div class="total-item final">
               <span class="total-label">最终总额:</span>
-              <span class="total-value-large">${{ record.final_total.toFixed(2) }}</span>
+              <span class="total-value-large">${{ formatMoney(record.final_total) }}</span>
             </div>
           </div>
           <div class="record-actions">
@@ -190,6 +190,7 @@ import CommissionConfigModal from '../components/CommissionConfigModal.vue'
 import QuarterlyBonusModal from '../components/QuarterlyBonusModal.vue'
 import { useModal } from '../composables/useModal'
 import { formatDateTimeEST_CN } from '../utils/date'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 export default {
   name: 'SalesManagement',
@@ -231,6 +232,9 @@ export default {
     this.fetchCommissionRecords()
   },
   methods: {
+    formatMoney(value) {
+      return formatOrderMoney2(value)
+    },
     async fetchSdr() {
       try {
         this.loadingSdr = true

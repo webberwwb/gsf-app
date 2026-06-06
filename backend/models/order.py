@@ -1,6 +1,7 @@
-from models.base import BaseModel
+from models.base import BaseModel, utc_now
 from models import db
-from sqlalchemy import Numeric
+from sqlalchemy import Numeric, and_
+from sqlalchemy.orm import backref, foreign
 from datetime import datetime
 from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod
 
@@ -57,31 +58,58 @@ class Order(BaseModel):
     
     # Soft delete
     deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    # Set when this order was merged into another (see merged_into_order_id on survivor)
+    merged_into_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True, index=True)
+    merged_at = db.Column(db.DateTime, nullable=True)
     
-    # Relationships
-    items = db.relationship('OrderItem', backref='order', lazy=True, cascade='all, delete-orphan')
+    # Active line items only (soft-deleted rows kept for audit / recovery)
+    items = db.relationship(
+        'OrderItem',
+        backref=backref('order', lazy=True),
+        lazy=True,
+        cascade='save-update, merge',
+        primaryjoin='and_(Order.id == foreign(OrderItem.order_id), OrderItem.deleted_at.is_(None))',
+        foreign_keys='OrderItem.order_id',
+    )
+    all_items = db.relationship(
+        'OrderItem',
+        lazy=True,
+        viewonly=True,
+        overlaps='items,order',
+        primaryjoin='Order.id == foreign(OrderItem.order_id)',
+        foreign_keys='OrderItem.order_id',
+    )
     address = db.relationship('Address', backref='orders')
+    merged_into_order = db.relationship(
+        'Order',
+        remote_side='Order.id',
+        foreign_keys='Order.merged_into_order_id',
+        backref='merged_source_orders',
+    )
     
     def to_dict(self, include_editable=True):
         data = super().to_dict()
-        
-        # Calculate final total with adjustment
-        # Convert Decimal to float to avoid type errors
-        base_total = float(self.total) if self.total is not None else 0.0
+
+        from utils.order_totals import calculate_amount_due
+
+        subtotal_f = float(self.subtotal) if self.subtotal is not None else 0.0
         adjustment = float(self.adjustment_amount) if self.adjustment_amount is not None else 0.0
-        final_total = float(base_total + adjustment)
+        shipping = float(self.shipping_fee) if self.shipping_fee is not None else 0.0
+        base_total = float(self.total) if self.total is not None else 0.0
         credit_applied = float(self.store_credit_applied) if self.store_credit_applied is not None else 0.0
-        amount_due = max(0.0, final_total - credit_applied)
+        amount_due = float(calculate_amount_due(self))
+        final_total = base_total
 
         data.update({
             'user_id': self.user_id,
             'group_deal_id': self.group_deal_id,
             'address_id': self.address_id,
             'order_number': self.order_number,
-            'subtotal': float(self.subtotal) if self.subtotal is not None else None,
-            'tax': float(self.tax) if self.tax is not None else None,
-            'shipping_fee': float(self.shipping_fee) if self.shipping_fee is not None else None,
-            'total': float(base_total),
+            'subtotal': subtotal_f,
+            'tax': float(self.tax) if self.tax is not None else 0.0,
+            'shipping_fee': shipping,
+            'total': base_total,
             'adjustment_amount': float(adjustment),
             'adjustment_notes': self.adjustment_notes,
             'final_total': final_total,
@@ -97,7 +125,9 @@ class Order(BaseModel):
             'pickup_status': self.pickup_status,
             'pickup_date': self.pickup_date.isoformat() if self.pickup_date else None,
             'status': self.status,
-            'notes': self.notes
+            'notes': self.notes,
+            'merged_into_order_id': self.merged_into_order_id,
+            'merged_at': self.merged_at.isoformat() if self.merged_at else None,
         })
         
         # Add is_editable flag based on status
@@ -135,8 +165,35 @@ class OrderItem(BaseModel):
     # Substitute preference and fulfillment
     accept_substitute = db.Column(db.Boolean, nullable=True)
     is_unavailable = db.Column(db.Boolean, default=False, nullable=False)
+    cannot_fulfill = db.Column(db.Boolean, default=False, nullable=False)
+
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    source_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True, index=True)
+    source_item_id = db.Column(db.Integer, db.ForeignKey('order_items.id'), nullable=True, index=True)
 
     variant = db.relationship('ProductVariant', foreign_keys=[variant_id])
+    source_order = db.relationship('Order', foreign_keys=[source_order_id])
+    source_item = db.relationship('OrderItem', foreign_keys=[source_item_id], remote_side='OrderItem.id')
+
+    @classmethod
+    def active(cls):
+        """SQLAlchemy filter: non-deleted lines."""
+        return cls.deleted_at.is_(None)
+
+    @classmethod
+    def soft_delete_for_order(cls, order_id, session=None):
+        """Soft-delete all active lines on an order (e.g. before replace/merge)."""
+        session = session or db.session
+        now = utc_now()
+        return cls.query.filter(
+            cls.order_id == order_id,
+            cls.active(),
+        ).update({'deleted_at': now}, synchronize_session=False)
+
+    @classmethod
+    def get_active(cls, item_id, order_id):
+        return cls.query.filter_by(id=item_id, order_id=order_id).filter(cls.active()).first()
 
     def to_dict(self):
         data = super().to_dict()
@@ -152,6 +209,10 @@ class OrderItem(BaseModel):
             'variant_price_delta': float(self.variant_price_delta) if self.variant_price_delta is not None else None,
             'accept_substitute': self.accept_substitute,
             'is_unavailable': self.is_unavailable,
+            'cannot_fulfill': self.cannot_fulfill,
+            'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
+            'source_order_id': self.source_order_id,
+            'source_item_id': self.source_item_id,
         })
         return data
 

@@ -250,6 +250,7 @@
 <script>
 import apiClient from '@/api/client'
 import { useModal } from '@/composables/useModal'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 /** Mirrors backend credit_service TX_* constants */
 const CREDIT_TX_TYPE_LABELS = {
@@ -314,7 +315,7 @@ export default {
   methods: {
     formatMoney(v) {
       if (v === null || v === undefined || Number.isNaN(Number(v))) return '0.00'
-      return Number(v).toFixed(2)
+      return formatOrderMoney2(v)
     },
     formatTxUserContact(user) {
       if (!user) return '—'

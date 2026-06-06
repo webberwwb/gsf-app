@@ -1,17 +1,50 @@
 <template>
   <div class="products-tab">
     <div class="page-header-actions">
-      <select v-model="sortBy" @change="fetchProducts" class="sort-select">
+      <select v-model="sortBy" @change="handleSortByChange" class="sort-select">
         <option value="custom">自定义排序</option>
         <option value="created_at">按创建时间</option>
         <option value="popularity">按销量排序</option>
         <option value="name">按名称排序</option>
       </select>
-      <button v-if="sortBy === 'custom' && hasUnsavedChanges" @click="saveSortOrder" class="save-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <div v-if="sortBy === 'custom'" class="view-mode-toggle">
+        <button
+          :class="['view-mode-btn', { active: customSortViewMode === 'grid' }]"
+          @click="customSortViewMode = 'grid'"
+          title="卡片拖动排序"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+          </svg>
+        </button>
+        <button
+          :class="['view-mode-btn', { active: customSortViewMode === 'table' }]"
+          @click="customSortViewMode = 'table'"
+          title="表格手动排序"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+      <input
+        v-if="sortBy === 'custom' && customSortViewMode === 'table'"
+        v-model="sortTableSearch"
+        type="search"
+        class="sort-table-search"
+        placeholder="搜索商品名称或分类..."
+      />
+      <button
+        v-if="sortBy === 'custom' && (hasUnsavedChanges || savingSortOrder)"
+        @click="saveSortOrder"
+        class="save-btn"
+        :disabled="savingSortOrder"
+      >
+        <span v-if="savingSortOrder" class="save-btn-spinner" aria-hidden="true"></span>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
         </svg>
-        保存排序
+        {{ savingSortOrder ? '保存中...' : '保存排序' }}
       </button>
       <button @click="openAddModal" class="add-btn">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -26,6 +59,68 @@
     <div v-else-if="products.length === 0" class="empty-state">
       <p>暂无商品</p>
       <button @click="openAddModal" class="add-first-btn">添加第一个商品</button>
+    </div>
+    <div v-else-if="sortBy === 'custom' && customSortViewMode === 'table'" class="sort-table-section">
+      <p class="sort-table-hint">输入排序值（支持小数，如 1.1、1.2），按 Enter 确认后预览顺序会更新，完成后点击「保存排序」。</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="col-rank">预览</th>
+              <th class="col-sort">排序值</th>
+              <th class="col-image">图片</th>
+              <th class="col-name">商品名称</th>
+              <th class="col-category">分类</th>
+              <th class="col-status">状态</th>
+              <th class="col-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(product, index) in filteredSortedProducts"
+              :key="product.id"
+              :class="{ 'row-changed': isSortOrderChanged(product) }"
+            >
+              <td class="col-rank">{{ index + 1 }}</td>
+              <td class="col-sort">
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  class="sort-order-input"
+                  :value="getSortOrderInputValue(product)"
+                  @input="handleSortOrderDraft(product, $event)"
+                  @keydown.enter.prevent="commitSortOrder(product, $event)"
+                  @blur="cancelSortOrderDraft(product)"
+                />
+              </td>
+              <td class="col-image">
+                <div class="table-product-image">
+                  <img v-if="product.image" :src="product.image" :alt="product.name" />
+                  <div v-else class="table-image-placeholder">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                    </svg>
+                  </div>
+                </div>
+              </td>
+              <td class="col-name">
+                <span class="table-product-name">{{ product.name }}</span>
+                <span v-if="product.supplier" class="table-supplier">{{ product.supplier.name }}</span>
+              </td>
+              <td class="col-category">{{ product.category?.name || '—' }}</td>
+              <td class="col-status">
+                <span :class="['status-badge', product.is_active ? 'active' : 'inactive']">
+                  {{ product.is_active ? '上架' : '下架' }}
+                </span>
+              </td>
+              <td class="col-actions">
+                <button @click="editProduct(product)" class="table-edit-btn">编辑</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-if="filteredSortedProducts.length === 0" class="sort-table-empty">没有匹配的商品</p>
     </div>
     <div v-else class="products-grid">
       <div 
@@ -132,6 +227,7 @@
 import apiClient from '../api/client'
 import ProductForm from '../components/ProductForm.vue'
 import { useModal } from '../composables/useModal'
+import { formatProductPriceRange } from '../utils/productPriceDisplay'
 
 export default {
   name: 'ProductsTab',
@@ -150,9 +246,29 @@ export default {
       showAddModal: false,
       editingProduct: null,
       sortBy: 'custom', // 'custom', 'created_at', 'popularity', 'name'
+      customSortViewMode: 'grid', // 'grid' | 'table'
+      sortTableSearch: '',
       draggedIndex: null,
       dragOverIndex: null,
-      hasUnsavedChanges: false
+      hasUnsavedChanges: false,
+      savingSortOrder: false,
+      savedSortOrders: {},
+      sortOrderDrafts: {}
+    }
+  },
+  computed: {
+    filteredSortedProducts() {
+      const query = this.sortTableSearch.trim().toLowerCase()
+      let list = this.products
+      if (query) {
+        list = list.filter((product) => {
+          const name = product.name?.toLowerCase() || ''
+          const category = product.category?.name?.toLowerCase() || ''
+          const supplier = product.supplier?.name?.toLowerCase() || ''
+          return name.includes(query) || category.includes(query) || supplier.includes(query)
+        })
+      }
+      return this.sortProductsByOrder(list)
     }
   },
   mounted() {
@@ -165,12 +281,84 @@ export default {
       try {
         const response = await apiClient.get(`/admin/products?sort=${this.sortBy}&days=30`)
         this.products = response.data.products || []
+        this.syncSavedSortOrders()
+        this.hasUnsavedChanges = false
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '加载商品失败'
         console.error('Failed to fetch products:', error)
       } finally {
         this.loading = false
       }
+    },
+    handleSortByChange() {
+      this.sortTableSearch = ''
+      this.sortOrderDrafts = {}
+      this.fetchProducts()
+    },
+    formatSortOrderValue(value) {
+      const num = Number(value ?? 0)
+      if (!Number.isFinite(num)) return '0'
+      if (Number.isInteger(num)) return String(num)
+      return String(num)
+    },
+    getSortOrderInputValue(product) {
+      if (Object.prototype.hasOwnProperty.call(this.sortOrderDrafts, product.id)) {
+        return this.sortOrderDrafts[product.id]
+      }
+      return this.formatSortOrderValue(product.sort_order)
+    },
+    handleSortOrderDraft(product, event) {
+      this.sortOrderDrafts = {
+        ...this.sortOrderDrafts,
+        [product.id]: event.target.value
+      }
+    },
+    cancelSortOrderDraft(product) {
+      if (!Object.prototype.hasOwnProperty.call(this.sortOrderDrafts, product.id)) {
+        return
+      }
+      const drafts = { ...this.sortOrderDrafts }
+      delete drafts[product.id]
+      this.sortOrderDrafts = drafts
+    },
+    commitSortOrder(product, event) {
+      const raw = (this.sortOrderDrafts[product.id] ?? event.target.value ?? '').trim()
+      if (raw === '') {
+        this.cancelSortOrderDraft(product)
+        return
+      }
+
+      const parsed = Number.parseFloat(raw)
+      if (Number.isNaN(parsed) || parsed < 0) {
+        this.cancelSortOrderDraft(product)
+        return
+      }
+
+      product.sort_order = parsed
+      this.cancelSortOrderDraft(product)
+      this.applyProductSortOrder()
+      this.hasUnsavedChanges = true
+      event.target.blur()
+    },
+    syncSavedSortOrders() {
+      this.savedSortOrders = Object.fromEntries(
+        this.products.map((product) => [product.id, product.sort_order ?? 0])
+      )
+    },
+    sortProductsByOrder(list) {
+      return [...list].sort((a, b) => {
+        const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
+        if (orderDiff !== 0) return orderDiff
+        return (a.id ?? 0) - (b.id ?? 0)
+      })
+    },
+    applyProductSortOrder() {
+      this.products = this.sortProductsByOrder(this.products)
+    },
+    isSortOrderChanged(product) {
+      const saved = this.savedSortOrders[product.id]
+      if (saved === undefined) return false
+      return Number(saved) !== Number(product.sort_order ?? 0)
     },
     openAddModal() {
       this.editingProduct = null
@@ -215,21 +403,10 @@ export default {
     },
     formatBundledPrice(product) {
       if (product.pricing_type === 'bundled_weight') {
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const minWeight = product.pricing_data?.min_weight || 7
-        const maxWeight = product.pricing_data?.max_weight || 15
-        
-        if (pricePerUnit === 0) {
+        if (!(product.pricing_data?.price_per_unit || 0)) {
           return product.price || '0.00'
         }
-        
-        const minPrice = pricePerUnit * minWeight
-        const maxPrice = pricePerUnit * maxWeight
-        
-        if (minPrice === maxPrice) {
-          return `$${minPrice.toFixed(2)}`
-        }
-        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
+        return formatProductPriceRange(product)
       }
       return product.price || '0.00'
     },
@@ -275,8 +452,11 @@ export default {
         
         // Insert at new position
         newProducts.splice(index, 0, draggedProduct)
-        
-        this.products = newProducts
+
+        this.products = newProducts.map((product, sortIndex) => ({
+          ...product,
+          sort_order: sortIndex
+        }))
         this.hasUnsavedChanges = true
       }
       
@@ -289,23 +469,26 @@ export default {
       this.dragOverIndex = null
     },
     async saveSortOrder() {
+      if (this.savingSortOrder) return
+
+      this.savingSortOrder = true
       try {
-        // Prepare the data for bulk update
         const sortOrderData = {
-          products: this.products.map((product, index) => ({
+          products: this.products.map((product) => ({
             product_id: product.id,
-            sort_order: index
+            sort_order: product.sort_order ?? 0
           }))
         }
-        
+
         await apiClient.put('/admin/products/sort-order', sortOrderData)
+        this.syncSavedSortOrders()
         this.hasUnsavedChanges = false
-        
-        // Show success message (you can add a toast notification here if you have one)
-        console.log('Sort order saved successfully')
+        this.applyProductSortOrder()
       } catch (error) {
         await this.showError(error.response?.data?.message || error.response?.data?.error || '保存排序失败')
         console.error('Save sort order error:', error)
+      } finally {
+        this.savingSortOrder = false
       }
     }
   }
@@ -360,8 +543,13 @@ export default {
   
   .sort-select,
   .add-btn,
-  .save-btn {
+  .save-btn,
+  .sort-table-search {
     width: 100%;
+  }
+
+  .view-mode-toggle {
+    align-self: center;
   }
 }
 
@@ -434,10 +622,254 @@ export default {
   height: 20px;
 }
 
-.save-btn:hover {
+.save-btn:hover:not(:disabled) {
   background: #45a049;
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
+}
+
+.save-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+  transform: none;
+}
+
+.save-btn-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: save-btn-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes save-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 24px;
+  padding: 4px;
+}
+
+.view-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.view-mode-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.view-mode-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.view-mode-btn.active {
+  background: var(--md-primary);
+  color: white;
+  box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.3);
+}
+
+.sort-table-search {
+  min-width: 220px;
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+
+.sort-table-search:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+}
+
+.sort-table-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-md);
+}
+
+.sort-table-hint {
+  margin: 0;
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+}
+
+.sort-table-empty {
+  text-align: center;
+  padding: var(--md-spacing-lg);
+  color: var(--md-on-surface-variant);
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--md-radius-md);
+  border: 1px solid var(--md-outline-variant);
+  background: #FFFFFF;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--md-label-size);
+}
+
+.data-table th,
+.data-table td {
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  text-align: left;
+  border-bottom: 1px solid var(--md-outline-variant);
+  vertical-align: middle;
+}
+
+.data-table th {
+  background: var(--md-surface-variant);
+  font-weight: 600;
+  color: var(--md-on-surface);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(255, 140, 0, 0.04);
+}
+
+.data-table tbody tr.row-changed {
+  background: rgba(76, 175, 80, 0.08);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.col-rank {
+  width: 56px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--md-on-surface-variant);
+}
+
+.col-sort {
+  width: 96px;
+}
+
+.col-image {
+  width: 72px;
+}
+
+.col-name {
+  min-width: 200px;
+}
+
+.col-category {
+  min-width: 100px;
+}
+
+.col-status {
+  width: 80px;
+}
+
+.col-actions {
+  width: 72px;
+}
+
+.sort-order-input {
+  width: 80px;
+  padding: 6px 8px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  text-align: center;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+
+.sort-order-input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+}
+
+.table-product-image {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--md-radius-sm);
+  overflow: hidden;
+  background: var(--md-surface-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.table-product-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.table-image-placeholder {
+  opacity: 0.35;
+  color: var(--md-on-surface-variant);
+}
+
+.table-image-placeholder svg {
+  width: 24px;
+  height: 24px;
+}
+
+.table-product-name {
+  display: block;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  line-height: 1.3;
+}
+
+.table-supplier {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.table-edit-btn {
+  padding: 4px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: var(--md-radius-sm);
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+  font-size: var(--md-label-size);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.table-edit-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .loading, .error {

@@ -11,6 +11,7 @@ from models.product import Product
 from models.product_variant import ProductVariant
 from models.groupdeal import GroupDeal, GroupDealProduct
 from models.order import Order, OrderItem
+from models.order_audit import OrderAuditEvent
 from models.supplier import Supplier
 from models.product_sales_stats import ProductSalesStats
 from models.delivery_fee_config import DeliveryFeeConfig

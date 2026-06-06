@@ -160,13 +160,13 @@
                       class="ledger-delta"
                       :class="{ 'ledger-delta--pos': Number(t.delta) > 0, 'ledger-delta--neg': Number(t.delta) < 0 }"
                     >
-                      {{ Number(t.delta) > 0 ? '+' : '' }}{{ Number(t.delta).toFixed(2) }}
+                      {{ Number(t.delta) > 0 ? '+' : '' }}{{ formatOrderMoney2(t.delta) }}
                     </span>
                   </div>
                   <p v-if="t.reason" class="ledger-reason">{{ t.reason }}</p>
                   <p v-if="t.related_order_number" class="ledger-order">订单：{{ t.related_order_number }}</p>
                   <p class="ledger-footer-line">
-                    余额 ${{ Number(t.balance_after).toFixed(2) }} · {{ formatTxTime(t.created_at) }}
+                    余额 ${{ formatOrderMoney2(t.balance_after) }} · {{ formatTxTime(t.created_at) }}
                   </p>
                 </li>
               </ul>
@@ -187,6 +187,7 @@ import { useModal } from '../composables/useModal'
 import { useAuthStore } from '../stores/auth'
 import { REFERRAL_BIND_DEBOUNCE_MS } from '../utils/referralLiveBind'
 import { getUserHasCompletedOrderCached } from '../utils/referralInviteUi'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 export default {
   name: 'Me',
@@ -251,7 +252,7 @@ export default {
       return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
     },
     storeCreditDisplay() {
-      return Number(this.user?.store_credit_balance || 0).toFixed(2)
+      return formatOrderMoney2(this.user?.store_credit_balance || 0)
     },
     inviteShareOrigin() {
       return getAppPublicOrigin()
@@ -291,6 +292,7 @@ export default {
     }
   },
   methods: {
+    formatOrderMoney2,
     loadUser() {
       if (!this.user) {
         // Try to fetch from API

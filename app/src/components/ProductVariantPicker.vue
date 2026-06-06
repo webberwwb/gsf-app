@@ -40,6 +40,8 @@
 
 
 <script>
+import { formatVariantDelta } from '../utils/productPriceDisplay'
+
 export default {
   name: 'ProductVariantPicker',
   props: {
@@ -56,7 +58,7 @@ export default {
     formatDelta(delta) {
       const d = parseFloat(delta || 0)
       if (d === 0) return ''
-      return `${d > 0 ? '+' : '-'}$${Math.abs(d).toFixed(2)}`
+      return formatVariantDelta(d)
     }
   }
 }

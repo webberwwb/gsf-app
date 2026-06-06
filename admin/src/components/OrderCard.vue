@@ -140,23 +140,23 @@
                     <div class="tooltip-divider"></div>
                     <div v-if="item.product.pricing_type === 'per_item'" class="tooltip-row">
                       <span class="tooltip-label">价格:</span>
-                      <span class="tooltip-value">${{ item.product.pricing_data?.price?.toFixed(2) }}</span>
+                      <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price) }}</span>
                     </div>
                     <div v-else-if="item.product.pricing_type === 'weight_range'" class="tooltip-section">
                       <div class="tooltip-label">价格区间:</div>
                       <div v-for="(range, idx) in item.product.pricing_data?.ranges" :key="idx" class="tooltip-range">
                         <span>{{ range.min }}{{ range.max ? ` - ${range.max}` : '+' }} {{ item.product.pricing_data?.unit || 'lb' }}:</span>
-                        <span class="tooltip-price">${{ range.price?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                        <span class="tooltip-price">${{ formatStatMoney(range.price) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
                       </div>
                     </div>
                     <div v-else-if="item.product.pricing_type === 'unit_weight'" class="tooltip-row">
                       <span class="tooltip-label">单价:</span>
-                      <span class="tooltip-value">${{ item.product.pricing_data?.price_per_unit?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                      <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price_per_unit) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
                     </div>
                     <div v-else-if="item.product.pricing_type === 'bundled_weight'" class="tooltip-section">
                       <div class="tooltip-row">
                         <span class="tooltip-label">单价:</span>
-                        <span class="tooltip-value">${{ item.product.pricing_data?.price_per_unit?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                        <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price_per_unit) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
                       </div>
                       <div class="tooltip-row">
                         <span class="tooltip-label">重量范围:</span>
@@ -175,11 +175,11 @@
           <span class="breakdown-value">${{ orderSubtotalFormatted(order) }}</span>
         </div>
         <div
-          v-if="orderTaxNumber(order) > 0"
+          v-if="storeCreditApplied(order) > 0"
           class="breakdown-row"
         >
-          <span class="breakdown-label">税费:</span>
-          <span class="breakdown-value">${{ orderTaxFormatted(order) }}</span>
+          <span class="breakdown-label">代金券:</span>
+          <span class="breakdown-value breakdown-value--credit">-${{ moneyCredit(order) }}</span>
         </div>
         <div
           v-if="orderAdjustmentNumber(order) !== 0"
@@ -198,13 +198,6 @@
         >
           <span class="breakdown-label">配送费:</span>
           <span class="breakdown-value">{{ shippingFeeDisplay(order) }}</span>
-        </div>
-        <div
-          v-if="storeCreditApplied(order) > 0"
-          class="breakdown-row"
-        >
-          <span class="breakdown-label">代金券:</span>
-          <span class="breakdown-value breakdown-value--credit">-${{ moneyCredit(order) }}</span>
         </div>
         <div class="breakdown-row breakdown-row--due">
           <span class="breakdown-label">应付金额:</span>
@@ -279,7 +272,6 @@ import {
   orderStoreCreditAppliedNumber,
   orderAmountDueNumber,
   orderSubtotalNumber,
-  orderTaxNumber as computeOrderTax,
   orderAdjustmentNumber as computeOrderAdjustment,
   formatOrderMoney2
 } from '../utils/orderPricing'
@@ -323,6 +315,9 @@ export default {
     }
   },
   methods: {
+    formatStatMoney(value) {
+      return formatOrderMoney2(value)
+    },
     toOrderLineDisplay,
     toggleOrderItems() {
       this.showOrderItems = !this.showOrderItems
@@ -367,19 +362,13 @@ export default {
       return computeOrderAdjustment(o)
     },
     orderAdjustmentAbsFormatted(o) {
-      return Math.abs(computeOrderAdjustment(o)).toFixed(2)
-    },
-    orderTaxNumber(o) {
-      return computeOrderTax(o)
-    },
-    orderTaxFormatted(o) {
-      return this.orderTaxNumber(o).toFixed(2)
+      return formatOrderMoney2(Math.abs(computeOrderAdjustment(o)))
     },
     shippingFeeDisplay(o) {
       if (!o) return '免运费'
       const n = parseFloat(o.shipping_fee)
       if (!Number.isFinite(n) || n <= 0) return '免运费'
-      return `$${n.toFixed(2)}`
+      return `$${formatOrderMoney2(n)}`
     },
     formatAddress(address) {
       if (!address) return 'N/A'

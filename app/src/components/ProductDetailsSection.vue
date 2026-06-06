@@ -91,12 +91,13 @@
 <script>
 import Modal from './Modal.vue'
 import { formatSubstitutePriceLabel } from '../utils/orderItemPricing'
+import { formatVariantDelta } from '../utils/productPriceDisplay'
 
 const SUBSTITUTE_INFO_MESSAGE = `
 <p>若您订购的原商品缺货：</p>
 <ul>
   <li><strong>接受备选</strong>：将自动更换为备选产品，并按备选产品的价格结算（通常更优惠）。</li>
-  <li><strong>不要备选</strong>：若原商品缺货，该行仍保留在订单中（暂不收费）。我们会尽量找货；若无法供应，管理员会联系您或删除该行。</li>
+  <li><strong>不要备选</strong>：我们会尽量为您找原商品；若最终无法供应，该商品会被自动取消，可能影响配送费档位。</li>
 </ul>
 <p>请在下单前选择您的偏好。</p>
 `.trim()
@@ -138,7 +139,7 @@ export default {
     formatDelta(delta) {
       const d = parseFloat(delta || 0)
       if (d === 0) return ''
-      return `${d > 0 ? '+' : '-'}$${Math.abs(d).toFixed(2)}`
+      return formatVariantDelta(d)
     }
   }
 }

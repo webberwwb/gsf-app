@@ -177,7 +177,7 @@
                   <div class="order-id">{{ order.order_number }}</div>
                   <div class="order-details">
                     <span>商品: {{ order.items?.length || 0 }}件</span>
-                    <span>总价: ${{ parseFloat(order.total || 0).toFixed(2) }}</span>
+                    <span>总价: ${{ formatOrderMoney2(orderFinalTotalNumber(order)) }}</span>
                     <span>状态: {{ getStatusText(order.status) }}</span>
                   </div>
                 </div>
@@ -210,6 +210,8 @@ import { formatDateEST_CN } from '../utils/date'
 import OrderCard from '../components/OrderCard.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
 import OrderMergeModal from '../components/OrderMergeModal.vue'
+import { calculateOrderPoints } from '../utils/orderPoints'
+import { orderAmountDueNumber, formatOrderMoney2, orderFinalTotalNumber } from '../utils/orderPricing'
 
 export default {
   name: 'Orders',
@@ -292,6 +294,8 @@ export default {
     this.fetchOrders()
   },
   methods: {
+    formatOrderMoney2,
+    orderFinalTotalNumber,
     async fetchGroupDeals() {
       try {
         const response = await apiClient.get('/admin/group-deals', {
@@ -617,10 +621,10 @@ export default {
         return
       }
       
-      const amount = parseFloat(orderToMark.total || 0).toFixed(2)
-      const pointsToEarn = Math.floor(parseFloat(orderToMark.total) * 100)
+      const amount = formatOrderMoney2(orderAmountDueNumber(orderToMark))
+      const pointsToEarn = calculateOrderPoints(orderToMark)
       
-      const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
+      const confirmed = await this.confirm(`确认标记订单 #${orderToMark.order_number} 为已付款?\n\n应付金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
       if (!confirmed) {
         return
       }
@@ -654,7 +658,12 @@ export default {
         return
       }
       
-      const confirmed = await this.confirm(`确认标记订单 #${this.selectedOrder.order_number} 为已完成?`)
+      let confirmMsg = `确认标记订单 #${this.selectedOrder.order_number} 为已完成?`
+      if (this.selectedOrder.payment_status === 'unpaid') {
+        const pts = calculateOrderPoints(this.selectedOrder)
+        confirmMsg += `\n\n注意：订单仍为「未付款」，不会发放积分（预计 ${pts} 分）。\n请先点击「标记已付款」发放积分。`
+      }
+      const confirmed = await this.confirm(confirmMsg, { type: 'warning' })
       if (!confirmed) {
         return
       }
@@ -668,7 +677,11 @@ export default {
         this.ordersStore.updateOrder(updatedOrder)
         this.selectedOrder = updatedOrder
         
-        await this.success('订单已标记为已完成')
+        let successMsg = '订单已标记为已完成'
+        if (response.data.points_notice || updatedOrder.payment_status === 'unpaid') {
+          successMsg += '\n积分未发放：请标记为「已付款」后才会计入用户积分。'
+        }
+        await this.success(successMsg)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
         await this.error(`更新失败: ${errorMsg}`)
@@ -701,10 +714,10 @@ export default {
     },
     
     async updatePaymentStatus(order) {
-      const amount = parseFloat(order.total || 0).toFixed(2)
-      const pointsToEarn = Math.floor(parseFloat(order.total) * 100)
+      const amount = formatOrderMoney2(orderAmountDueNumber(order))
+      const pointsToEarn = calculateOrderPoints(order)
       
-      const confirmed = await this.confirm(`确认标记订单 #${order.order_number} 为已付款?\n\n金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
+      const confirmed = await this.confirm(`确认标记订单 #${order.order_number} 为已付款?\n\n应付金额: $${amount}\n将获得积分: ${pointsToEarn} 分\n\n支付后订单将自动完成。`)
       if (!confirmed) {
         return
       }

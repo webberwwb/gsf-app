@@ -39,7 +39,7 @@ def setup_test_data(app):
         # Delete order items first (due to foreign key constraint)
         test_orders = Order.query.filter(Order.order_number.like('TEST-%')).all()
         for order in test_orders:
-            OrderItem.query.filter_by(order_id=order.id).delete()
+            OrderItem.soft_delete_for_order(order.id, db.session)
         Order.query.filter(Order.order_number.like('TEST-%')).delete()
         
         # Create test user if not exists

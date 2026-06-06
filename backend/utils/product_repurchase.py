@@ -42,6 +42,7 @@ def compute_product_repurchase_rates(admin_user_ids=None):
         .join(Product, Product.id == OrderItem.product_id)
         .filter(
             Order.deleted_at.is_(None),
+            OrderItem.deleted_at.is_(None),
             Order.status != OrderStatus.CANCELLED.value,
         )
     )

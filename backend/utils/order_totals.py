@@ -1,0 +1,104 @@
+"""Order header totals: shipping tier base, amount_due, recalculation."""
+
+from decimal import Decimal
+
+from utils.order_business_rules import ORDER_PRICING_AND_POINTS_RULES
+from utils.shipping import calculate_shipping_fee
+from utils.order_points import calculate_order_points
+from utils.money import round_money
+
+
+def _dec(value) -> Decimal:
+    if value is None:
+        return Decimal('0')
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def shipping_tier_base(order) -> Decimal:
+    """Net base for delivery fee tiers: subtotal - credit - adjustment."""
+    subtotal = _dec(order.subtotal)
+    credit = _dec(order.store_credit_applied)
+    adjustment = _dec(order.adjustment_amount)
+    return round_money(max(Decimal('0'), subtotal - credit - adjustment))
+
+
+def calculate_amount_due(order) -> Decimal:
+    """Payable amount after credit, adjustment, and shipping."""
+    subtotal = _dec(order.subtotal)
+    credit = _dec(order.store_credit_applied)
+    adjustment = _dec(order.adjustment_amount)
+    shipping = _dec(order.shipping_fee)
+    return round_money(max(Decimal('0'), subtotal - credit + adjustment + shipping))
+
+
+def order_items_for_shipping(order):
+    """Build order_items list for calculate_shipping_fee from an Order."""
+    from models.product import Product
+
+    items = []
+    for oi in order.items:
+        product = Product.query.get(oi.product_id)
+        if product:
+            items.append({
+                'product': product,
+                'total_price': float(oi.total_price or 0),
+            })
+    return items
+
+
+def recalculate_order_totals(order):
+    """
+    Recompute subtotal, shipping, total, and points from line items.
+    See order_business_rules.ORDER_PRICING_AND_POINTS_RULES.
+    """
+    from models.address import Address
+
+    subtotal = Decimal('0')
+    for oi in order.items:
+        subtotal += round_money(oi.total_price)
+
+    address = None
+    if order.delivery_method == 'delivery' and order.address_id:
+        address = Address.query.get(order.address_id)
+
+    tier_base = shipping_tier_base(order)
+    shipping_items = order_items_for_shipping(order)
+    shipping_fee = calculate_shipping_fee(
+        tier_base,
+        order.delivery_method,
+        address,
+        shipping_items,
+    )
+
+    adjustment = round_money(order.adjustment_amount)
+    order.subtotal = round_money(subtotal)
+    order.tax = Decimal('0')
+    order.shipping_fee = round_money(shipping_fee)
+    order.total = round_money(subtotal + shipping_fee + adjustment)
+    order.points_earned = calculate_order_points(order)
+
+
+def clamp_store_credit(order):
+    """Ensure store_credit_applied does not exceed amount due (incl. shipping/adj)."""
+    due_before_credit = _dec(order.subtotal) + _dec(order.shipping_fee) + _dec(order.adjustment_amount)
+    applied = _dec(order.store_credit_applied)
+    if applied > due_before_credit:
+        order.store_credit_applied = round_money(max(Decimal('0'), due_before_credit))
+
+
+def sync_order_pricing(order, *, reprice_lines=True):
+    """Single entry after line or header changes."""
+    from utils.order_item_pricing import recalculate_existing_item
+
+    if reprice_lines:
+        for item in order.items:
+            recalculate_existing_item(item)
+    recalculate_order_totals(order)
+    clamp_store_credit(order)
+    # Shipping tier depends on credit/adj — recalc once more if credit was clamped
+    recalculate_order_totals(order)
+
+
+__doc__ = (recalculate_order_totals.__doc__ or '') + '\n\n' + ORDER_PRICING_AND_POINTS_RULES

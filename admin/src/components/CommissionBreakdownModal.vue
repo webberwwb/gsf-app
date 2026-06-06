@@ -20,7 +20,7 @@
           <div class="commission-summary">
             <div class="summary-item">
               <span class="summary-label">总提成:</span>
-              <span class="summary-value total">${{ commissionData.total_commission.toFixed(2) }}</span>
+              <span class="summary-value total">${{ formatMoney(commissionData.total_commission) }}</span>
             </div>
           </div>
 
@@ -33,7 +33,7 @@
               </div>
               <div class="sdr-total">
                 <span class="total-label">提成总额:</span>
-                <span class="total-value">${{ record.total_commission.toFixed(2) }}</span>
+                <span class="total-value">${{ formatMoney(record.total_commission) }}</span>
               </div>
             </div>
 
@@ -41,11 +41,11 @@
               <div class="breakdown-row summary-row">
                 <div class="breakdown-item">
                   <span class="breakdown-label">自己客户提成:</span>
-                  <span class="breakdown-value own">${{ record.own_customer_commission.toFixed(2) }}</span>
+                  <span class="breakdown-value own">${{ formatMoney(record.own_customer_commission) }}</span>
                 </div>
                 <div class="breakdown-item">
                   <span class="breakdown-label">一般客户提成:</span>
-                  <span class="breakdown-value general">${{ record.general_customer_commission.toFixed(2) }}</span>
+                  <span class="breakdown-value general">${{ formatMoney(record.general_customer_commission) }}</span>
                 </div>
               </div>
             </div>
@@ -69,21 +69,21 @@
                       <td class="product-name">{{ detail.product_name }}</td>
                       <td>
                         <div v-if="detail.commission_type === 'per_item'">
-                          {{ detail.own_quantity }} 只 × ${{ detail.own_rate.toFixed(2) }}
+                          {{ detail.own_quantity }} 只 × ${{ formatMoney(detail.own_rate) }}
                         </div>
                         <div v-else>
-                          {{ detail.own_weight ? detail.own_weight.toFixed(2) : 0 }} 磅 × ${{ detail.own_rate.toFixed(2) }}
+                          {{ detail.own_weight ? detail.own_weight.toFixed(2) : 0 }} 磅 × ${{ formatMoney(detail.own_rate) }}
                         </div>
-                        <div class="amount">${{ detail.own_commission.toFixed(2) }}</div>
+                        <div class="amount">${{ formatMoney(detail.own_commission) }}</div>
                       </td>
                       <td>
                         <div v-if="detail.commission_type === 'per_item'">
-                          {{ detail.general_quantity }} 只 × ${{ detail.general_rate.toFixed(2) }}
+                          {{ detail.general_quantity }} 只 × ${{ formatMoney(detail.general_rate) }}
                         </div>
                         <div v-else>
-                          {{ detail.general_weight ? detail.general_weight.toFixed(2) : 0 }} 磅 × ${{ detail.general_rate.toFixed(2) }}
+                          {{ detail.general_weight ? detail.general_weight.toFixed(2) : 0 }} 磅 × ${{ formatMoney(detail.general_rate) }}
                         </div>
-                        <div class="amount">${{ detail.general_commission.toFixed(2) }}</div>
+                        <div class="amount">${{ formatMoney(detail.general_commission) }}</div>
                       </td>
                       <td>
                         <div v-if="detail.commission_type === 'per_item'">
@@ -93,13 +93,13 @@
                           {{ ((detail.own_weight || 0) + (detail.general_weight || 0)).toFixed(2) }} 磅
                         </div>
                       </td>
-                      <td class="commission-amount">${{ detail.total_commission.toFixed(2) }}</td>
+                      <td class="commission-amount">${{ formatMoney(detail.total_commission) }}</td>
                     </tr>
                   </tbody>
                   <tfoot>
                     <tr>
                       <td colspan="4" class="total-label">总计</td>
-                      <td class="total-amount">${{ record.total_commission.toFixed(2) }}</td>
+                      <td class="total-amount">${{ formatMoney(record.total_commission) }}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -114,13 +114,13 @@
               <div v-if="record.order_grouping.own_customer_orders && record.order_grouping.own_customer_orders.length > 0" class="order-group own-customer-group">
                 <div class="group-header">
                   <h5>自己客户订单 ({{ record.order_grouping.own_customer_orders.length }})</h5>
-                  <span class="group-badge own">提成: ${{ record.own_customer_commission.toFixed(2) }}</span>
+                  <span class="group-badge own">提成: ${{ formatMoney(record.own_customer_commission) }}</span>
                 </div>
                 <div class="orders-list">
                   <div v-for="order in record.order_grouping.own_customer_orders" :key="order.order_id" class="order-card">
                     <div class="order-header">
                       <span class="order-number">订单: {{ order.order_number }}</span>
-                      <span class="order-total">${{ order.total.toFixed(2) }}</span>
+                      <span class="order-total">${{ formatMoney(order.total) }}</span>
                     </div>
                     <div class="order-user">
                       <span class="user-name">{{ order.user_name || 'N/A' }}</span>
@@ -133,7 +133,7 @@
                         <span class="item-details">
                           <span v-if="item.quantity">数量: {{ item.quantity }}</span>
                           <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
-                          <span class="item-subtotal">${{ item.subtotal ? item.subtotal.toFixed(2) : '0.00' }}</span>
+                          <span class="item-subtotal">${{ formatMoney(item.subtotal || 0) }}</span>
                         </span>
                       </div>
                     </div>
@@ -145,13 +145,13 @@
               <div v-if="record.order_grouping.other_customer_orders && record.order_grouping.other_customer_orders.length > 0" class="order-group other-customer-group">
                 <div class="group-header">
                   <h5>一般客户订单 ({{ record.order_grouping.other_customer_orders.length }})</h5>
-                  <span class="group-badge general">提成: ${{ record.general_customer_commission.toFixed(2) }}</span>
+                  <span class="group-badge general">提成: ${{ formatMoney(record.general_customer_commission) }}</span>
                 </div>
                 <div class="orders-list">
                   <div v-for="order in record.order_grouping.other_customer_orders" :key="order.order_id" class="order-card">
                     <div class="order-header">
                       <span class="order-number">订单: {{ order.order_number }}</span>
-                      <span class="order-total">${{ order.total.toFixed(2) }}</span>
+                      <span class="order-total">${{ formatMoney(order.total) }}</span>
                     </div>
                     <div class="order-user">
                       <span class="user-name">{{ order.user_name || 'N/A' }}</span>
@@ -164,7 +164,7 @@
                         <span class="item-details">
                           <span v-if="item.quantity">数量: {{ item.quantity }}</span>
                           <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
-                          <span class="item-subtotal">${{ item.subtotal ? item.subtotal.toFixed(2) : '0.00' }}</span>
+                          <span class="item-subtotal">${{ formatMoney(item.subtotal || 0) }}</span>
                         </span>
                       </div>
                     </div>
@@ -182,7 +182,7 @@
                   <div v-for="order in record.order_grouping.no_commission_orders" :key="order.order_id" class="order-card">
                     <div class="order-header">
                       <span class="order-number">订单: {{ order.order_number }}</span>
-                      <span class="order-total">${{ order.total.toFixed(2) }}</span>
+                      <span class="order-total">${{ formatMoney(order.total) }}</span>
                     </div>
                     <div class="order-user">
                       <span class="user-name">{{ order.user_name || 'N/A' }}</span>
@@ -195,7 +195,7 @@
                         <span class="item-details">
                           <span v-if="item.quantity">数量: {{ item.quantity }}</span>
                           <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
-                          <span class="item-subtotal">${{ item.subtotal ? item.subtotal.toFixed(2) : '0.00' }}</span>
+                          <span class="item-subtotal">${{ formatMoney(item.subtotal || 0) }}</span>
                         </span>
                       </div>
                     </div>
@@ -246,7 +246,7 @@
                 <div class="adjustment-display">
                   <span class="adjustment-label">当前调整:</span>
                   <span :class="['adjustment-amount', record.manual_adjustment >= 0 ? 'positive' : 'negative']">
-                    {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ record.manual_adjustment.toFixed(2) }}
+                    {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ formatMoney(record.manual_adjustment) }}
                   </span>
                 </div>
                 <div v-if="record.adjustment_notes" class="adjustment-notes">
@@ -259,17 +259,17 @@
             <div class="final-total-section">
               <div class="final-total-row">
                 <span class="final-total-label">计算提成:</span>
-                <span class="final-total-value">${{ record.total_commission.toFixed(2) }}</span>
+                <span class="final-total-value">${{ formatMoney(record.total_commission) }}</span>
               </div>
               <div v-if="record.manual_adjustment !== 0" class="final-total-row adjustment-row">
                 <span class="final-total-label">手动调整:</span>
                 <span :class="['final-total-value', record.manual_adjustment >= 0 ? 'positive' : 'negative']">
-                  {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ record.manual_adjustment.toFixed(2) }}
+                  {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ formatMoney(record.manual_adjustment) }}
                 </span>
               </div>
               <div class="final-total-row total-row">
                 <span class="final-total-label">最终总额:</span>
-                <span class="final-total-value-large">${{ record.final_total.toFixed(2) }}</span>
+                <span class="final-total-value-large">${{ formatMoney(record.final_total) }}</span>
               </div>
             </div>
 
@@ -311,6 +311,7 @@
 <script>
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 export default {
   name: 'CommissionBreakdownModal',
@@ -339,6 +340,9 @@ export default {
     this.fetchCommission()
   },
   methods: {
+    formatMoney(value) {
+      return formatOrderMoney2(value)
+    },
     async fetchCommission() {
       try {
         this.loading = true

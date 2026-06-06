@@ -41,6 +41,7 @@
 
 <script>
 import { useCartStore } from '../stores/cart'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 export default {
   name: 'Cart',
@@ -53,7 +54,7 @@ export default {
       return this.cartStore.items
     },
     totalPrice() {
-      return this.cartStore.totalPrice.toFixed(2)
+      return formatOrderMoney2(this.cartStore.totalPrice)
     }
   },
   mounted() {

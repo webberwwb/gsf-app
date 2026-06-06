@@ -31,7 +31,7 @@
                   <div class="order-number">{{ order.order_number }}</div>
                   <div class="order-info">
                     <span>商品: {{ order.items?.length || 0 }}件</span>
-                    <span>总价: ${{ parseFloat(order.total || 0).toFixed(2) }}</span>
+                    <span>总价: ${{ formatStatMoney(orderFinalTotalNumber(order)) }}</span>
                   </div>
                   <div class="order-meta">
                     <span v-if="order.payment_method" class="meta-item">
@@ -128,24 +128,36 @@
             <div v-if="hasAnyNotes()" class="conflict-section">
               <label class="conflict-label">备注:</label>
               <div class="conflict-options">
-                <label 
-                  v-for="(order, index) in orders.filter(o => o.notes)" 
+                <label
+                  class="radio-option"
+                  :class="{ selected: mergeData.notes_action === 'combine' }">
+                  <input
+                    type="radio"
+                    value="combine"
+                    v-model="mergeData.notes_action" />
+                  <span>保留全部备注（合并，默认）</span>
+                </label>
+                <p v-if="mergeData.notes_action === 'combine'" class="notes-preview">{{ combinedNotesPreview }}</p>
+                <label
+                  v-for="(order, index) in orders.filter(o => o.notes)"
                   :key="`notes-${order.id}`"
                   class="radio-option"
-                  :class="{ 'selected': mergeData.keep_notes === order.notes }">
-                  <input 
-                    type="radio" 
-                    :value="order.notes" 
-                    v-model="mergeData.keep_notes" />
-                  <span>订单 {{ index + 1 }}: {{ order.notes }}</span>
+                  :class="{ selected: mergeData.notes_action === 'replace' && mergeData.keep_notes === order.notes }"
+                  @click="selectReplaceNotes(order.notes)">
+                  <input
+                    type="radio"
+                    name="merge-notes"
+                    :checked="mergeData.notes_action === 'replace' && mergeData.keep_notes === order.notes"
+                    @change="selectReplaceNotes(order.notes)" />
+                  <span>仅订单 {{ index + 1 }}: {{ order.notes }}</span>
                 </label>
-                <label 
+                <label
                   class="radio-option"
-                  :class="{ 'selected': mergeData.keep_notes === '' }">
-                  <input 
-                    type="radio" 
-                    value="" 
-                    v-model="mergeData.keep_notes" />
+                  :class="{ selected: mergeData.notes_action === 'clear' }">
+                  <input
+                    type="radio"
+                    value="clear"
+                    v-model="mergeData.notes_action" />
                   <span>清空备注</span>
                 </label>
               </div>
@@ -156,17 +168,20 @@
           <div class="merged-preview">
             <h3>合并后的商品列表:</h3>
             <div class="items-list">
-              <div v-for="item in mergedItems" :key="item.product_id" class="item-row">
+              <div v-for="item in mergedItems" :key="item.key" class="item-row">
                 <div class="item-info">
-                  <div class="item-name">{{ item.product_name }}</div>
-                  <div class="item-quantity">数量: {{ item.total_quantity }}</div>
+                  <div class="item-name">
+                    {{ item.product_name }}
+                    <span v-if="item.sub_label" class="item-sub-label">{{ item.sub_label }}</span>
+                  </div>
+                  <div class="item-quantity">订单 {{ item.from_order }} · 数量: {{ item.total_quantity }}</div>
                 </div>
-                <div class="item-price">${{ item.total_price.toFixed(2) }}</div>
+                <div class="item-price">${{ formatStatMoney(item.total_price) }}</div>
               </div>
             </div>
             <div class="total-row">
               <span>合并后总价:</span>
-              <span class="total-price">${{ mergedTotal.toFixed(2) }}</span>
+              <span class="total-price">${{ formatStatMoney(mergedTotal) }}</span>
             </div>
           </div>
         </template>
@@ -187,6 +202,8 @@
 
 <script>
 import apiClient from '../api/client'
+import { formatOrderMoney2, orderFinalTotalNumber } from '../utils/orderPricing'
+import { roundMoney } from '../utils/productPriceDisplay'
 
 export default {
   name: 'OrderMergeModal',
@@ -210,38 +227,48 @@ export default {
         keep_delivery_method: null,
         keep_address_id: null,
         keep_pickup_location: null,
-        keep_notes: null
+        keep_notes: null,
+        notes_action: 'combine'
       }
     }
   },
   computed: {
     mergedItems() {
-      const itemsMap = new Map()
-      
-      this.orders.forEach(order => {
-        if (order.items) {
-          order.items.forEach(item => {
-            const productId = item.product_id
-            if (itemsMap.has(productId)) {
-              const existing = itemsMap.get(productId)
-              existing.total_quantity += item.quantity
-              existing.total_price += parseFloat(item.total_price || 0)
-            } else {
-              itemsMap.set(productId, {
-                product_id: productId,
-                product_name: item.product?.name || `商品 ${productId}`,
-                total_quantity: item.quantity,
-                total_price: parseFloat(item.total_price || 0)
-              })
-            }
+      const rows = []
+      this.orders.forEach((order, orderIndex) => {
+        if (!order.items) return
+        order.items.forEach((item) => {
+          const variant = item.variant_name || item.variant?.name
+          const base = item.product?.name || `商品 ${item.product_id}`
+          rows.push({
+            key: `${order.id}-${item.id || item.product_id}-${variant || ''}-${item.accept_substitute}`,
+            product_name: variant ? `${base} (${variant})` : base,
+            sub_label: this.lineSubLabel(item),
+            total_quantity: item.quantity,
+            total_price: roundMoney(item.total_price || 0),
+            from_order: orderIndex + 1
           })
-        }
+        })
       })
-      
-      return Array.from(itemsMap.values())
+      return rows
+    },
+    combinedNotesPreview() {
+      const parts = []
+      const seen = new Set()
+      this.orders.forEach((order) => {
+        if (!order.notes) return
+        String(order.notes).split('\n---\n').forEach((chunk) => {
+          const text = chunk.trim()
+          if (text && !seen.has(text)) {
+            seen.add(text)
+            parts.push(text)
+          }
+        })
+      })
+      return parts.join('\n---\n') || '（无）'
     },
     mergedTotal() {
-      return this.mergedItems.reduce((sum, item) => sum + item.total_price, 0)
+      return roundMoney(this.mergedItems.reduce((sum, item) => sum + item.total_price, 0))
     },
     canMerge() {
       // Check if all conflicts are resolved
@@ -272,6 +299,10 @@ export default {
     }
   },
   methods: {
+    formatStatMoney(value) {
+      return formatOrderMoney2(value)
+    },
+    orderFinalTotalNumber,
     initializeMergeData() {
       // Initialize with values from first order
       if (this.orders.length > 0) {
@@ -282,9 +313,21 @@ export default {
         this.mergeData.keep_pickup_location = firstOrder.pickup_location
         
         // For notes: find the first order with notes, or default to empty string
-        const orderWithNotes = this.orders.find(o => o.notes)
-        this.mergeData.keep_notes = orderWithNotes ? orderWithNotes.notes : ''
+        this.mergeData.keep_notes = null
+        this.mergeData.notes_action = this.hasAnyNotes() ? 'combine' : 'clear'
       }
+    },
+    selectReplaceNotes(notes) {
+      this.mergeData.notes_action = 'replace'
+      this.mergeData.keep_notes = notes
+    },
+    lineSubLabel(item) {
+      if (item.is_unavailable && item.accept_substitute === true) return '· 备选'
+      if (item.is_unavailable && item.accept_substitute === false) return '· 不要备选'
+      if (item.is_unavailable && item.accept_substitute == null) return '· 待确认备选'
+      if (item.accept_substitute === true) return '· 接受备选'
+      if (item.accept_substitute === false) return '· 不要备选'
+      return ''
     },
     hasConflict(field) {
       const values = new Set()
@@ -324,7 +367,8 @@ export default {
           keep_delivery_method: this.mergeData.keep_delivery_method,
           keep_address_id: this.mergeData.keep_address_id,
           keep_pickup_location: this.mergeData.keep_pickup_location,
-          keep_notes: this.mergeData.keep_notes
+          keep_notes: this.mergeData.notes_action === 'replace' ? this.mergeData.keep_notes : null,
+          notes_action: this.mergeData.notes_action
         })
 
         this.$emit('merged', response.data.merged_order)
@@ -583,6 +627,23 @@ export default {
   display: flex;
   flex-direction: column;
   gap: var(--md-spacing-xs);
+}
+
+.notes-preview {
+  margin: 0 0 0 1.75rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.item-sub-label {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.55);
+  margin-left: 0.25rem;
 }
 
 .radio-option {

@@ -40,8 +40,8 @@ class Product(BaseModel):
     # If False, product price won't be included in subtotal calculation for free shipping
     counts_toward_free_shipping = db.Column(db.Boolean, default=True, nullable=False)
     
-    # Custom sort order (lower numbers appear first)
-    sort_order = db.Column(db.Integer, default=0, nullable=False, index=True)
+    # Custom sort order (lower numbers appear first; decimals allowed e.g. 1.1 between 1 and 2)
+    sort_order = db.Column(db.Numeric(12, 4), default=0, nullable=False, index=True)
 
     # Embedded substitute product (when primary is unavailable)
     substitute_enabled = db.Column(db.Boolean, default=False, nullable=False)
@@ -75,30 +75,8 @@ class Product(BaseModel):
     
     def get_display_price(self):
         """Get display price - the default price shown to customers"""
-        if self.pricing_type == 'per_item':
-            if self.pricing_data and 'price' in self.pricing_data:
-                return float(self.pricing_data['price'])
-            return None
-        elif self.pricing_type == 'weight_range':
-            if self.pricing_data and 'ranges' in self.pricing_data:
-                ranges = self.pricing_data['ranges']
-                if ranges:
-                    return float(ranges[0].get('price', 0))
-            return None
-        elif self.pricing_type == 'unit_weight':
-            if self.pricing_data and 'price_per_unit' in self.pricing_data:
-                return float(self.pricing_data['price_per_unit'])
-            return None
-        elif self.pricing_type == 'bundled_weight':
-            if self.pricing_data and 'price_per_unit' in self.pricing_data:
-                # Return average price for display (using mid-point weight)
-                price_per_unit = float(self.pricing_data['price_per_unit'])
-                min_weight = float(self.pricing_data.get('min_weight', 7))
-                max_weight = float(self.pricing_data.get('max_weight', 15))
-                avg_weight = (min_weight + max_weight) / 2
-                return price_per_unit * avg_weight
-            return None
-        return None
+        from utils.order_item_pricing import get_display_price_from_config
+        return get_display_price_from_config(self.pricing_type, self.pricing_data)
     
     def calculate_price(self, quantity=1, weight=None):
         """Calculate price based on pricing type, quantity, and weight"""
@@ -198,7 +176,8 @@ class Product(BaseModel):
             'images': images,  # New multiple images array
             'pricing_type': self.pricing_type,
             'pricing_data': self.pricing_data,
-            'price': self.get_display_price(),  # Main price field for FE
+            'price': self.get_display_price(),  # Main price field for FE (2-decimal rounded)
+            'display_price': self.get_display_price(),
             'description': self.description,
             'stock_limit': self.stock_limit,
             'is_active': self.is_active,
@@ -208,7 +187,7 @@ class Product(BaseModel):
             'category_id': self.category_id,
             'category': self.category.to_dict() if self.category else None,
             'counts_toward_free_shipping': self.counts_toward_free_shipping,
-            'sort_order': self.sort_order,
+            'sort_order': float(self.sort_order) if self.sort_order is not None else 0,
             'variants': variants_data,
             'substitute_enabled': self.substitute_enabled,
             'substitute': self.get_substitute_dict(),

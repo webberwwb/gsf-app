@@ -94,7 +94,7 @@ class CreateProductSchema(Schema):
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     category_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(missing=True)
-    sort_order = fields.Integer(missing=0, validate=validate.Range(min=0))
+    sort_order = fields.Float(missing=0, validate=validate.Range(min=0))
     variants = fields.List(fields.Nested(ProductVariantSchema), allow_none=True)
     substitute_enabled = fields.Boolean(missing=False)
     substitute_name = fields.String(allow_none=True, validate=validate.Length(max=255))
@@ -149,7 +149,7 @@ class UpdateProductSchema(Schema):
     supplier_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     category_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(allow_none=True)
-    sort_order = fields.Integer(allow_none=True, validate=validate.Range(min=0))
+    sort_order = fields.Float(allow_none=True, validate=validate.Range(min=0))
     variants = fields.List(fields.Nested(ProductVariantSchema), allow_none=True)
     substitute_enabled = fields.Boolean(allow_none=True)
     substitute_name = fields.String(allow_none=True, validate=validate.Length(max=255))
@@ -201,7 +201,7 @@ class UpdateProductSchema(Schema):
 class UpdateProductSortOrderSchema(Schema):
     """Schema for updating product sort orders in bulk"""
     product_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    sort_order = fields.Integer(required=True, validate=validate.Range(min=0))
+    sort_order = fields.Float(required=True, validate=validate.Range(min=0))
     
     class Meta:
         unknown = EXCLUDE

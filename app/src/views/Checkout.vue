@@ -129,16 +129,16 @@
             <span class="breakdown-label">小计:</span>
             <span class="breakdown-amount">${{ calculateSubtotal() }}</span>
           </div>
-          <div v-if="deliveryMethod === 'delivery'" class="breakdown-row">
-            <span class="breakdown-label">运费:</span>
-            <span class="breakdown-amount">{{ shippingFeeDisplay }}</span>
-          </div>
           <div
             v-if="creditApplyActive && !isOrderCompleted"
             class="breakdown-row breakdown-row--store-credit"
           >
             <span class="breakdown-label">使用代金券</span>
             <span class="breakdown-amount breakdown-amount--credit">-${{ appliedStoreCreditLineAmount }}</span>
+          </div>
+          <div v-if="deliveryMethod === 'delivery'" class="breakdown-row">
+            <span class="breakdown-label">运费:</span>
+            <span class="breakdown-amount">{{ shippingFeeDisplay }}</span>
           </div>
           <div class="breakdown-row total-row">
             <span class="total-label">{{ orderTotalRowLabel }}:</span>
@@ -154,7 +154,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>最终价格以实际称重为准，所有商品均已含税</span>
+            <span>最终价格以实际称重为准</span>
           </div>
         </div>
       </div>
@@ -538,6 +538,7 @@ import {
   getUserHasCompletedOrderCached,
   invalidateReferralInviteCompletedCache
 } from '../utils/referralInviteUi'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 export default {
   name: 'Checkout',
@@ -670,7 +671,7 @@ export default {
       if (this.shippingFee === 0) {
         return '免运费'
       }
-      return `$${this.shippingFee.toFixed(2)}`
+      return `$${formatOrderMoney2(this.shippingFee)}`
     },
     maxStoreCreditApplicable() {
       const bal = Number(this.currentUser?.store_credit_balance) || 0
@@ -678,12 +679,12 @@ export default {
       return Math.min(bal, t)
     },
     storeCreditBalanceDisplay() {
-      return Number(this.currentUser?.store_credit_balance || 0).toFixed(2)
+      return formatOrderMoney2(this.currentUser?.store_credit_balance || 0)
     },
     /** 本单抵扣 preview: max when toggle on, else $0. */
     storeCreditAppliedDisplay() {
       if (!this.applyStoreCredit) return '0.00'
-      return Number(this.maxStoreCreditApplicable || 0).toFixed(2)
+      return formatOrderMoney2(this.maxStoreCreditApplicable || 0)
     },
     referralRowActive() {
       const s =
@@ -702,7 +703,7 @@ export default {
     /** Dollar amount applied in order breakdown when toggle on. */
     appliedStoreCreditLineAmount() {
       if (!this.creditApplyActive) return '0.00'
-      return Number(this.maxStoreCreditApplicable || 0).toFixed(2)
+      return formatOrderMoney2(this.maxStoreCreditApplicable || 0)
     },
     orderTotalRowLabel() {
       if (this.isOrderCompleted) return '最终价格'
@@ -728,18 +729,18 @@ export default {
         if (i === 0) {
           // Base fee
           if (nextTier) {
-            parts.push(`订单小计 < $${nextTier.threshold.toFixed(2)}: 运费 $${tier.fee.toFixed(2)}`)
+            parts.push(`订单小计 < $${formatOrderMoney2(nextTier.threshold)}: 运费 $${formatOrderMoney2(tier.fee)}`)
           } else {
-            parts.push(`运费 $${tier.fee.toFixed(2)}`)
+            parts.push(`运费 $${formatOrderMoney2(tier.fee)}`)
           }
         } else if (nextTier) {
           // Middle tiers
-          const feeText = tier.fee === 0 ? '免运费' : `运费 $${tier.fee.toFixed(2)}`
-          parts.push(`$${tier.threshold.toFixed(2)} ≤ 订单小计 < $${nextTier.threshold.toFixed(2)}: ${feeText}`)
+          const feeText = tier.fee === 0 ? '免运费' : `运费 $${formatOrderMoney2(tier.fee)}`
+          parts.push(`$${formatOrderMoney2(tier.threshold)} ≤ 订单小计 < $${formatOrderMoney2(nextTier.threshold)}: ${feeText}`)
         } else {
           // Last tier
-          const feeText = tier.fee === 0 ? '免运费' : `运费 $${tier.fee.toFixed(2)}`
-          parts.push(`订单小计 ≥ $${tier.threshold.toFixed(2)}: ${feeText}`)
+          const feeText = tier.fee === 0 ? '免运费' : `运费 $${formatOrderMoney2(tier.fee)}`
+          parts.push(`订单小计 ≥ $${formatOrderMoney2(tier.threshold)}: ${feeText}`)
         }
       }
       
@@ -805,6 +806,12 @@ export default {
     },
     'currentUser.id'(id) {
       if (id) this.refreshReferralInviteUiGate()
+    },
+    creditApplyActive() {
+      this.syncShippingCreditPreview()
+    },
+    maxStoreCreditApplicable() {
+      this.syncShippingCreditPreview()
     }
   },
   beforeUnmount() {
@@ -1075,18 +1082,22 @@ export default {
     },
     calculateSubtotal() {
       const subtotal = this.checkoutStore.subtotal || 0
-      return subtotal.toFixed(2)
+      return formatOrderMoney2(subtotal)
+    },
+    syncShippingCreditPreview() {
+      const credit = this.creditApplyActive ? Number(this.maxStoreCreditApplicable) || 0 : 0
+      this.checkoutStore.setStoreCreditToApply(credit)
     },
     calculateTotal() {
       const raw = Number(this.checkoutStore.total) || 0
       if (this.isOrderCompleted) {
-        return raw.toFixed(2)
+        return formatOrderMoney2(raw)
       }
       if (this.creditApplyActive) {
         const credit = Number(this.maxStoreCreditApplicable) || 0
-        return Math.max(0, raw - credit).toFixed(2)
+        return formatOrderMoney2(Math.max(0, raw - credit))
       }
-      return raw.toFixed(2)
+      return formatOrderMoney2(raw)
     },
     formatPhoneInput() {
       this.phone = this.phone.trim()
@@ -1131,7 +1142,7 @@ export default {
           }
           let useCredit = this.applyStoreCredit ? Number(this.maxStoreCreditApplicable) || 0 : 0
           if (Number.isNaN(useCredit) || useCredit < 0) useCredit = 0
-          orderData.store_credit_to_apply = useCredit.toFixed(2)
+          orderData.store_credit_to_apply = formatOrderMoney2(useCredit)
         }
 
         let response

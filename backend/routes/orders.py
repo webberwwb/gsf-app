@@ -12,19 +12,41 @@ from schemas.order import CreateOrderSchema, UpdateOrderSchema
 from schemas.utils import validate_request
 from decimal import Decimal
 from utils.stock_management import check_and_reserve_stock, restore_stock, update_stock_after_order_modification
-from utils.shipping import calculate_shipping_fee
 from utils.sales_stats import update_product_sales_stats
 from utils.order_item_pricing import (
     enrich_order_item_dict,
     priced_items_from_request,
     create_order_item_rows,
 )
+from utils.order_audit import (
+    EVENT_CUSTOMER_ITEMS_REPLACE,
+    active_items_for_order,
+    apply_item_sources_from_request,
+    item_snapshot,
+    record_order_audit,
+)
+from utils.order_totals import recalculate_order_totals, clamp_store_credit
 from services import credit_service
 from services import referral_service
 import random
 import string
 
 orders_bp = Blueprint('orders', __name__)
+
+
+def _apply_store_credit_and_recalc(order, user_row, store_credit_raw):
+    """Recalculate totals, apply credit, recalc shipping tier with credit/adjustment."""
+    recalculate_order_totals(order)
+    req_dec = Decimal(str(store_credit_raw)) if store_credit_raw is not None else Decimal('0')
+    if req_dec < 0:
+        req_dec = Decimal('0')
+    max_a = credit_service.compute_max_credit_apply(user_row, order.total)
+    applied = min(req_dec, max_a)
+    credit_service.apply_order_store_credit_spend(user_row, order, applied)
+    recalculate_order_totals(order)
+    clamp_store_credit(order)
+    recalculate_order_totals(order)
+
 
 def require_auth():
     """Check if user is authenticated and return user_id"""
@@ -270,47 +292,23 @@ def create_order():
             order_items, subtotal = priced_items_from_request(items)
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
-        
-        # Calculate shipping fee
-        address = None
-        if delivery_method == DeliveryMethod.DELIVERY.value and address_id:
-            address = Address.query.get(address_id)
-        
-        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address, order_items)
-        
-        # Calculate tax (0% for now, can be configured later)
-        tax = Decimal('0')
-        total = subtotal + tax + shipping_fee
-        
+
         user_row = User.query.filter_by(id=user_id).with_for_update().first()
         if not user_row:
             return jsonify({'error': 'User not found'}), 404
-        
+
         if referral_raw and not user_row.referred_by_user_id:
             ok, err = referral_service.try_bind_referral(user_row, referral_raw)
             if not ok:
                 db.session.rollback()
                 return jsonify({'error': err}), 400
             db.session.refresh(user_row)
-        
-        pre_final = total
-        req_dec = Decimal(str(store_credit_raw)) if store_credit_raw is not None else Decimal('0')
-        if req_dec < 0:
-            req_dec = Decimal('0')
-        max_a = credit_service.compute_max_credit_apply(user_row, pre_final)
-        applied = min(req_dec, max_a)
-        
-        # Calculate points (1 point per dollar, excluding shipping fee)
-        points_earned = int(subtotal + tax)
-        
-        # Generate unique order number
+
         order_number = generate_order_number()
-        
-        # Validate payment method
+
         if payment_method not in PaymentMethod.get_all_values():
             payment_method = PaymentMethod.CASH.value
-        
-        # Create order
+
         order = Order(
             user_id=user_id,
             group_deal_id=group_deal_id,
@@ -318,11 +316,11 @@ def create_order():
             delivery_method=delivery_method,
             pickup_location=pickup_location if delivery_method == DeliveryMethod.PICKUP.value else None,
             order_number=order_number,
-            subtotal=subtotal,
-            tax=tax,
-            shipping_fee=shipping_fee,
-            total=total,
-            points_earned=points_earned,
+            subtotal=Decimal('0'),
+            tax=Decimal('0'),
+            shipping_fee=Decimal('0'),
+            total=Decimal('0'),
+            points_earned=0,
             payment_method=payment_method,
             payment_status='unpaid',
             pickup_status='pending',
@@ -330,14 +328,14 @@ def create_order():
             notes=notes,
             store_credit_applied=Decimal('0'),
         )
-        
+
         db.session.add(order)
-        db.session.flush()  # Get order ID
-        
+        db.session.flush()
+
         create_order_item_rows(order.id, order_items, db.session)
-        
+
         try:
-            credit_service.apply_order_store_credit_spend(user_row, order, applied)
+            _apply_store_credit_and_recalc(order, user_row, store_credit_raw)
         except ValueError as e:
             db.session.rollback()
             return jsonify({'error': str(e)}), 400
@@ -422,6 +420,9 @@ def cancel_order(order_id):
             # Continue with cancellation even if stock restoration fails
         
         # Cancel the order
+        user_row = User.query.get(order.user_id)
+        if user_row:
+            credit_service.refund_order_store_credit(order, user_row)
         order.status = OrderStatus.CANCELLED.value
         order.updated_at = utc_now()
         
@@ -652,55 +653,43 @@ def update_order(order_id):
             new_order_items, subtotal = priced_items_from_request(items, unavailable_by_item_id)
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
-        
-        # Calculate shipping fee
-        address = None
-        if delivery_method == DeliveryMethod.DELIVERY.value and address_id:
-            address = Address.query.get(address_id)
-        
-        shipping_fee = calculate_shipping_fee(subtotal, delivery_method, address, new_order_items)
-        
-        # Calculate tax (0% for now, can be configured later)
-        tax = Decimal('0')
-        total = subtotal + tax + shipping_fee
-        
-        # Calculate points (1 point per dollar, excluding shipping fee)
-        points_earned = int(subtotal + tax)
-        
-        # Delete old order items
-        OrderItem.query.filter_by(order_id=order.id).delete()
-        
-        # Update order totals, delivery method, address, pickup location, and payment method
-        order.subtotal = subtotal
-        order.tax = tax
-        order.shipping_fee = shipping_fee
-        order.total = total
-        order.points_earned = points_earned
+
+        items_before = [
+            item_snapshot(i, order.order_number) for i in active_items_for_order(order.id)
+        ]
+        apply_item_sources_from_request(new_order_items, order.id, items)
+
+        OrderItem.soft_delete_for_order(order.id, db.session)
+
         order.delivery_method = delivery_method
         order.address_id = address_id
-        
-        # Update pickup_location (only for pickup orders)
         if 'pickup_location' in validated_data:
             order.pickup_location = pickup_location if delivery_method == DeliveryMethod.PICKUP.value else None
-        
-        # Update notes (user custom notes)
         if 'notes' in validated_data:
             order.notes = notes
-        
         if payment_method and payment_method in PaymentMethod.get_all_values():
             order.payment_method = payment_method
         order.updated_at = utc_now()
-        
+
         create_order_item_rows(order.id, new_order_items, db.session)
-        
-        pre_final = total + Decimal(str(order.adjustment_amount or 0))
-        req_dec = Decimal(str(store_credit_raw)) if store_credit_raw is not None else Decimal('0')
-        if req_dec < 0:
-            req_dec = Decimal('0')
-        max_a = credit_service.compute_max_credit_apply(user_row, pre_final)
-        applied = min(req_dec, max_a)
+        db.session.flush()
+
+        items_after = [
+            item_snapshot(i, order.order_number) for i in active_items_for_order(order.id)
+        ]
+        record_order_audit(
+            order.id,
+            EVENT_CUSTOMER_ITEMS_REPLACE,
+            {
+                'order_number': order.order_number,
+                'items_before': items_before,
+                'items_after': items_after,
+            },
+            actor_user_id=user_id,
+        )
+
         try:
-            credit_service.apply_order_store_credit_spend(user_row, order, applied)
+            _apply_store_credit_and_recalc(order, user_row, store_credit_raw)
         except ValueError as e:
             db.session.rollback()
             return jsonify({'error': str(e)}), 400

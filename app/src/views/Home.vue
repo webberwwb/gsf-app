@@ -74,7 +74,7 @@
                   <div class="bundled-price-compact">
                     <span class="sale-price">{{ formatBundledPrice(product) }}</span>
                     <span class="price-note">/ 份</span>
-                    <span class="unit-price-note">(${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
+                    <span class="unit-price-note">(${{ formatMoney(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
                   </div>
                 </template>
                 <template v-else>
@@ -104,6 +104,7 @@
 import apiClient from '../api/client'
 import { parseDateEST, getNowEST } from '../utils/date'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
+import { formatMoneyRangeDisplay, formatMoney } from '../utils/productPriceDisplay'
 
 export default {
   name: 'Home',
@@ -123,6 +124,7 @@ export default {
     await this.loadData()
   },
   methods: {
+    formatMoney,
     async loadData() {
       this.loading = true
       try {
@@ -176,10 +178,7 @@ export default {
         const minPrice = pricePerUnit * minWeight
         const maxPrice = pricePerUnit * maxWeight
         
-        if (minPrice === maxPrice) {
-          return `$${minPrice.toFixed(2)}`
-        }
-        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
+        return formatMoneyRangeDisplay(minPrice, maxPrice)
       }
       return product.price || '0.00'
     },

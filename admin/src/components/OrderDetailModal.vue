@@ -287,7 +287,6 @@
                 <div class="item-info">
                   <div class="item-name">
                     {{ item.display_name || item.product?.name || 'N/A' }}
-                    <span v-if="item.variant_name" class="item-variant-tag">({{ item.variant_name }})</span>
                     <span v-if="item.is_substituted" class="item-badge sub">替代品</span>
                     <span v-if="item.is_unavailable && item.accept_substitute === false" class="item-badge declined">缺货·不要备选</span>
                     <span v-else-if="item.is_unavailable && item.accept_substitute == null" class="item-badge pending">待确认备选</span>
@@ -306,23 +305,23 @@
                             <div class="tooltip-divider"></div>
                             <div v-if="item.product.pricing_type === 'per_item'" class="tooltip-row">
                               <span class="tooltip-label">价格:</span>
-                              <span class="tooltip-value">${{ item.product.pricing_data?.price?.toFixed(2) }}</span>
+                              <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price) }}</span>
                             </div>
                             <div v-else-if="item.product.pricing_type === 'weight_range'" class="tooltip-section">
                               <div class="tooltip-label">价格区间:</div>
                               <div v-for="(range, idx) in item.product.pricing_data?.ranges" :key="idx" class="tooltip-range">
                                 <span>{{ range.min }}{{ range.max ? ` - ${range.max}` : '+' }} {{ item.product.pricing_data?.unit || 'lb' }}:</span>
-                                <span class="tooltip-price">${{ range.price?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                                <span class="tooltip-price">${{ formatStatMoney(range.price) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
                               </div>
                             </div>
                             <div v-else-if="item.product.pricing_type === 'unit_weight'" class="tooltip-row">
                               <span class="tooltip-label">单价:</span>
-                              <span class="tooltip-value">${{ item.product.pricing_data?.price_per_unit?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                              <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price_per_unit) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
                             </div>
                             <div v-else-if="item.product.pricing_type === 'bundled_weight'" class="tooltip-section">
                               <div class="tooltip-row">
                                 <span class="tooltip-label">单价:</span>
-                                <span class="tooltip-value">${{ item.product.pricing_data?.price_per_unit?.toFixed(2) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                                <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price_per_unit) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
                               </div>
                               <div class="tooltip-row">
                                 <span class="tooltip-label">重量范围:</span>
@@ -347,6 +346,13 @@
                         />
                         <button @click="increaseQuantity(index)" class="qty-btn">+</button>
                       </div>
+                      <ProductVariantPicker
+                        v-if="productVariants(item).length"
+                        :variants="productVariants(item)"
+                        :model-value="item.variant_id"
+                        :allow-none="true"
+                        @update:model-value="(id) => setItemVariant(index, id)"
+                      />
                       <div
                         v-if="productHasSubstitute(item)"
                         class="substitute-chips"
@@ -373,7 +379,7 @@
                         </button>
                       </div>
                     </div>
-                    <span class="item-price">${{ parseFloat(item.total_price || 0).toFixed(2) }}</span>
+                    <span class="item-price">${{ displayItemPrice(item) }}</span>
                   </div>
                   <div v-if="item.product?.pricing_type === 'weight_range' || item.product?.pricing_type === 'unit_weight' || item.product?.pricing_type === 'bundled_weight'" class="weight-input-group">
                     <label>
@@ -403,6 +409,14 @@
                   >
                     {{ item.is_unavailable ? '恢复原商品' : '切换备选' }}
                   </button>
+                  <button
+                    v-if="item.id && isDeclinedUnavailableLine(item) && !item.cannot_fulfill"
+                    type="button"
+                    class="side-action-btn side-action-btn--danger"
+                    @click="markCannotFulfill(item)"
+                  >
+                    无法供应
+                  </button>
                   <button @click="removeItem(index)" class="remove-item-btn" title="删除商品">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -417,11 +431,11 @@
                 <span class="breakdown-value">${{ editableItemsSubtotalFormatted }}</span>
               </div>
               <div
-                v-if="previewTax > 0"
+                v-if="previewCredit > 0"
                 class="breakdown-row"
               >
-                <span class="breakdown-label">税费:</span>
-                <span class="breakdown-value">${{ previewTaxFormatted }}</span>
+                <span class="breakdown-label">代金券:</span>
+                <span class="breakdown-value breakdown-value--credit">-${{ previewCreditFormatted }}</span>
               </div>
               <div
                 v-if="previewAdjustment !== 0 && !Number.isNaN(previewAdjustment)"
@@ -435,18 +449,11 @@
                 </span>
               </div>
               <div
-                v-if="order && order.delivery_method === 'delivery'"
+                v-if="previewDeliveryMethod === 'delivery'"
                 class="breakdown-row"
               >
                 <span class="breakdown-label">配送费:</span>
                 <span class="breakdown-value">{{ modalShippingFeeDisplay }}</span>
-              </div>
-              <div
-                v-if="previewCredit > 0"
-                class="breakdown-row"
-              >
-                <span class="breakdown-label">代金券:</span>
-                <span class="breakdown-value breakdown-value--credit">-${{ previewCreditFormatted }}</span>
               </div>
               <div class="breakdown-row breakdown-row--due">
                 <span class="breakdown-label">应付金额:</span>
@@ -474,7 +481,7 @@
                     :class="{ 'out-of-stock': isOutOfStock(product) }">
                     <div class="product-name">{{ product.name }}</div>
                     <div class="product-info">
-                      <div class="product-price">${{ parseFloat(product.price || 0).toFixed(2) }}</div>
+                      <div class="product-price">${{ formatStatMoney(product.price) }}</div>
                       <div v-if="isOutOfStock(product)" class="out-of-stock-badge">缺货</div>
                     </div>
                   </div>
@@ -512,7 +519,7 @@
               <div v-if="localAdjustmentAmount !== 0 && !isNaN(localAdjustmentAmount)" class="adjustment-display-row">
                 <span class="total-label">调整金额:</span>
                 <span :class="['total-value', localAdjustmentAmount >= 0 ? 'positive' : 'negative']">
-                  {{ localAdjustmentAmount >= 0 ? '+' : '' }}${{ parseFloat(localAdjustmentAmount || 0).toFixed(2) }}
+                  {{ localAdjustmentAmount >= 0 ? '+' : '' }}${{ formatStatMoney(localAdjustmentAmount) }}
                 </span>
               </div>
               <div class="adjustment-notes-wrapper">
@@ -539,6 +546,93 @@
               <span class="total-label">应付金额:</span>
               <span class="total-value-large">${{ previewAmountDueFormatted }}</span>
             </div>
+          </div>
+
+          <!-- Operation audit trail -->
+          <div class="order-info-section audit-section">
+            <div class="section-header audit-section-header">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3>操作日志</h3>
+              <button type="button" class="audit-refresh-btn" :disabled="auditLoading" @click="loadAuditTrail">
+                {{ auditLoading ? '加载中…' : '刷新' }}
+              </button>
+            </div>
+
+            <div v-if="auditLoading && !auditTrail" class="audit-muted">加载操作日志…</div>
+            <div v-else-if="auditError" class="error-message">{{ auditError }}</div>
+            <template v-else-if="auditTrail">
+              <div v-if="auditTrail.merged_into" class="audit-callout audit-callout--info">
+                本单已合并至
+                <strong>{{ auditTrail.merged_into.order_number }}</strong>
+                <span v-if="auditTrail.merged_into.merged_at">（{{ formatAuditTime(auditTrail.merged_into.merged_at) }}）</span>
+              </div>
+
+              <div v-if="auditTrail.merged_from_orders?.length" class="audit-block">
+                <div class="audit-block-title">合并来源订单</div>
+                <div v-for="src in auditTrail.merged_from_orders" :key="src.id" class="audit-source-order">
+                  <div class="audit-source-head">
+                    <span class="audit-source-number">{{ src.order_number }}</span>
+                    <span class="audit-source-meta">#{{ src.id }}</span>
+                    <span v-if="src.merged_at" class="audit-source-meta">{{ formatAuditTime(src.merged_at) }}</span>
+                  </div>
+                  <ul v-if="src.items?.length" class="audit-line-list">
+                    <li v-for="(line, idx) in src.items" :key="idx">
+                      {{ formatAuditLine(line) }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div v-if="auditTrail.events?.length" class="audit-block">
+                <div class="audit-block-title">操作记录</div>
+                <div v-for="ev in auditTrail.events" :key="ev.id" class="audit-event">
+                  <div class="audit-event-head">
+                    <span class="audit-event-type">{{ formatAuditEventType(ev.event_type) }}</span>
+                    <span class="audit-event-time">{{ formatAuditTime(ev.created_at) }}</span>
+                  </div>
+                  <div v-if="ev.event_type === 'merge' && ev.payload?.line_copies?.length" class="audit-event-body">
+                    <div v-for="(copy, cidx) in ev.payload.line_copies" :key="cidx" class="audit-merge-line">
+                      <span class="audit-merge-from">{{ copy.source_order_number }}</span>
+                      → 行 #{{ copy.new_item_id }}
+                      <span class="audit-merge-detail">{{ formatAuditLine(copy.source_snapshot) }}</span>
+                    </div>
+                  </div>
+                  <div v-else-if="ev.payload?.items_before || ev.payload?.items_after" class="audit-event-body">
+                    <div v-if="ev.payload.items_before?.length" class="audit-diff-block">
+                      <span class="audit-diff-label">改前</span>
+                      <span v-for="(line, bidx) in ev.payload.items_before" :key="'b' + bidx" class="audit-diff-line">
+                        {{ formatAuditLine(line) }}
+                      </span>
+                    </div>
+                    <div v-if="ev.payload.items_after?.length" class="audit-diff-block">
+                      <span class="audit-diff-label">改后</span>
+                      <span v-for="(line, aidx) in ev.payload.items_after" :key="'a' + aidx" class="audit-diff-line">
+                        {{ formatAuditLine(line) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="auditTrail.archived_items?.length" class="audit-block">
+                <div class="audit-block-title">本单已归档商品行（{{ auditTrail.archived_items.length }}）</div>
+                <ul class="audit-line-list">
+                  <li v-for="(line, idx) in auditTrail.archived_items" :key="idx">
+                    {{ formatAuditLine(line) }}
+                    <span v-if="line.deleted_at" class="audit-source-meta">{{ formatAuditTime(line.deleted_at) }}</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div
+                v-if="!auditTrail.events?.length && !auditTrail.merged_from_orders?.length && !auditTrail.merged_into && !auditTrail.archived_items?.length"
+                class="audit-muted"
+              >
+                暂无操作记录（新合并/改单后会自动记录）
+              </div>
+            </template>
           </div>
 
           <div v-if="updateError" class="error-message">{{ updateError }}</div>
@@ -576,10 +670,14 @@ import { useModal } from '../composables/useModal'
 import {
   editableRowMissingFinalWeight as rowNeedsFinalWeight
 } from '../utils/orderWeightValidation'
-import { estimateAdminLinePrice, resolveOrderLineTotal } from '../utils/orderItemPricing'
+import { estimateAdminLinePrice, resolveOrderLineTotal, isDeclinedSubstituteLine } from '../utils/orderItemPricing'
+import { previewOrderTotals, formatOrderMoney2 } from '../utils/orderPricing'
+import { fetchShippingConfig } from '../utils/shipping'
+import ProductVariantPicker from './ProductVariantPicker.vue'
 
 export default {
   name: 'OrderDetailModal',
+  components: { ProductVariantPicker },
   setup() {
     const { confirm, success, error } = useModal()
     return { confirm, success, error }
@@ -644,10 +742,18 @@ export default {
       localAdjustmentAmount: 0,
       localAdjustmentNotes: '',
       savingAdjustment: false,
-      formBaseline: null
+      formBaseline: null,
+      shippingConfig: null,
+      auditTrail: null,
+      auditLoading: false,
+      auditError: null,
+      shippingConfigReady: false
     }
   },
   computed: {
+    previewDeliveryMethod() {
+      return this.localDeliveryMethod || this.order?.delivery_method || 'pickup'
+    },
     isAddressValid() {
       return this.newAddress.recipient_name?.trim() && 
              this.newAddress.phone?.trim() && 
@@ -659,46 +765,44 @@ export default {
       return this.editableItems.reduce((sum, i) => sum + resolveOrderLineTotal(i), 0)
     },
     editableItemsSubtotalFormatted() {
-      return this.editableItemsSubtotal.toFixed(2)
+      return formatOrderMoney2(this.editableItemsSubtotal)
     },
-    previewTax() {
-      return parseFloat(this.order?.tax || 0) || 0
-    },
-    previewTaxFormatted() {
-      return this.previewTax.toFixed(2)
+    previewTotals() {
+      return previewOrderTotals({
+        items: this.editableItems,
+        deliveryMethod: this.previewDeliveryMethod,
+        shippingFee: this.order?.shipping_fee,
+        adjustment: this.previewAdjustment,
+        storeCredit: this.previewCredit,
+        shippingConfig: this.shippingConfigReady ? this.shippingConfig : undefined
+      })
     },
     previewShipping() {
-      return parseFloat(this.order?.shipping_fee || 0) || 0
+      return this.previewTotals.shipping
     },
     modalShippingFeeDisplay() {
       const n = this.previewShipping
       if (!Number.isFinite(n) || n <= 0) return '免运费'
-      return `$${n.toFixed(2)}`
+      return `$${formatOrderMoney2(n)}`
     },
     previewCredit() {
       return parseFloat(this.order?.store_credit_applied || 0) || 0
     },
     previewCreditFormatted() {
-      return this.previewCredit.toFixed(2)
+      return formatOrderMoney2(this.previewCredit)
     },
     previewAdjustment() {
       const a = parseFloat(this.localAdjustmentAmount)
       return Number.isFinite(a) ? a : 0
     },
     previewAdjustmentAbsFormatted() {
-      return Math.abs(this.previewAdjustment).toFixed(2)
+      return formatOrderMoney2(Math.abs(this.previewAdjustment))
     },
     previewAmountDue() {
-      const pre =
-        this.editableItemsSubtotal +
-        this.previewTax +
-        this.previewShipping +
-        this.previewAdjustment
-      const due = pre - this.previewCredit
-      return Math.max(0, Number(due.toFixed(2)))
+      return this.previewTotals.amountDue
     },
     previewAmountDueFormatted() {
-      return this.previewAmountDue.toFixed(2)
+      return formatOrderMoney2(this.previewAmountDue)
     },
     hasMissingFinalWeight() {
       return this.editableItems.some((row) => rowNeedsFinalWeight(row))
@@ -714,6 +818,7 @@ export default {
   watch: {
     show(newVal) {
       if (newVal && this.order) {
+        this.ensureShippingConfig()
         this.initializeOrder()
       } else if (!newVal) {
         this.resetModal()
@@ -795,6 +900,22 @@ export default {
     }
   },
   methods: {
+    async ensureShippingConfig() {
+      if (this.shippingConfigReady) return
+      try {
+        this.shippingConfig = await fetchShippingConfig()
+      } catch {
+        this.shippingConfig = null
+      } finally {
+        this.shippingConfigReady = true
+      }
+    },
+    formatStatMoney(value) {
+      return formatOrderMoney2(value)
+    },
+    displayItemPrice(item) {
+      return formatOrderMoney2(resolveOrderLineTotal(item))
+    },
     rowMissingFinalWeight(row) {
       return rowNeedsFinalWeight(row)
     },
@@ -948,6 +1069,7 @@ export default {
         this.isInitializingOrder = false
         this.recalculateAllItemPrices()
         this.captureBaseline()
+        this.loadAuditTrail()
       })
     },
     recalculateAllItemPrices() {
@@ -984,6 +1106,57 @@ export default {
       this.localAdjustmentNotes = ''
       this.savingAdjustment = false
       this.formBaseline = null
+      this.auditTrail = null
+      this.auditLoading = false
+      this.auditError = null
+    },
+    async loadAuditTrail() {
+      if (!this.order?.id) return
+      this.auditLoading = true
+      this.auditError = null
+      try {
+        const res = await apiClient.get(`/admin/orders/${this.order.id}/audit-trail`)
+        this.auditTrail = res.data
+      } catch (err) {
+        this.auditTrail = null
+        this.auditError = err.response?.data?.error || err.response?.data?.message || '加载操作日志失败'
+      } finally {
+        this.auditLoading = false
+      }
+    },
+    formatAuditEventType(type) {
+      const map = {
+        merge: '合并订单',
+        admin_items_replace: '后台修改商品',
+        customer_items_replace: '顾客修改商品'
+      }
+      return map[type] || type
+    },
+    formatAuditTime(iso) {
+      if (!iso) return ''
+      try {
+        const d = new Date(iso)
+        return d.toLocaleString('zh-CN', { hour12: false })
+      } catch {
+        return iso
+      }
+    },
+    formatAuditLine(line) {
+      if (!line) return ''
+      const name = line.product_name || `商品#${line.product_id}`
+      const variant = line.variant_name ? ` · ${line.variant_name}` : ''
+      const sub = this.formatAuditSubstitute(line)
+      const qty = line.quantity != null ? ` ×${line.quantity}` : ''
+      const price = line.total_price != null ? ` $${Number(line.total_price).toFixed(2)}` : ''
+      return `${name}${variant}${qty}${sub}${price}`
+    },
+    formatAuditSubstitute(line) {
+      if (line.is_unavailable && line.accept_substitute === true) return ' · 备选'
+      if (line.is_unavailable && line.accept_substitute === false) return ' · 不要备选'
+      if (line.is_unavailable && line.accept_substitute == null) return ' · 待确认备选'
+      if (line.accept_substitute === true) return ' · 接受备选'
+      if (line.accept_substitute === false) return ' · 不要备选'
+      return ''
     },
     updateOrderData(updatedOrder) {
       // Update local state from updated order without full reinitialization
@@ -1073,6 +1246,7 @@ export default {
         if (!this.isInitializingOrder) {
           this.recalculateAllItemPrices()
           this.captureBaseline()
+          this.loadAuditTrail()
         }
       })
     },
@@ -1130,6 +1304,8 @@ export default {
         initialPrice = parseFloat(product.price || 0)
       }
       
+      const activeVariants = (product.variants || []).filter((v) => v.is_active !== false)
+      const defaultVariant = activeVariants.length === 1 ? activeVariants[0] : null
       this.editableItems.push({
         tempId: `temp_${++this.tempIdCounter}`,
         product_id: product.id,
@@ -1137,8 +1313,13 @@ export default {
         quantity: 1,
         unit_price: initialPrice,
         total_price: initialPrice,
-        final_weight: null
+        final_weight: null,
+        variant_id: defaultVariant?.id ?? null,
+        variant_name: defaultVariant?.name ?? null,
+        variant_price_delta: defaultVariant ? parseFloat(defaultVariant.price_delta || 0) : null
       })
+      const newIndex = this.editableItems.length - 1
+      this.recalculateItemPrice(newIndex)
       this.showAddProductModal = false
     },
     removeItem(index) {
@@ -1153,6 +1334,26 @@ export default {
         this.editableItems[index].quantity -= 1
         this.recalculateItemPrice(index)
       }
+    },
+    productVariants(item) {
+      return item.product?.variants || []
+    },
+    setItemVariant(index, variantId) {
+      const item = this.editableItems[index]
+      if (item.variant_id === variantId) return
+      const variants = this.productVariants(item)
+      if (variantId == null) {
+        item.variant_id = null
+        item.variant_name = null
+        item.variant_price_delta = null
+      } else {
+        const v = variants.find((x) => x.id === variantId || String(x.id) === String(variantId))
+        if (!v) return
+        item.variant_id = v.id
+        item.variant_name = v.name
+        item.variant_price_delta = parseFloat(v.price_delta || 0)
+      }
+      this.recalculateItemPrice(index)
     },
     recalculateItemPrice(index) {
       const item = this.editableItems[index]
@@ -1219,6 +1420,7 @@ export default {
       } finally {
         await this.$nextTick()
         this.isSyncingOrderPatch = false
+        this.loadAuditTrail()
       }
     },
     async toggleItemUnavailable(item) {
@@ -1227,6 +1429,23 @@ export default {
         const res = await apiClient.patch(
           `/admin/orders/${this.order.id}/items/${item.id}/availability`,
           { is_unavailable: !item.is_unavailable }
+        )
+        await this.syncOrderFromServer(res.data?.order)
+      } catch (err) {
+        await this.error(err.response?.data?.error || err.response?.data?.message || '更新失败')
+      }
+    },
+    isDeclinedUnavailableLine(item) {
+      return isDeclinedSubstituteLine(item) && item.is_unavailable
+    },
+    async markCannotFulfill(item) {
+      if (!item.id || !this.order?.id) return
+      const ok = await this.confirm('确认无法供应此商品？该行将不计费。')
+      if (!ok) return
+      try {
+        const res = await apiClient.patch(
+          `/admin/orders/${this.order.id}/items/${item.id}/availability`,
+          { is_unavailable: true, cannot_fulfill: true }
         )
         await this.syncOrderFromServer(res.data?.order)
       } catch (err) {
@@ -1254,7 +1473,7 @@ export default {
         product_id: item.product_id,
         quantity: item.quantity,
         final_weight: item.final_weight || null,
-        variant_id: item.variant_id || undefined,
+        variant_id: item.variant_id ?? null,
         accept_substitute: item.accept_substitute,
         is_unavailable: item.is_unavailable || false
       }))
@@ -2148,6 +2367,167 @@ export default {
   border: 2px solid rgba(255, 140, 0, 0.15);
 }
 
+.audit-section-header {
+  justify-content: flex-start;
+}
+
+.audit-section-header h3 {
+  flex: 1;
+}
+
+.audit-refresh-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  color: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+}
+
+.audit-refresh-btn:hover:not(:disabled) {
+  background: rgba(255, 140, 0, 0.08);
+  border-color: rgba(255, 140, 0, 0.3);
+}
+
+.audit-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.audit-muted {
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.5);
+  padding: var(--md-spacing-xs) 0;
+}
+
+.audit-callout {
+  font-size: 0.8125rem;
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  border-radius: 6px;
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.audit-callout--info {
+  background: rgba(33, 150, 243, 0.08);
+  border: 1px solid rgba(33, 150, 243, 0.2);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.audit-block {
+  margin-top: var(--md-spacing-sm);
+}
+
+.audit-block-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(0, 0, 0, 0.45);
+  margin-bottom: var(--md-spacing-xs);
+}
+
+.audit-source-order {
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+  margin-bottom: var(--md-spacing-xs);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.audit-source-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-spacing-xs);
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.audit-source-number {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.audit-source-meta {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.audit-line-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.audit-line-list li {
+  margin-bottom: 2px;
+}
+
+.audit-event {
+  padding: var(--md-spacing-xs) var(--md-spacing-sm);
+  border-left: 3px solid rgba(255, 140, 0, 0.5);
+  background: rgba(255, 140, 0, 0.04);
+  border-radius: 0 6px 6px 0;
+  margin-bottom: var(--md-spacing-xs);
+}
+
+.audit-event-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--md-spacing-sm);
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.audit-event-type {
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.audit-event-time {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.audit-event-body {
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.audit-merge-line {
+  margin-bottom: 4px;
+}
+
+.audit-merge-from {
+  font-weight: 500;
+}
+
+.audit-merge-detail {
+  display: block;
+  margin-left: 0.5rem;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 0.75rem;
+}
+
+.audit-diff-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--md-spacing-xs);
+}
+
+.audit-diff-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.audit-diff-line {
+  padding-left: 0.5rem;
+}
+
 .section-header {
   display: flex;
   align-items: center;
@@ -2732,6 +3112,15 @@ export default {
 .side-action-btn--active {
   border-color: #c62828;
   color: #c62828;
+  background: #ffebee;
+}
+
+.side-action-btn--danger {
+  border-color: #ef5350;
+  color: #c62828;
+}
+
+.side-action-btn--danger:hover {
   background: #ffebee;
 }
 

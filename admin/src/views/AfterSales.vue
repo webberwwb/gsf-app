@@ -378,6 +378,7 @@
 <script>
 import apiClient from '../api/client'
 import { formatDateTimeEST_CN } from '../utils/date'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 const CONTEXT = {
   'first-time': 'after_sales_first_order',
@@ -469,9 +470,7 @@ export default {
       return formatDateTimeEST_CN(value)
     },
     formatOrderMoney(n) {
-      const v = Number(n)
-      if (Number.isNaN(v)) return '0.00'
-      return v.toFixed(2)
+      return formatOrderMoney2(n)
     },
     outcomeLabel(s) {
       const legacy = {

@@ -156,7 +156,7 @@ echo "Backend deployed at: $BACKEND_URL"
 
 # Deploy Frontend
 echo "Building and deploying frontend..."
-cd ../app
+cd ..
 
 # Get Google Maps API key from Secret Manager for build-time use (required for Vite build)
 echo "📋 Fetching Google Maps API key from Secret Manager..."
@@ -169,9 +169,10 @@ fi
 echo "✅ Google Maps API key retrieved from Secret Manager"
 
 # Build with substitutions for Vite env vars (needed at build time)
+# Build from parent directory to include shared folder
 BUILD_SUBSTITUTIONS="--substitutions=_VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api,_VITE_APP_PUBLIC_URL=https://app.grainstoryfarm.ca,_VITE_GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
 
-BUILD_OUTPUT=$(gcloud builds submit --async --config=cloudbuild.yaml $BUILD_SUBSTITUTIONS --project=$PROJECT_ID 2>&1)
+BUILD_OUTPUT=$(gcloud builds submit --async --config=app/cloudbuild.yaml $BUILD_SUBSTITUTIONS --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
 set -e
 echo "$BUILD_OUTPUT"
@@ -202,9 +203,9 @@ echo "Frontend deployed at: $FRONTEND_URL"
 
 # Deploy Admin
 echo "Building and deploying admin..."
-cd ../admin
+# Already in gsf-app directory from frontend build
 set +e
-BUILD_OUTPUT=$(gcloud builds submit --async --tag gcr.io/$PROJECT_ID/gsf-app-admin --project=$PROJECT_ID 2>&1)
+BUILD_OUTPUT=$(gcloud builds submit --async --config=admin/cloudbuild.yaml --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
 set -e
 echo "$BUILD_OUTPUT"

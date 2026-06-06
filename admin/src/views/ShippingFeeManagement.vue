@@ -104,6 +104,7 @@
 <script>
 import apiClient from '@/api/client'
 import { useModal } from '@/composables/useModal'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 export default {
   name: 'ShippingFeeManagement',
@@ -172,11 +173,10 @@ export default {
       return null
     },
     formatPrice(value) {
-      // Handle empty or invalid values gracefully
       if (value === null || value === undefined || value === '' || isNaN(value)) {
         return '0.00'
       }
-      return Number(value).toFixed(2)
+      return formatOrderMoney2(value)
     },
     async fetchConfig() {
       this.loading = true

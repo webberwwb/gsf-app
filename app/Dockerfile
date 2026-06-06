@@ -13,14 +13,17 @@ ENV VITE_APP_PUBLIC_URL=$VITE_APP_PUBLIC_URL
 ARG VITE_GOOGLE_MAPS_API_KEY
 ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 
+# Copy shared folder (needed for @shared imports)
+COPY shared /shared
+
 # Copy package files
-COPY package*.json ./
+COPY app/package*.json ./
 
 # Install dependencies
 RUN npm install
 
 # Copy source code
-COPY . .
+COPY app/ .
 
 # Build the application
 RUN npm run build
@@ -32,10 +35,10 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY app/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY app/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Cloud Run will provide PORT environment variable

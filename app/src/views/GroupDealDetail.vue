@@ -159,7 +159,7 @@
                 <div class="product-price">
                   <span class="price-label">团购价:</span>
                   <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
-                    ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                    ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
                   </span>
                   <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
                     {{ formatPriceRange(product) }}
@@ -187,7 +187,7 @@
                           class="range-item"
                         >
                           <span class="range-weight-text">{{ formatWeightRange(range, product.pricing_data?.unit) }}</span>
-                          <span class="range-price-text">${{ parseFloat(range.price || 0).toFixed(2) }}</span>
+                          <span class="range-price-text">${{ moneyPlain(range.price || 0) }}</span>
                         </div>
                         <div class="pricing-note-inline">
                           取货时按实际重量称重结算，重量可能超出上述区间
@@ -212,23 +212,23 @@
                     <Transition name="expand">
                       <div v-if="isPricingExpanded(product.id)" class="pricing-calculation">
                         <div class="calculation-formula-inline">
-                          最终价格 = 实际重量 × ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                          最终价格 = 实际重量 × ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
                         </div>
                         <div class="examples-list">
                           <div class="example-item">
                             <span>1 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                             <span>→</span>
-                            <span class="example-result">${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}</span>
+                            <span class="example-result">${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}</span>
                           </div>
                           <div class="example-item">
                             <span>2 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                             <span>→</span>
-                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * 2).toFixed(2) }}</span>
+                            <span class="example-result">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * 2) }}</span>
                           </div>
                           <div class="example-item">
                             <span>3 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                             <span>→</span>
-                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * 3).toFixed(2) }}</span>
+                            <span class="example-result">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * 3) }}</span>
                           </div>
                         </div>
                         <div class="pricing-note-inline">
@@ -260,27 +260,27 @@
                           </div>
                           <div class="info-row">
                             <span class="info-label-inline">单价:</span>
-                            <span class="info-value-inline">${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                            <span class="info-value-inline">${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                           </div>
                         </div>
                         <div class="calculation-formula-inline">
-                          最终价格 = 实际重量 × ${{ (product.pricing_data?.price_per_unit || 0).toFixed(2) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                          最终价格 = 实际重量 × ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
                         </div>
                         <div class="examples-list">
                           <div class="example-item">
                             <span>{{ product.pricing_data?.min_weight || 7 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                             <span>→</span>
-                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.min_weight || 7)).toFixed(2) }}</span>
+                            <span class="example-result">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.min_weight || 7)) }}</span>
                           </div>
                           <div class="example-item">
                             <span>{{ Math.round((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                             <span>→</span>
-                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * Math.round(((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2)).toFixed(2) }}</span>
+                            <span class="example-result">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * Math.round(((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2)) }}</span>
                           </div>
                           <div class="example-item">
                             <span>{{ product.pricing_data?.max_weight || 15 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                             <span>→</span>
-                            <span class="example-result">${{ ((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.max_weight || 15)).toFixed(2) }}</span>
+                            <span class="example-result">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.max_weight || 15)) }}</span>
                           </div>
                         </div>
                         <div class="pricing-note-inline">
@@ -479,9 +479,17 @@ import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
 import {
   estimateLinePrice,
+  estimateSelectionTotal,
   isSelectionComplete,
   getSelectionIncompleteMessage
 } from '../utils/orderItemPricing'
+import {
+  formatMoney,
+  formatMoneyDisplay,
+  formatProductListPrice,
+  formatProductPriceRange,
+  roundMoney
+} from '../utils/productPriceDisplay'
 
 export default {
   name: 'GroupDealDetail',
@@ -887,70 +895,16 @@ export default {
       return formatPickupDateTime_CN(dateString)
     },
     formatPrice(product) {
-      if (product.display_price) {
-        return parseFloat(product.display_price).toFixed(2)
-      }
-      if (product.price) {
-        return parseFloat(product.price).toFixed(2)
-      }
-      return '0.00'
+      return formatProductListPrice(product)
     },
     formatPriceRange(product) {
-      if (product.pricing_type === 'weight_range') {
-        const ranges = product.pricing_data?.ranges || []
-        if (ranges.length === 0) {
-          return '价格待定'
-        }
-        
-        // Sort ranges by min weight
-        const sortedRanges = [...ranges].sort((a, b) => (a.min || 0) - (b.min || 0))
-        
-        // Get min and max prices from ranges
-        const prices = sortedRanges
-          .map(r => parseFloat(r.price || 0))
-          .filter(p => p > 0) // Filter out invalid prices
-        
-        if (prices.length === 0) {
-          return '价格待定'
-        }
-        
-        const minPrice = Math.min(...prices)
-        const maxPrice = Math.max(...prices)
-        
-        if (minPrice === maxPrice) {
-          return `$${minPrice.toFixed(2)}`
-        }
-        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
-      } else if (product.pricing_type === 'unit_weight') {
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const unit = product.pricing_data?.unit || 'lb'
-        
-        if (pricePerUnit === 0) {
-          return '价格待定'
-        }
-        
-        // Show price per unit
-        return `$${parseFloat(pricePerUnit).toFixed(2)}/${unit}`
-      } else if (product.pricing_type === 'bundled_weight') {
-        const pricePerUnit = product.pricing_data?.price_per_unit || 0
-        const minWeight = product.pricing_data?.min_weight || 7
-        const maxWeight = product.pricing_data?.max_weight || 15
-        const unit = product.pricing_data?.unit || 'lb'
-        
-        if (pricePerUnit === 0) {
-          return '价格待定'
-        }
-        
-        const minPrice = pricePerUnit * minWeight
-        const maxPrice = pricePerUnit * maxWeight
-        const unitPriceDisplay = `$${pricePerUnit.toFixed(2)}/${unit}`
-        
-        if (minPrice === maxPrice) {
-          return `$${minPrice.toFixed(2)}/份 (${minWeight}-${maxWeight}${unit}/份) · ${unitPriceDisplay}`
-        }
-        return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}/份 (${minWeight}-${maxWeight}${unit}/份) · ${unitPriceDisplay}`
-      }
-      return '价格待定'
+      return formatProductPriceRange(product)
+    },
+    money(value) {
+      return formatMoneyDisplay(value)
+    },
+    moneyPlain(value) {
+      return formatMoney(value)
     },
     getStatusLabel(status) {
       const labels = {
@@ -1040,20 +994,14 @@ export default {
         quantity,
         variant_id: sel.variant_id
       })
-      return totalPrice.toFixed(2)
+      return formatMoney(totalPrice)
     },
     calculateBundledItemTotal(product) {
-      // bundled_weight: products sold by bundle (quantity can be > 1)
-      // Always estimate using minimum weight (no range)
       const quantity = this.getQuantity(product)
-      const pricePerUnit = product.pricing_data?.price_per_unit || 0
-      const minWeight = product.pricing_data?.min_weight || 7
-      
-      if (pricePerUnit === 0 || quantity === 0) return '$0.00'
-      
-      // Always use minimum weight for estimation (conservative estimate)
-      const estimatedPrice = pricePerUnit * minWeight * quantity
-      return `$${estimatedPrice.toFixed(2)}`
+      if (quantity === 0) return '$0.00'
+      const sel = this.getSelection(product)
+      const total = estimateSelectionTotal(product, quantity, { variant_id: sel.variant_id })
+      return formatMoneyDisplay(total)
     },
     calculateTotal() {
       if (!this.deal || !this.deal.products) return '0.00'
@@ -1067,7 +1015,7 @@ export default {
           hasEstimatedItems = true
         }
       })
-      return { total: total.toFixed(2), hasEstimated: hasEstimatedItems }
+      return { total: formatMoney(total), hasEstimated: hasEstimatedItems }
     },
     hasSelectedItems() {
       return Object.values(this.selectedItems).some(item => item.quantity > 0)
@@ -1102,7 +1050,7 @@ export default {
           variant_id: selection.variant_id || undefined,
           variant_name: variant?.name || undefined,
           accept_substitute: selection.accept_substitute,
-          estimated_price: totalPrice.toFixed(2),
+          estimated_price: formatMoney(totalPrice),
           is_estimated: isEstimated,
           counts_toward_free_shipping: product.counts_toward_free_shipping !== false
         })

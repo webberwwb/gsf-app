@@ -59,19 +59,19 @@
                 <tbody>
                   <tr v-for="record in quarterData.commission_records" :key="record.commission_record_id">
                     <td class="deal-title">{{ record.group_deal_title }}</td>
-                    <td class="commission-amount">${{ record.total_commission.toFixed(2) }}</td>
+                    <td class="commission-amount">${{ formatMoney(record.total_commission) }}</td>
                     <td :class="['adjustment-amount', 'not-included', record.manual_adjustment >= 0 ? 'positive' : 'negative']">
                       <span class="adjustment-value">
-                        {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ record.manual_adjustment.toFixed(2) }}
+                        {{ record.manual_adjustment >= 0 ? '+' : '' }}${{ formatMoney(record.manual_adjustment) }}
                       </span>
                     </td>
-                    <td class="final-amount">${{ record.final_total.toFixed(2) }}</td>
+                    <td class="final-amount">${{ formatMoney(record.final_total) }}</td>
                   </tr>
                 </tbody>
                 <tfoot>
                   <tr>
                     <td colspan="3" class="total-label">季度总提成</td>
-                    <td class="total-amount">${{ quarterData.total_commission.toFixed(2) }}</td>
+                    <td class="total-amount">${{ formatMoney(quarterData.total_commission) }}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -86,7 +86,7 @@
               <div class="bonus-summary">
                 <div class="summary-row">
                   <span class="summary-label">季度总提成:</span>
-                  <span class="summary-value">${{ quarterData.total_commission.toFixed(2) }}</span>
+                  <span class="summary-value">${{ formatMoney(quarterData.total_commission) }}</span>
                 </div>
               </div>
 
@@ -111,10 +111,10 @@
               <div class="bonus-result">
                 <div class="result-row">
                   <span class="result-label">分红金额:</span>
-                  <span class="result-value">${{ calculatedBonusAmount.toFixed(2) }}</span>
+                  <span class="result-value">${{ formatMoney(calculatedBonusAmount) }}</span>
                 </div>
                 <div class="calculation-formula">
-                  ${{ quarterData.total_commission.toFixed(2) }} × {{ bonusPercentage }}% = ${{ calculatedBonusAmount.toFixed(2) }}
+                  ${{ formatMoney(quarterData.total_commission) }} × {{ bonusPercentage }}% = ${{ formatMoney(calculatedBonusAmount) }}
                 </div>
               </div>
 
@@ -145,7 +145,7 @@
                 <div class="bonus-details">
                   <div class="detail-row">
                     <span class="detail-label">季度总提成:</span>
-                    <span class="detail-value">${{ bonus.total_commission.toFixed(2) }}</span>
+                    <span class="detail-value">${{ formatMoney(bonus.total_commission) }}</span>
                   </div>
                   <div class="detail-row">
                     <span class="detail-label">分红比例:</span>
@@ -153,7 +153,7 @@
                   </div>
                   <div class="detail-row highlight">
                     <span class="detail-label">分红金额:</span>
-                    <span class="detail-value-large">${{ bonus.bonus_amount.toFixed(2) }}</span>
+                    <span class="detail-value-large">${{ formatMoney(bonus.bonus_amount) }}</span>
                   </div>
                 </div>
                 <div v-if="bonus.payment_status === 'pending'" class="bonus-actions">
@@ -180,6 +180,7 @@
 <script>
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
+import { formatOrderMoney2 } from '../utils/orderPricing'
 
 export default {
   name: 'QuarterlyBonusModal',
@@ -216,6 +217,9 @@ export default {
     this.loadExistingBonuses()
   },
   methods: {
+    formatMoney(value) {
+      return formatOrderMoney2(value)
+    },
     generateAvailableYears() {
       const currentYear = new Date().getFullYear()
       const years = []

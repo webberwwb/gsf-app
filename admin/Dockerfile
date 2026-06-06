@@ -7,14 +7,17 @@ WORKDIR /app
 ARG VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
+# Copy shared folder (needed for @shared imports)
+COPY shared /shared
+
 # Copy package files
-COPY package*.json ./
+COPY admin/package*.json ./
 
 # Install dependencies
 RUN npm install
 
 # Copy source code
-COPY . .
+COPY admin/ .
 
 # Build the application
 RUN npm run build
@@ -26,10 +29,10 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY admin/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY admin/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Cloud Run will provide PORT environment variable

@@ -182,11 +182,11 @@
                 <span class="order-pricing-value">${{ formatOrderMoney(orderSubtotalNumber(order)) }}</span>
               </div>
               <div
-                v-if="orderTaxNumber(order) > 0"
-                class="order-pricing-row"
+                v-if="orderStoreCreditApplied(order) > 0"
+                class="order-pricing-row order-pricing-row--credit"
               >
-                <span class="order-pricing-label">税费</span>
-                <span class="order-pricing-value">${{ formatOrderMoney(orderTaxNumber(order)) }}</span>
+                <span class="order-pricing-label">代金券</span>
+                <span class="order-pricing-value order-pricing-value--credit">-${{ formatOrderMoney(orderStoreCreditApplied(order)) }}</span>
               </div>
               <div
                 v-if="orderAdjustmentNumber(order) !== 0"
@@ -210,13 +210,6 @@
               >
                 <span class="order-pricing-label">配送费</span>
                 <span class="order-pricing-value">{{ orderShippingDisplay(order) }}</span>
-              </div>
-              <div
-                v-if="orderStoreCreditApplied(order) > 0"
-                class="order-pricing-row order-pricing-row--credit"
-              >
-                <span class="order-pricing-label">代金券</span>
-                <span class="order-pricing-value order-pricing-value--credit">-${{ formatOrderMoney(orderStoreCreditApplied(order)) }}</span>
               </div>
               <div class="order-pricing-row order-pricing-row--due">
                 <span class="order-pricing-label">应付金额</span>
@@ -352,7 +345,6 @@ import {
   orderAmountDueNumber,
   orderStoreCreditAppliedNumber,
   orderSubtotalNumber,
-  orderTaxNumber,
   orderAdjustmentNumber,
   orderShippingFeeNumber,
   formatOrderMoney2
@@ -527,7 +519,6 @@ export default {
       return classes[status] || 'pending'
     },
     orderSubtotalNumber,
-    orderTaxNumber,
     orderAdjustmentNumber,
     orderAmountDueNumber,
     orderShippingDisplay(order) {

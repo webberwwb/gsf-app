@@ -104,7 +104,7 @@
               >
                 <div class="product-select-info">
                   <div class="product-select-name">{{ product.name }}</div>
-                  <div class="product-select-price">${{ product.price }}</div>
+                  <div class="product-select-price">${{ formatDealProductPrice(product) }}</div>
                 </div>
                 <div v-if="isProductSelected(product.id)" class="product-select-check">
                   ✓
@@ -164,6 +164,7 @@
 
 <script>
 import apiClient from '../api/client'
+import { formatProductListPrice } from '../utils/productPriceDisplay'
 
 export default {
   name: 'GroupDealForm',
@@ -211,6 +212,9 @@ export default {
     }
   },
   methods: {
+    formatDealProductPrice(product) {
+      return formatProductListPrice(product)
+    },
     resetForm() {
       this.formData = {
         title: '',
