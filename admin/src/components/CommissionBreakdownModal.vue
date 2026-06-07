@@ -175,7 +175,7 @@
               <!-- No Commission Orders -->
               <div v-if="record.order_grouping.no_commission_orders && record.order_grouping.no_commission_orders.length > 0" class="order-group no-commission-group">
                 <div class="group-header">
-                  <h5>无提成订单 - 谷语农庄 ({{ record.order_grouping.no_commission_orders.length }})</h5>
+                  <h5>无提成订单 - 排除用户 ({{ record.order_grouping.no_commission_orders.length }})</h5>
                   <span class="group-badge no-commission">无提成</span>
                 </div>
                 <div class="orders-list">

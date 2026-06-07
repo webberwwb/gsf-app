@@ -148,7 +148,12 @@ BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --update-secrets "$SECRETS" \
     --execution-environment gen2 \
     --session-affinity \
-    --timeout 1800 \
+    --timeout 300 \
+    --memory 1Gi \
+    --cpu 2 \
+    --max-instances 10 \
+    --min-instances 1 \
+    --cpu-throttling \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 

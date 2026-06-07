@@ -62,6 +62,12 @@ gcloud run deploy gsf-app-backend \
     --add-cloudsql-instances $CLOUDSQL_INSTANCE \
     --env-vars-file backend-env-temp.yaml \
     --set-secrets "MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest" \
+    --memory 1Gi \
+    --cpu 2 \
+    --timeout 300 \
+    --max-instances 10 \
+    --min-instances 1 \
+    --cpu-throttling \
     --project=$PROJECT_ID
 
 # Clean up temporary file

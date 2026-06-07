@@ -36,14 +36,72 @@
         <div v-else-if="error" class="error-message">{{ error }}</div>
 
         <!-- Empty State -->
-        <div v-else-if="!quarterData || quarterData.commission_records.length === 0" class="empty-state">
+        <div v-else-if="!quarterData || (!hasCommissionRecords && !hasExcludedOrders)" class="empty-state">
           <p>该季度暂无提成记录</p>
         </div>
 
         <!-- Quarter Data -->
         <div v-else>
+          <!-- Excluded Orders Section -->
+          <div v-if="hasExcludedOrders" class="excluded-orders-section">
+            <div class="excluded-section-header">
+              <h3>不计入提成的订单 ({{ quarterData.excluded_orders.total_excluded_orders }}笔)</h3>
+              <span class="excluded-badge">排除列表</span>
+            </div>
+            <p class="excluded-section-description">
+              以下订单来自提成排除用户，已从季度提成计算中忽略。
+              订单总额 ${{ formatMoney(quarterData.excluded_orders.total_excluded_order_value) }}。
+            </p>
+
+            <div class="excluded-deals-list">
+              <div
+                v-for="deal in quarterData.excluded_orders.group_deals"
+                :key="deal.group_deal_id"
+                class="excluded-deal-card"
+              >
+                <div class="excluded-deal-header">
+                  <div>
+                    <h4>{{ deal.group_deal_title }}</h4>
+                    <span class="excluded-deal-meta">
+                      {{ deal.order_count }} 笔排除订单 · 订单总额 ${{ formatMoney(deal.total_order_value) }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="excluded-orders-list">
+                  <div
+                    v-for="order in deal.orders"
+                    :key="order.order_id"
+                    class="excluded-order-card"
+                  >
+                    <div class="excluded-order-header">
+                      <span class="order-number">订单: {{ order.order_number }}</span>
+                      <span class="order-total">${{ formatMoney(order.total) }}</span>
+                    </div>
+                    <div class="excluded-order-user">
+                      <span class="user-name">{{ order.user_name || 'N/A' }}</span>
+                      <span v-if="order.user_phone" class="user-phone">{{ order.user_phone }}</span>
+                      <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
+                      <span v-if="order.exclusion_note" class="exclusion-note">{{ order.exclusion_note }}</span>
+                    </div>
+                    <div class="excluded-order-items">
+                      <div v-for="item in order.items" :key="`${order.order_id}-${item.product_id}`" class="order-item">
+                        <span class="item-name">{{ item.product_name }}</span>
+                        <span class="item-details">
+                          <span v-if="item.quantity">数量: {{ item.quantity }}</span>
+                          <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
+                          <span class="item-subtotal">${{ formatMoney(item.subtotal || 0) }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Commission Records List -->
-          <div class="commission-records-section">
+          <div v-if="hasCommissionRecords" class="commission-records-section">
             <h3>本季度提成记录 ({{ quarterData.commission_records.length }}个团购)</h3>
             
             <div class="records-table-container">
@@ -79,7 +137,7 @@
           </div>
 
           <!-- Bonus Calculation -->
-          <div class="bonus-calculation-section">
+          <div v-if="hasCommissionRecords" class="bonus-calculation-section">
             <h3>季度分红计算</h3>
             
             <div class="bonus-form">
@@ -240,8 +298,18 @@ export default {
         })
 
         this.quarterData = response.data
-        
-        if (!this.quarterData.commission_records || this.quarterData.commission_records.length === 0) {
+        if (!this.quarterData.commission_records) {
+          this.quarterData.commission_records = []
+        }
+        if (!this.quarterData.excluded_orders) {
+          this.quarterData.excluded_orders = {
+            group_deals: [],
+            total_excluded_orders: 0,
+            total_excluded_order_value: 0
+          }
+        }
+
+        if (!this.hasCommissionRecords && !this.hasExcludedOrders) {
           this.error = '该季度暂无提成记录'
         }
 
@@ -346,6 +414,14 @@ export default {
         'cancelled': '已取消'
       }
       return labels[status] || status
+    }
+  },
+  computed: {
+    hasCommissionRecords() {
+      return this.quarterData?.commission_records?.length > 0
+    },
+    hasExcludedOrders() {
+      return (this.quarterData?.excluded_orders?.total_excluded_orders || 0) > 0
     }
   },
   watch: {
@@ -497,6 +573,164 @@ export default {
 .calculate-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Excluded Orders Section */
+.excluded-orders-section {
+  background: rgba(239, 68, 68, 0.04);
+  border: 2px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.excluded-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.excluded-section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.excluded-badge {
+  padding: 4px 10px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.excluded-section-description {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.excluded-deals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.excluded-deal-card {
+  background: white;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.excluded-deal-header {
+  padding: 14px 16px;
+  background: rgba(239, 68, 68, 0.05);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.12);
+}
+
+.excluded-deal-header h4 {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.excluded-deal-meta {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.excluded-orders-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.excluded-order-card {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.excluded-order-card:last-child {
+  border-bottom: none;
+}
+
+.excluded-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.order-number {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.order-total {
+  font-size: 14px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.excluded-order-user {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.user-name {
+  font-weight: 600;
+  color: #374151;
+}
+
+.user-phone,
+.user-source {
+  color: #6b7280;
+}
+
+.exclusion-note {
+  color: #dc2626;
+  font-style: italic;
+}
+
+.excluded-order-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.item-name {
+  font-weight: 500;
+}
+
+.item-details {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.item-subtotal {
+  font-weight: 600;
+  color: #374151;
 }
 
 /* Commission Records Section */

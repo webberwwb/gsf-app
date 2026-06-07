@@ -10,14 +10,19 @@ from models.order import Order, OrderItem
 from models.address import Address
 from models.product_sales_stats import ProductSalesStats
 from models.delivery_fee_config import DeliveryFeeConfig
-from models.sdr import SDR, CommissionRule, CommissionRecord, QuarterlyBonus
+from models.sdr import SDR, CommissionRule, CommissionRecord, CommissionExcludedUser, QuarterlyBonus
 from models.customer_feedback import CustomerFeedback, FeedbackContext, FeedbackOutcome
 from models.work_document import WorkDocument, ActionItem
 from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
 from utils.product_repurchase import compute_product_repurchase_rates
 from utils.date_helpers import normalize_date_start, normalize_date_end
-from utils.commission import calculate_commission_for_group_deal, get_commission_summary_for_group_deal
+from utils.commission import (
+    calculate_commission_for_group_deal,
+    get_commission_summary_for_group_deal,
+    get_excluded_orders_for_quarter,
+    get_quarter_datetime_range,
+)
 from datetime import datetime, timedelta, timezone, date
 from config import Config
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
@@ -4000,6 +4005,94 @@ def batch_update_commission_rules(sdr_id):
         return jsonify({'error': 'Failed to batch update commission rules', 'message': str(e)}), 500
 
 
+@admin_bp.route('/commission-excluded-users', methods=['GET'])
+def get_commission_excluded_users():
+    """Get all users excluded from commission calculation"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        excluded_users = CommissionExcludedUser.query.order_by(
+            CommissionExcludedUser.created_at.desc()
+        ).all()
+        return jsonify({
+            'excluded_users': [entry.to_dict(include_user=True) for entry in excluded_users]
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error fetching commission excluded users: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to fetch excluded users'}), 500
+
+
+@admin_bp.route('/commission-excluded-users', methods=['POST'])
+def add_commission_excluded_user():
+    """Add a user to the commission exclusion list"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        data = request.get_json() or {}
+        target_user_id = data.get('user_id')
+        if not target_user_id:
+            return jsonify({'error': 'user_id is required'}), 400
+
+        target_user = User.query.get(target_user_id)
+        if not target_user:
+            return jsonify({'error': 'User not found'}), 404
+
+        existing = CommissionExcludedUser.query.filter_by(user_id=target_user_id).first()
+        if existing:
+            return jsonify({
+                'excluded_user': existing.to_dict(include_user=True),
+                'message': '该用户已在排除列表中'
+            }), 200
+
+        entry = CommissionExcludedUser(
+            user_id=target_user_id,
+            notes=data.get('notes')
+        )
+        db.session.add(entry)
+        db.session.commit()
+
+        current_app.logger.info(f'Added user {target_user_id} to commission exclusion list')
+
+        return jsonify({
+            'excluded_user': entry.to_dict(include_user=True),
+            'message': '已添加到提成排除列表'
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error adding commission excluded user: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to add excluded user', 'message': str(e)}), 500
+
+
+@admin_bp.route('/commission-excluded-users/<int:target_user_id>', methods=['DELETE'])
+def remove_commission_excluded_user(target_user_id):
+    """Remove a user from the commission exclusion list"""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    try:
+        entry = CommissionExcludedUser.query.filter_by(user_id=target_user_id).first()
+        if not entry:
+            return jsonify({'error': 'User not in exclusion list'}), 404
+
+        db.session.delete(entry)
+        db.session.commit()
+
+        current_app.logger.info(f'Removed user {target_user_id} from commission exclusion list')
+
+        return jsonify({'message': '已从提成排除列表移除'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error removing commission excluded user: {e}', exc_info=True)
+        return jsonify({'error': 'Failed to remove excluded user', 'message': str(e)}), 500
+
+
 @admin_bp.route('/commission-rules/<int:rule_id>', methods=['DELETE'])
 def delete_commission_rule(rule_id):
     user_id, error_response, status_code = require_admin_auth()
@@ -4209,25 +4302,10 @@ def calculate_quarterly_bonus(sdr_id):
         
         if quarter not in [1, 2, 3, 4]:
             return jsonify({'error': 'Quarter must be 1, 2, 3, or 4'}), 400
-        
-        # Calculate quarter date range
-        quarter_start_month = (quarter - 1) * 3 + 1
-        if quarter == 4:
-            quarter_end_month = 12
-            quarter_end_day = 31
-        else:
-            quarter_end_month = quarter_start_month + 2
-            # Get last day of the quarter end month
-            if quarter_end_month in [1, 3, 5, 7, 8, 10, 12]:
-                quarter_end_day = 31
-            elif quarter_end_month in [4, 6, 9, 11]:
-                quarter_end_day = 30
-            else:
-                quarter_end_day = 28
-        
-        quarter_start = datetime(year, quarter_start_month, 1)
-        quarter_end = datetime(year, quarter_end_month, quarter_end_day, 23, 59, 59)
-        
+
+        quarter_start, quarter_end = get_quarter_datetime_range(year, quarter)
+        excluded_orders_data = get_excluded_orders_for_quarter(year, quarter)
+
         # Get all commission records for this SDR within the quarter
         commission_records = CommissionRecord.query.join(
             GroupDeal, CommissionRecord.group_deal_id == GroupDeal.id
@@ -4236,24 +4314,16 @@ def calculate_quarterly_bonus(sdr_id):
             GroupDeal.created_at >= quarter_start,
             GroupDeal.created_at <= quarter_end
         ).all()
-        
-        if not commission_records:
-            return jsonify({
-                'success': True,
-                'commission_records': [],
-                'total_commission': 0,
-                'message': 'No commission records found for this quarter'
-            }), 200
-        
+
         # Build commission records data
         commission_records_data = []
         total_commission = Decimal('0')
-        
+
         for record in commission_records:
             # For quarterly bonus, only count the base commission (exclude manual adjustments)
             base_commission = record.total_commission
             total_commission += base_commission
-            
+
             commission_records_data.append({
                 'commission_record_id': record.id,
                 'group_deal_id': record.group_deal_id,
@@ -4262,14 +4332,20 @@ def calculate_quarterly_bonus(sdr_id):
                 'manual_adjustment': float(record.manual_adjustment or 0),
                 'final_total': float(base_commission)
             })
-        
-        return jsonify({
+
+        response_data = {
             'success': True,
             'commission_records': commission_records_data,
             'total_commission': float(total_commission),
+            'excluded_orders': excluded_orders_data,
             'year': year,
-            'quarter': quarter
-        }), 200
+            'quarter': quarter,
+        }
+
+        if not commission_records_data and excluded_orders_data['total_excluded_orders'] == 0:
+            response_data['message'] = 'No commission records found for this quarter'
+
+        return jsonify(response_data), 200
         
     except Exception as e:
         current_app.logger.error(f'Error calculating quarterly bonus for SDR {sdr_id}: {e}', exc_info=True)

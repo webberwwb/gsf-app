@@ -1,14 +1,150 @@
 """
 Commission calculation utilities for SDR commission management.
 """
+from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from models import db
-from models.sdr import SDR, CommissionRule, CommissionRecord
+from models.sdr import SDR, CommissionRule, CommissionRecord, CommissionExcludedUser
 from models.groupdeal import GroupDeal
 from models.order import Order, OrderItem
 from models.product import Product
 from models.user import User
+
+
+def get_commission_excluded_user_ids() -> set:
+    """Return user IDs whose orders are excluded from commission calculation."""
+    rows = CommissionExcludedUser.query.with_entities(CommissionExcludedUser.user_id).all()
+    return {row[0] for row in rows}
+
+
+def is_user_excluded_from_commission(user_id: int, excluded_user_ids: Optional[set] = None) -> bool:
+    if excluded_user_ids is None:
+        excluded_user_ids = get_commission_excluded_user_ids()
+    return user_id in excluded_user_ids
+
+
+def get_quarter_datetime_range(year: int, quarter: int) -> Tuple[datetime, datetime]:
+    quarter_start_month = (quarter - 1) * 3 + 1
+    if quarter == 4:
+        quarter_end_month = 12
+        quarter_end_day = 31
+    else:
+        quarter_end_month = quarter_start_month + 2
+        if quarter_end_month in [1, 3, 5, 7, 8, 10, 12]:
+            quarter_end_day = 31
+        elif quarter_end_month in [4, 6, 9, 11]:
+            quarter_end_day = 30
+        else:
+            quarter_end_day = 28
+
+    quarter_start = datetime(year, quarter_start_month, 1)
+    quarter_end = datetime(year, quarter_end_month, quarter_end_day, 23, 59, 59)
+    return quarter_start, quarter_end
+
+
+def _build_order_summary(
+    order: Order,
+    products_cache: Dict[int, str],
+    exclusion_note: Optional[str] = None,
+) -> Dict:
+    order_items_summary = []
+    for item in order.items:
+        if item.product_id not in products_cache:
+            product = Product.query.get(item.product_id)
+            products_cache[item.product_id] = product.name if product else f"Product {item.product_id}"
+
+        order_items_summary.append({
+            'product_id': item.product_id,
+            'product_name': products_cache[item.product_id],
+            'quantity': item.quantity,
+            'weight': float(item.final_weight) if item.final_weight else None,
+            'unit_price': float(item.unit_price) if item.unit_price else None,
+            'subtotal': float(item.total_price) if item.total_price else None,
+        })
+
+    user = User.query.get(order.user_id)
+    user_name = None
+    if user:
+        user_name = user.nickname or user.wechat_nickname or user.phone or f"User {user.id}"
+
+    summary = {
+        'order_id': order.id,
+        'order_number': order.order_number,
+        'user_id': order.user_id,
+        'user_name': user_name,
+        'user_phone': user.phone if user else None,
+        'user_source': user.user_source if user else None,
+        'items': order_items_summary,
+        'total': float(order.total) if order.total else 0.0,
+    }
+    if exclusion_note:
+        summary['exclusion_note'] = exclusion_note
+    return summary
+
+
+def get_excluded_orders_for_quarter(year: int, quarter: int) -> Dict:
+    """Return orders in the quarter whose users are on the commission exclusion list."""
+    quarter_start, quarter_end = get_quarter_datetime_range(year, quarter)
+
+    excluded_entries = CommissionExcludedUser.query.all()
+    excluded_user_ids = {entry.user_id for entry in excluded_entries}
+    exclusion_notes_by_user = {
+        entry.user_id: entry.notes for entry in excluded_entries if entry.notes
+    }
+
+    if not excluded_user_ids:
+        return {
+            'group_deals': [],
+            'total_excluded_orders': 0,
+            'total_excluded_order_value': 0.0,
+        }
+
+    group_deals = GroupDeal.query.filter(
+        GroupDeal.created_at >= quarter_start,
+        GroupDeal.created_at <= quarter_end,
+        GroupDeal.deleted_at.is_(None),
+    ).order_by(GroupDeal.created_at.desc()).all()
+
+    products_cache: Dict[int, str] = {}
+    group_deals_data = []
+    total_excluded_orders = 0
+    total_excluded_order_value = Decimal('0')
+
+    for group_deal in group_deals:
+        orders = Order.query.filter(
+            Order.group_deal_id == group_deal.id,
+            Order.deleted_at.is_(None),
+            Order.user_id.in_(excluded_user_ids),
+        ).all()
+
+        if not orders:
+            continue
+
+        order_summaries = []
+        deal_order_value = Decimal('0')
+        for order in orders:
+            exclusion_note = exclusion_notes_by_user.get(order.user_id)
+            order_summaries.append(_build_order_summary(order, products_cache, exclusion_note))
+            deal_order_value += Decimal(str(order.total or 0))
+
+        total_excluded_orders += len(order_summaries)
+        total_excluded_order_value += deal_order_value
+
+        group_deals_data.append({
+            'group_deal_id': group_deal.id,
+            'group_deal_title': group_deal.title or f"团购 #{group_deal.id}",
+            'group_deal_date': group_deal.created_at.isoformat() if group_deal.created_at else None,
+            'orders': order_summaries,
+            'order_count': len(order_summaries),
+            'total_order_value': float(deal_order_value),
+        })
+
+    return {
+        'group_deals': group_deals_data,
+        'total_excluded_orders': total_excluded_orders,
+        'total_excluded_order_value': float(total_excluded_order_value),
+    }
 
 
 def calculate_commission_for_group_deal(group_deal_id: int, recalculate: bool = False) -> Dict:
@@ -126,6 +262,7 @@ def calculate_sdr_commission(sdr: SDR, orders: List[Order]) -> Dict:
     total_commission = Decimal('0')
     own_customer_commission = Decimal('0')
     general_customer_commission = Decimal('0')
+    excluded_user_ids = get_commission_excluded_user_ids()
     
     # Process each order
     for order in orders:
@@ -134,8 +271,7 @@ def calculate_sdr_commission(sdr: SDR, orders: List[Order]) -> Dict:
         if not user:
             continue
         
-        # Hardcoded rule: Skip commission calculation for 谷语农庄 (phone: +14373406925)
-        if user.phone == '+14373406925':
+        if is_user_excluded_from_commission(user.id, excluded_user_ids):
             continue
         
         is_own_customer = (user.user_source == sdr.source_identifier)
@@ -264,7 +400,7 @@ def build_order_grouping_for_sdr(sdr: SDR, orders: List[Order]) -> Dict:
     Group orders for an SDR into three categories:
     - Own customer orders
     - Other customer orders
-    - No commission orders (谷语农庄)
+    - No commission orders (excluded users)
     
     Args:
         sdr: SDR object
@@ -279,53 +415,17 @@ def build_order_grouping_for_sdr(sdr: SDR, orders: List[Order]) -> Dict:
     
     # Get all products for product name lookup
     products_cache = {}
+    excluded_user_ids = get_commission_excluded_user_ids()
     
     for order in orders:
         user = User.query.get(order.user_id)
         if not user:
             continue
         
-        # Build order summary with product details
-        order_items_summary = []
-        for item in order.items:
-            if item.product_id not in products_cache:
-                product = Product.query.get(item.product_id)
-                if product:
-                    products_cache[item.product_id] = product.name
-                else:
-                    products_cache[item.product_id] = f"Product {item.product_id}"
-            
-            product_name = products_cache[item.product_id]
-            
-            item_summary = {
-                'product_id': item.product_id,
-                'product_name': product_name,
-                'quantity': item.quantity,
-                'weight': float(item.final_weight) if item.final_weight else None,
-                'unit_price': float(item.unit_price) if item.unit_price else None,
-                'subtotal': float(item.total_price) if item.total_price else None
-            }
-            order_items_summary.append(item_summary)
-        
-        # Get user display name (prefer nickname, fallback to wechat_nickname or phone)
-        user_name = None
-        if user:
-            user_name = user.nickname or user.wechat_nickname or user.phone or f"User {user.id}"
-        
-        order_summary = {
-            'order_id': order.id,
-            'order_number': order.order_number,
-            'user_id': order.user_id,
-            'user_name': user_name,
-            'user_phone': user.phone if user else None,
-            'user_source': user.user_source if user else None,
-            'items': order_items_summary,
-            'total': float(order.total) if order.total else 0.0
-        }
-        
+        order_summary = _build_order_summary(order, products_cache)
+
         # Categorize order
-        if user.phone == '+14373406925':
-            # No commission orders (谷语农庄)
+        if is_user_excluded_from_commission(user.id, excluded_user_ids):
             no_commission_orders.append(order_summary)
         elif user.user_source == sdr.source_identifier:
             # Own customer orders

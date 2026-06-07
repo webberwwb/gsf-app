@@ -58,13 +58,18 @@ class Config:
     SQLALCHEMY_DATABASE_URI = property(lambda self: self._get_database_uri())
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-        'pool_size': 10,
-        'max_overflow': 20,
+        'pool_pre_ping': True,  # Check connection health before using
+        'pool_recycle': 300,  # Recycle connections after 5 minutes
+        'pool_size': 5,  # Smaller pool for Cloud Run (was 10)
+        'max_overflow': 10,  # Reduced overflow (was 20)
+        'pool_timeout': 30,  # Timeout waiting for connection from pool
+        'echo_pool': False,  # Set to True for debugging
         'connect_args': {
             'ssl_disabled': True,
-            'charset': 'utf8mb4'
+            'charset': 'utf8mb4',
+            'connect_timeout': 10,  # Connection timeout in seconds
+            'read_timeout': 30,  # Read timeout in seconds
+            'write_timeout': 30  # Write timeout in seconds
         }
     }
     

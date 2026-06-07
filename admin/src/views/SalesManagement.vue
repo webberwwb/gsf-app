@@ -52,6 +52,9 @@
       </div>
     </div>
 
+    <!-- Commission Excluded Users -->
+    <CommissionExcludedUsersSection v-if="sdr" />
+
     <!-- Commission Records Summary -->
     <div v-if="sdr" class="commission-summary-section">
       <h3 class="section-title">提成记录汇总</h3>
@@ -187,6 +190,7 @@
 <script>
 import apiClient from '../api/client'
 import CommissionConfigModal from '../components/CommissionConfigModal.vue'
+import CommissionExcludedUsersSection from '../components/CommissionExcludedUsersSection.vue'
 import QuarterlyBonusModal from '../components/QuarterlyBonusModal.vue'
 import { useModal } from '../composables/useModal'
 import { formatDateTimeEST_CN } from '../utils/date'
@@ -196,6 +200,7 @@ export default {
   name: 'SalesManagement',
   components: {
     CommissionConfigModal,
+    CommissionExcludedUsersSection,
     QuarterlyBonusModal
   },
   setup() {

@@ -157,6 +157,32 @@ class CommissionRecord(BaseModel):
         return data
 
 
+class CommissionExcludedUser(BaseModel):
+    """Users whose orders are excluded from all commission calculations"""
+    __tablename__ = 'commission_excluded_users'
+
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
+    notes = db.Column(db.String(255), nullable=True)
+
+    user = db.relationship('User', backref='commission_exclusion')
+
+    def to_dict(self, include_user=False):
+        data = super().to_dict()
+        data.update({
+            'user_id': self.user_id,
+            'notes': self.notes,
+        })
+        if include_user and self.user:
+            data['user'] = {
+                'id': self.user.id,
+                'nickname': self.user.nickname,
+                'phone': self.user.phone,
+                'wechat': self.user.wechat,
+                'user_source': self.user.user_source,
+            }
+        return data
+
+
 class QuarterlyBonus(BaseModel):
     """Quarterly bonus for SDR based on commission totals"""
     __tablename__ = 'quarterly_bonuses'
