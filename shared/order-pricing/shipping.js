@@ -25,8 +25,15 @@ export function calculateShippingFee(subtotal, config) {
   return roundMoney(fee)
 }
 
+/** Negative adjustment only (admin discount); penalties do not affect tier base. */
+export function adjustmentDiscount(adjustment) {
+  const adj = Number(adjustment) || 0
+  return adj < 0 ? adj : 0
+}
+
 export function shippingTierBaseFromParts(subtotal, credit = 0, adjustment = 0) {
-  return roundMoney(Math.max(0, subtotal - credit - adjustment))
+  const disc = adjustmentDiscount(adjustment)
+  return roundMoney(Math.max(0, subtotal - credit + disc))
 }
 
 function itemCountsTowardFreeShipping(item) {
@@ -35,24 +42,43 @@ function itemCountsTowardFreeShipping(item) {
   return product.counts_toward_free_shipping !== false
 }
 
-/** Sum line totals for items that count toward free-shipping tiers (mirrors backend calculate_shipping_fee). */
-export function freeShippingSubtotalFromItems(items = []) {
+function grossSubtotalFromItems(items = []) {
+  return roundMoney(items.reduce((sum, item) => sum + resolveOrderLineTotal(item), 0))
+}
+
+/**
+ * Allocate shipping_tier_base proportionally across lines that count toward free shipping.
+ */
+export function eligibleTierSubtotalFromItems(items = [], tierBase = null) {
+  const gross = grossSubtotalFromItems(items)
+  if (gross <= 0) return 0
+  const base = tierBase != null ? Number(tierBase) : gross
   return roundMoney(
     items.reduce((sum, item) => {
       if (!itemCountsTowardFreeShipping(item)) return sum
-      return sum + resolveOrderLineTotal(item)
+      const line = resolveOrderLineTotal(item)
+      return sum + (line / gross) * base
     }, 0)
   )
 }
 
-/** Live shipping fee for admin/checkout previews. */
+/** @deprecated use eligibleTierSubtotalFromItems */
+export function freeShippingSubtotalFromItems(items = []) {
+  return eligibleTierSubtotalFromItems(items)
+}
+
+/** Live shipping fee for admin/checkout/user previews. */
 export function previewShippingFeeForOrder({
   items = [],
   deliveryMethod = 'pickup',
-  shippingConfig = null
+  shippingConfig = null,
+  storeCredit = 0,
+  adjustment = 0
 } = {}) {
   if (deliveryMethod !== 'delivery') return 0
-  const tierSubtotal = freeShippingSubtotalFromItems(items)
+  const gross = grossSubtotalFromItems(items)
+  const tierBase = shippingTierBaseFromParts(gross, storeCredit, adjustment)
+  const tierSubtotal = eligibleTierSubtotalFromItems(items, tierBase)
   return calculateShippingFee(tierSubtotal, shippingConfig)
 }
 

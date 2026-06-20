@@ -22,7 +22,7 @@ def get_shipping_fee_for_subtotal(subtotal, config=None):
     Calculate shipping fee based on subtotal and delivery fee config
     
     Args:
-        subtotal (Decimal): Order subtotal (excluding products that don't count toward free shipping)
+        subtotal (Decimal): Tier subtotal for threshold lookup
         config (DeliveryFeeConfig, optional): Delivery fee config. If None, will fetch from DB.
         
     Returns:
@@ -51,15 +51,77 @@ def get_shipping_fee_for_subtotal(subtotal, config=None):
         if subtotal >= threshold:
             applicable_fee = Decimal(str(tier.get('fee', 0)))
         else:
-            # Since tiers are sorted, we can break early
             break
     
-    # If we found a tier, use it; otherwise use the first tier (base fee)
     if applicable_fee is not None:
         return round_money(applicable_fee)
-    # This shouldn't happen if tiers[0] has threshold 0, but handle it anyway
     base = Decimal(str(tiers[0].get('fee', 0))) if tiers else Decimal('7.99')
     return round_money(base)
+
+
+def adjustment_discount(adjustment) -> Decimal:
+    """Negative admin discount only; penalties do not affect shipping tier."""
+    adj = Decimal(str(adjustment or 0))
+    return min(adj, Decimal('0'))
+
+
+def shipping_tier_base_from_parts(subtotal, credit=0, adjustment=0) -> Decimal:
+    """max(0, subtotal - credit + adjustment_discount)."""
+    sub = Decimal(str(subtotal or 0))
+    cr = Decimal(str(credit or 0))
+    disc = adjustment_discount(adjustment)
+    return round_money(max(Decimal('0'), sub - cr + disc))
+
+
+def _line_total_price(item) -> Decimal:
+    if hasattr(item, 'total_price'):
+        return Decimal(str(item.total_price or 0))
+    if isinstance(item, dict) and 'total_price' in item:
+        return Decimal(str(item['total_price'] or 0))
+    if hasattr(item, 'unit_price') and hasattr(item, 'quantity'):
+        return Decimal(str(item.unit_price or 0)) * Decimal(str(item.quantity or 0))
+    if isinstance(item, dict) and 'unit_price' in item and 'quantity' in item:
+        return Decimal(str(item['unit_price'] or 0)) * Decimal(str(item['quantity'] or 0))
+    return Decimal('0')
+
+
+def _product_for_item(item):
+    from models.product import Product
+    if hasattr(item, 'product') and item.product:
+        return item.product
+    if isinstance(item, dict) and item.get('product'):
+        return item['product']
+    product_id = None
+    if hasattr(item, 'product_id'):
+        product_id = item.product_id
+    elif isinstance(item, dict):
+        product_id = item.get('product_id')
+    if product_id:
+        return Product.query.get(product_id)
+    return None
+
+
+def eligible_tier_subtotal_from_items(order_items, tier_base) -> Decimal:
+    """Allocate tier_base proportionally across lines that count toward free shipping."""
+    if not order_items:
+        return round_money(tier_base)
+
+    gross = Decimal('0')
+    for item in order_items:
+        gross += _line_total_price(item)
+    if gross <= 0:
+        return Decimal('0')
+
+    base = Decimal(str(tier_base))
+    eligible = Decimal('0')
+    for item in order_items:
+        product = _product_for_item(item)
+        if product is not None and not product.counts_toward_free_shipping:
+            continue
+        line = _line_total_price(item)
+        eligible += (line / gross) * base
+    return round_money(eligible)
+
 
 # GTA cities (case-insensitive matching)
 GTA_CITIES = {
@@ -94,92 +156,30 @@ GTA_CITIES = {
 
 
 def is_gta_address(city):
-    """
-    Check if a city is in the GTA region
-    
-    Args:
-        city (str): City name from address
-        
-    Returns:
-        bool: True if city is in GTA, False otherwise
-    """
     if not city:
         return False
-    
-    # Normalize city name (lowercase, remove extra spaces)
     normalized_city = city.lower().strip()
-    
     return normalized_city in GTA_CITIES
 
 
 def calculate_shipping_fee(subtotal, delivery_method, address=None, order_items=None):
     """
-    Calculate shipping fee based on order details
-    
-    Rules (configurable via DeliveryFeeConfig):
-    - Pickup orders: $0 shipping
-    - Delivery orders: Fee calculated based on subtotal thresholds (configurable in admin)
-    - Default thresholds: < $58: base fee, >= $58: threshold 1 fee, >= $128: threshold 2 fee, >= $150: free
-    
-    Note: Products with counts_toward_free_shipping=False are excluded from subtotal
-    calculation for free shipping threshold determination.
-    
-    Args:
-        subtotal (Decimal or float): Order subtotal before shipping (full subtotal)
-        delivery_method (str): 'pickup' or 'delivery'
-        address (Address or dict, optional): Delivery address object or dict with 'city' key
-        order_items (list, optional): List of order items with product info. Each item should have:
-            - product_id or product object with counts_toward_free_shipping attribute
-            - total_price or unit_price * quantity
-            
-    Returns:
-        Decimal: Shipping fee amount
+    Calculate shipping fee based on order details.
+
+    ``subtotal`` is shipping_tier_base (after credit + adjustment discount).
+    When order_items is provided, tier_base is allocated proportionally across
+    eligible lines (counts_toward_free_shipping=True).
     """
     from constants.status_enums import DeliveryMethod
-    
-    # Convert subtotal to Decimal if needed
+
     if not isinstance(subtotal, Decimal):
         subtotal = Decimal(str(subtotal))
-    
-    # Pickup orders have no shipping fee
+
     if delivery_method == DeliveryMethod.PICKUP.value:
         return Decimal('0.00')
-    
-    # Calculate subtotal for free shipping threshold (excluding products that don't count)
-    free_shipping_subtotal = subtotal
-    if order_items:
-        from models.product import Product
-        free_shipping_subtotal = Decimal('0.00')
-        
-        for item in order_items:
-            # Get product to check counts_toward_free_shipping flag
-            product = None
-            if hasattr(item, 'product'):
-                product = item.product
-            elif hasattr(item, 'product_id'):
-                product = Product.query.get(item.product_id)
-            elif isinstance(item, dict):
-                if 'product' in item:
-                    product = item['product']
-                elif 'product_id' in item:
-                    product = Product.query.get(item['product_id'])
-            
-            # If product doesn't count toward free shipping, exclude it
-            if product and not product.counts_toward_free_shipping:
-                continue
-            
-            # Add item price to free shipping subtotal
-            if hasattr(item, 'total_price'):
-                free_shipping_subtotal += Decimal(str(item.total_price))
-            elif isinstance(item, dict) and 'total_price' in item:
-                free_shipping_subtotal += Decimal(str(item['total_price']))
-            elif hasattr(item, 'unit_price') and hasattr(item, 'quantity'):
-                free_shipping_subtotal += Decimal(str(item.unit_price)) * Decimal(str(item.quantity))
-            elif isinstance(item, dict) and 'unit_price' in item and 'quantity' in item:
-                free_shipping_subtotal += Decimal(str(item['unit_price'])) * Decimal(str(item['quantity']))
-    
-    # Calculate shipping fee based on subtotal using dynamic config
-    # Note: Currently all regions use the same fee structure
-    # The GTA check is kept for potential future use
-    return get_shipping_fee_for_subtotal(free_shipping_subtotal)
 
+    tier_subtotal = subtotal
+    if order_items:
+        tier_subtotal = eligible_tier_subtotal_from_items(order_items, subtotal)
+
+    return get_shipping_fee_for_subtotal(tier_subtotal)

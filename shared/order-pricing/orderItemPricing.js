@@ -374,3 +374,24 @@ export function estimateSelectionTotal(product, quantity, selection = {}) {
   })
   return roundMoney(totalPrice)
 }
+
+/** Build pseudo order lines for live preview from user product selections. */
+export function buildPreviewLinesFromSelection(products = [], selectedItems = {}) {
+  const lines = []
+  for (const product of products) {
+    const selection = selectedItems[product.id]
+    if (!selection || selection.quantity <= 0) continue
+    const totalPrice = estimateSelectionTotal(product, selection.quantity, {
+      variant_id: selection.variant_id,
+      final_weight: selection.weight
+    })
+    lines.push({
+      product,
+      product_id: product.id,
+      quantity: selection.quantity,
+      variant_id: selection.variant_id,
+      total_price: totalPrice
+    })
+  }
+  return lines
+}

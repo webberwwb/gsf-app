@@ -3,7 +3,10 @@ import apiClient from '../api/client'
 export {
   calculateShippingFee,
   getNextShippingTier,
-  shippingTierBaseFromParts
+  shippingTierBaseFromParts,
+  eligibleTierSubtotalFromItems,
+  previewShippingFeeForOrder,
+  adjustmentDiscount
 } from '@shared/order-pricing/shipping.js'
 
 let shippingConfigCache = null

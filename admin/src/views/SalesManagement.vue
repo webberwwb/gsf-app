@@ -90,6 +90,13 @@
             </div>
           </div>
           <div class="record-actions">
+            <button
+              type="button"
+              @click="openCommissionBreakdown(record)"
+              class="view-commission-btn"
+            >
+              查看分红
+            </button>
             <router-link 
               :to="`/group-deals/${record.group_deal_id}`" 
               class="view-deal-btn"
@@ -184,11 +191,19 @@
       :sdr="sdr"
       @close="closeQuarterlyBonus"
     />
+
+    <!-- Commission Breakdown Modal -->
+    <CommissionBreakdownModal
+      v-if="showCommissionBreakdownModal && commissionModalGroupDeal"
+      :groupDeal="commissionModalGroupDeal"
+      @close="closeCommissionBreakdown"
+    />
   </div>
 </template>
 
 <script>
 import apiClient from '../api/client'
+import CommissionBreakdownModal from '../components/CommissionBreakdownModal.vue'
 import CommissionConfigModal from '../components/CommissionConfigModal.vue'
 import CommissionExcludedUsersSection from '../components/CommissionExcludedUsersSection.vue'
 import QuarterlyBonusModal from '../components/QuarterlyBonusModal.vue'
@@ -199,6 +214,7 @@ import { formatOrderMoney2 } from '../utils/orderPricing'
 export default {
   name: 'SalesManagement',
   components: {
+    CommissionBreakdownModal,
     CommissionConfigModal,
     CommissionExcludedUsersSection,
     QuarterlyBonusModal
@@ -215,6 +231,8 @@ export default {
       commissionRecords: [],
       showCommissionConfigModal: false,
       showQuarterlyBonusModal: false,
+      showCommissionBreakdownModal: false,
+      commissionModalGroupDeal: null,
       showCreateSdrModal: false,
       showEditSdrModal: false,
       savingSdr: false,
@@ -364,6 +382,18 @@ export default {
     },
     closeQuarterlyBonus() {
       this.showQuarterlyBonusModal = false
+    },
+    openCommissionBreakdown(record) {
+      this.commissionModalGroupDeal = {
+        id: record.group_deal_id,
+        title: record.group_deal?.title || `团购 #${record.group_deal_id}`
+      }
+      this.showCommissionBreakdownModal = true
+    },
+    closeCommissionBreakdown() {
+      this.showCommissionBreakdownModal = false
+      this.commissionModalGroupDeal = null
+      this.fetchCommissionRecords()
     },
     formatDate(dateString) {
       return formatDateTimeEST_CN(dateString) || 'N/A'
@@ -687,17 +717,36 @@ export default {
   gap: var(--md-spacing-sm);
 }
 
+.view-commission-btn,
 .view-deal-btn {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: rgba(156, 39, 176, 0.1);
-  color: #9c27b0;
-  border: 1px solid rgba(156, 39, 176, 0.3);
   border-radius: var(--md-radius-md);
   font-size: var(--md-label-size);
   font-weight: 500;
-  text-decoration: none;
   transition: var(--transition-fast);
   display: inline-block;
+  cursor: pointer;
+}
+
+.view-commission-btn {
+  background: rgba(255, 140, 0, 0.1);
+  color: #ff8c00;
+  border: 1px solid rgba(255, 140, 0, 0.3);
+}
+
+.view-commission-btn:hover {
+  background: linear-gradient(135deg, #ff8c00 0%, #ff7700 100%);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+}
+
+.view-deal-btn {
+  background: rgba(156, 39, 176, 0.1);
+  color: #9c27b0;
+  border: 1px solid rgba(156, 39, 176, 0.3);
+  text-decoration: none;
 }
 
 .view-deal-btn:hover {

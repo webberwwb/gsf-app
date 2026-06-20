@@ -1,6 +1,7 @@
 <template>
-  <div class="modal-overlay" @click="$emit('close')">
-    <div class="modal-content" @click.stop>
+  <Teleport to="body">
+    <div class="modal-overlay" @click="$emit('close')">
+      <div class="modal-content" @click.stop>
       <div class="modal-header">
         <h2>分红明细 - {{ groupDeal.title }}</h2>
         <button @click="$emit('close')" class="close-btn">×</button>
@@ -9,7 +10,7 @@
       <div class="modal-body">
         <div v-if="loading" class="loading">加载中...</div>
         <div v-else-if="error" class="error-message">{{ error }}</div>
-        <div v-else-if="!commissionData || commissionData.records.length === 0" class="empty-state">
+        <div v-else-if="!commissionData || !commissionData.records?.length" class="empty-state">
           <p>暂无提成记录</p>
           <button @click="calculateCommission" class="calculate-btn" :disabled="calculating">
             {{ calculating ? '计算中...' : '计算提成' }}
@@ -28,8 +29,8 @@
           <div v-for="record in commissionData.records" :key="record.id" class="sdr-commission-card">
             <div class="sdr-header">
               <div class="sdr-info">
-                <h3>{{ record.sdr.name }}</h3>
-                <span class="sdr-identifier">{{ record.sdr.source_identifier }}</span>
+                <h3>{{ record.sdr?.name || 'SDR' }}</h3>
+                <span class="sdr-identifier">{{ record.sdr?.source_identifier || '' }}</span>
               </div>
               <div class="sdr-total">
                 <span class="total-label">提成总额:</span>
@@ -44,7 +45,7 @@
                   <span class="breakdown-value own">${{ formatMoney(record.own_customer_commission) }}</span>
                 </div>
                 <div class="breakdown-item">
-                  <span class="breakdown-label">一般客户提成:</span>
+                  <span class="breakdown-label">普通用户提成:</span>
                   <span class="breakdown-value general">${{ formatMoney(record.general_customer_commission) }}</span>
                 </div>
               </div>
@@ -59,7 +60,7 @@
                     <tr>
                       <th>产品</th>
                       <th>自己客户</th>
-                      <th>一般客户</th>
+                      <th>普通用户</th>
                       <th>总计</th>
                       <th>提成</th>
                     </tr>
@@ -109,54 +110,85 @@
             <!-- Order Grouping for Validation -->
             <div v-if="record.order_grouping" class="order-grouping-section">
               <h4>订单分组验证</h4>
+              <p class="order-grouping-hint">
+                计入提成金额 = 商品小计 - 手动调整 - 积分抵扣（不计运费）。提成按该金额占商品小计的比例折算。
+              </p>
               
-              <!-- Own Customer Orders -->
-              <div v-if="record.order_grouping.own_customer_orders && record.order_grouping.own_customer_orders.length > 0" class="order-group own-customer-group">
-                <div class="group-header">
-                  <h5>自己客户订单 ({{ record.order_grouping.own_customer_orders.length }})</h5>
-                  <span class="group-badge own">提成: ${{ formatMoney(record.own_customer_commission) }}</span>
+              <!-- Counted Customer Orders (tabs) -->
+              <div
+                v-if="hasCountedCustomerOrders(record)"
+                :class="['order-group', 'customer-orders-tabs', getOrderGroupTab(record.id) === 'own' ? 'own-customer-group' : 'other-customer-group']"
+              >
+                <div class="customer-order-tabs">
+                  <button
+                    v-if="hasOwnCustomerOrders(record)"
+                    type="button"
+                    :class="['customer-order-tab', 'own', { active: getOrderGroupTab(record.id) === 'own' }]"
+                    @click="setOrderGroupTab(record.id, 'own')"
+                  >
+                    <span class="tab-label">自己客户订单 ({{ record.order_grouping.own_customer_orders.length }})</span>
+                    <span class="tab-commission">提成 ${{ formatMoney(record.own_customer_commission) }}</span>
+                  </button>
+                  <button
+                    v-if="hasGeneralCustomerOrders(record)"
+                    type="button"
+                    :class="['customer-order-tab', 'general', { active: getOrderGroupTab(record.id) === 'general' }]"
+                    @click="setOrderGroupTab(record.id, 'general')"
+                  >
+                    <span class="tab-label">普通用户订单 ({{ record.order_grouping.other_customer_orders.length }})</span>
+                    <span class="tab-commission">提成 ${{ formatMoney(record.general_customer_commission) }}</span>
+                  </button>
                 </div>
                 <div class="orders-list">
-                  <div v-for="order in record.order_grouping.own_customer_orders" :key="order.order_id" class="order-card">
-                    <div class="order-header">
-                      <span class="order-number">订单: {{ order.order_number }}</span>
-                      <span class="order-total">${{ formatMoney(order.total) }}</span>
-                    </div>
-                    <div class="order-user">
-                      <span class="user-name">{{ order.user_name || 'N/A' }}</span>
-                      <span class="user-phone">{{ order.user_phone || 'N/A' }}</span>
-                      <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
-                    </div>
-                    <div class="order-items">
-                      <div v-for="item in order.items" :key="item.product_id" class="order-item">
-                        <span class="item-name">{{ item.product_name }}</span>
-                        <span class="item-details">
-                          <span v-if="item.quantity">数量: {{ item.quantity }}</span>
-                          <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
-                          <span class="item-subtotal">${{ formatMoney(item.subtotal || 0) }}</span>
-                        </span>
-                      </div>
-                    </div>
+                  <div v-if="getActiveCustomerOrders(record).length === 0" class="orders-tab-empty">
+                    该分类暂无订单
                   </div>
-                </div>
-              </div>
-
-              <!-- Other Customer Orders -->
-              <div v-if="record.order_grouping.other_customer_orders && record.order_grouping.other_customer_orders.length > 0" class="order-group other-customer-group">
-                <div class="group-header">
-                  <h5>一般客户订单 ({{ record.order_grouping.other_customer_orders.length }})</h5>
-                  <span class="group-badge general">提成: ${{ formatMoney(record.general_customer_commission) }}</span>
-                </div>
-                <div class="orders-list">
-                  <div v-for="order in record.order_grouping.other_customer_orders" :key="order.order_id" class="order-card">
+                  <div v-for="order in getActiveCustomerOrders(record)" :key="order.order_id" class="order-card">
                     <div class="order-header">
                       <span class="order-number">订单: {{ order.order_number }}</span>
-                      <span class="order-total">${{ formatMoney(order.total) }}</span>
+                      <span class="order-total">${{ formatMoney(order.order_amount ?? order.total) }}</span>
                     </div>
-                    <div class="order-user">
-                      <span class="user-name">{{ order.user_name || 'N/A' }}</span>
-                      <span class="user-phone">{{ order.user_phone || 'N/A' }}</span>
-                      <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
+                    <div class="order-meta-grid">
+                      <div class="order-meta-item">
+                        <span class="meta-label">用户</span>
+                        <span class="meta-value">{{ order.user_name || 'N/A' }}</span>
+                      </div>
+                      <div class="order-meta-item">
+                        <span class="meta-label">微信号</span>
+                        <span class="meta-value">{{ order.user_wechat || 'N/A' }}</span>
+                      </div>
+                      <div class="order-meta-item">
+                        <span class="meta-label">计入提成金额</span>
+                        <span class="meta-value">${{ formatMoney(order.order_amount ?? order.total) }}</span>
+                      </div>
+                      <div v-if="order.gross_subtotal > 0 && order.gross_subtotal !== order.order_amount" class="order-meta-item">
+                        <span class="meta-label">商品小计</span>
+                        <span class="meta-value">${{ formatMoney(order.gross_subtotal) }}</span>
+                      </div>
+                      <div v-if="order.adjustment_discount > 0" class="order-meta-item deduction-note">
+                        <span class="meta-label">手动调整</span>
+                        <span class="meta-value">-${{ formatMoney(order.adjustment_discount) }}</span>
+                      </div>
+                      <div v-if="order.store_credit_applied > 0" class="order-meta-item deduction-note">
+                        <span class="meta-label">积分抵扣</span>
+                        <span class="meta-value">-${{ formatMoney(order.store_credit_applied) }}</span>
+                      </div>
+                      <div v-if="order.commission_ratio < 1" class="order-meta-item deduction-note">
+                        <span class="meta-label">提成比例</span>
+                        <span class="meta-value">{{ formatCommissionRatio(order.commission_ratio) }} (已扣除手动调整/积分抵扣)</span>
+                      </div>
+                      <div class="order-meta-item">
+                        <span class="meta-label">订单状态</span>
+                        <span class="meta-value">{{ order.order_status_label || order.order_status || 'N/A' }}</span>
+                      </div>
+                      <div class="order-meta-item">
+                        <span class="meta-label">付款状态</span>
+                        <span class="meta-value">{{ order.payment_status_label || order.payment_status || 'N/A' }}</span>
+                      </div>
+                      <div v-if="order.shipping_fee > 0" class="order-meta-item shipping-note">
+                        <span class="meta-label">运费</span>
+                        <span class="meta-value">${{ formatMoney(order.shipping_fee) }} (不计运费)</span>
+                      </div>
                     </div>
                     <div class="order-items">
                       <div v-for="item in order.items" :key="item.product_id" class="order-item">
@@ -188,6 +220,37 @@
                       <span class="user-name">{{ order.user_name || 'N/A' }}</span>
                       <span class="user-phone">{{ order.user_phone || 'N/A' }}</span>
                       <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
+                    </div>
+                    <div class="order-items">
+                      <div v-for="item in order.items" :key="item.product_id" class="order-item">
+                        <span class="item-name">{{ item.product_name }}</span>
+                        <span class="item-details">
+                          <span v-if="item.quantity">数量: {{ item.quantity }}</span>
+                          <span v-if="item.weight">重量: {{ item.weight.toFixed(2) }} 磅</span>
+                          <span class="item-subtotal">${{ formatMoney(item.subtotal || 0) }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Ineligible Orders -->
+              <div v-if="record.order_grouping.ineligible_orders && record.order_grouping.ineligible_orders.length > 0" class="order-group ineligible-group">
+                <div class="group-header">
+                  <h5>不计入提成 - 未完成/未付款/已取消 ({{ record.order_grouping.ineligible_orders.length }})</h5>
+                  <span class="group-badge ineligible">不计入</span>
+                </div>
+                <div class="orders-list">
+                  <div v-for="order in record.order_grouping.ineligible_orders" :key="order.order_id" class="order-card">
+                    <div class="order-header">
+                      <span class="order-number">订单: {{ order.order_number }}</span>
+                      <span class="order-total">${{ formatMoney(order.total) }}</span>
+                    </div>
+                    <div class="order-user">
+                      <span class="user-name">{{ order.user_name || 'N/A' }}</span>
+                      <span class="user-phone">{{ order.user_phone || 'N/A' }}</span>
+                      <span v-if="order.ineligibility_reason" class="ineligibility-reason">{{ order.ineligibility_reason }}</span>
                     </div>
                     <div class="order-items">
                       <div v-for="item in order.items" :key="item.product_id" class="order-item">
@@ -304,8 +367,9 @@
       <div class="modal-footer">
         <button @click="$emit('close')" class="close-footer-btn">关闭</button>
       </div>
+      </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script>
@@ -333,7 +397,8 @@ export default {
       markingPaid: false,
       savingAdjustment: false,
       commissionData: null,
-      adjustmentData: {} // record_id -> {amount, notes}
+      adjustmentData: {}, // record_id -> {amount, notes}
+      orderGroupTabs: {} // record_id -> 'own' | 'general'
     }
   },
   mounted() {
@@ -342,6 +407,44 @@ export default {
   methods: {
     formatMoney(value) {
       return formatOrderMoney2(value)
+    },
+    formatCommissionRatio(ratio) {
+      const pct = (Number(ratio) || 0) * 100
+      return `${pct.toFixed(1)}%`
+    },
+    hasOwnCustomerOrders(record) {
+      return (record.order_grouping?.own_customer_orders?.length || 0) > 0
+    },
+    hasGeneralCustomerOrders(record) {
+      return (record.order_grouping?.other_customer_orders?.length || 0) > 0
+    },
+    hasCountedCustomerOrders(record) {
+      return this.hasOwnCustomerOrders(record) || this.hasGeneralCustomerOrders(record)
+    },
+    getOrderGroupTab(recordId) {
+      return this.orderGroupTabs[recordId] || 'own'
+    },
+    setOrderGroupTab(recordId, tab) {
+      this.orderGroupTabs[recordId] = tab
+    },
+    getActiveCustomerOrders(record) {
+      const tab = this.getOrderGroupTab(record.id)
+      if (tab === 'own') {
+        return record.order_grouping?.own_customer_orders || []
+      }
+      return record.order_grouping?.other_customer_orders || []
+    },
+    initOrderGroupTabs() {
+      if (!this.commissionData?.records) return
+      this.commissionData.records.forEach(record => {
+        const ownCount = record.order_grouping?.own_customer_orders?.length || 0
+        const generalCount = record.order_grouping?.other_customer_orders?.length || 0
+        if (ownCount > 0) {
+          this.orderGroupTabs[record.id] = 'own'
+        } else if (generalCount > 0) {
+          this.orderGroupTabs[record.id] = 'general'
+        }
+      })
     },
     async fetchCommission() {
       try {
@@ -359,6 +462,7 @@ export default {
               notes: record.adjustment_notes || ''
             }
           })
+          this.initOrderGroupTabs()
         }
 
       } catch (err) {
@@ -462,7 +566,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 10000;
   padding: 16px;
 }
 
@@ -1120,10 +1224,17 @@ export default {
 }
 
 .order-grouping-section h4 {
-  margin: 0 0 16px 0;
+  margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
   color: #111827;
+}
+
+.order-grouping-hint {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
 }
 
 .order-group {
@@ -1133,19 +1244,82 @@ export default {
   overflow: hidden;
 }
 
-.own-customer-group {
+.customer-orders-tabs.own-customer-group {
   border-color: rgba(156, 39, 176, 0.3);
   background: rgba(156, 39, 176, 0.02);
 }
 
-.other-customer-group {
+.customer-orders-tabs.other-customer-group {
   border-color: rgba(123, 31, 162, 0.3);
   background: rgba(123, 31, 162, 0.02);
+}
+
+.customer-order-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.customer-order-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.customer-order-tab:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.customer-order-tab.active.own {
+  border-bottom-color: #9c27b0;
+  background: rgba(156, 39, 176, 0.08);
+}
+
+.customer-order-tab.active.general {
+  border-bottom-color: #7b1fa2;
+  background: rgba(123, 31, 162, 0.08);
+}
+
+.customer-order-tab .tab-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.customer-order-tab .tab-commission {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.customer-order-tab.active .tab-commission {
+  color: #374151;
+}
+
+.orders-tab-empty {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
 }
 
 .no-commission-group {
   border-color: rgba(107, 114, 128, 0.3);
   background: rgba(107, 114, 128, 0.02);
+}
+
+.ineligible-group {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.04);
 }
 
 .group-header {
@@ -1186,6 +1360,20 @@ export default {
   color: #6b7280;
 }
 
+.group-badge.ineligible {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.ineligibility-reason {
+  padding: 2px 8px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .orders-list {
   padding: 12px;
   max-height: 400px;
@@ -1223,6 +1411,47 @@ export default {
   font-weight: 600;
   color: #9c27b0;
   font-size: 14px;
+}
+
+.order-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.order-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.order-meta-item.shipping-note .meta-value,
+.order-meta-item.deduction-note .meta-value {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.order-meta-item.deduction-note .meta-value {
+  color: #b45309;
+}
+
+.meta-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.meta-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  word-break: break-word;
 }
 
 .order-user {

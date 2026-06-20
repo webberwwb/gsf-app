@@ -97,3 +97,15 @@ class Config:
     # Public URL base for images (e.g., https://storage.googleapis.com/gsf-app-product-images/)
     GCS_PUBLIC_URL_BASE = os.environ.get('GCS_PUBLIC_URL_BASE', f'https://storage.googleapis.com/{GCS_BUCKET_NAME}')
 
+
+class TestConfig(Config):
+    """In-memory SQLite for automated tests — never prod MySQL."""
+
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_ENGINE_OPTIONS = {}
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    def _get_database_uri(self):
+        return self.SQLALCHEMY_DATABASE_URI
+

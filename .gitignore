@@ -68,6 +68,7 @@ instance/service_accounts/
 *.db
 *.sqlite
 *.sqlite3
+backend/.test-data/
 
 # Cloud Build
 .gcloudignore

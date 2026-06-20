@@ -10,6 +10,47 @@ from models.groupdeal import GroupDeal
 from models.order import Order, OrderItem
 from models.product import Product
 from models.user import User
+from constants.status_enums import OrderStatus, PaymentStatus
+from utils.money import round_money
+
+
+def is_order_eligible_for_commission(order: Order) -> bool:
+    """Only paid, completed, non-deleted orders count toward commission."""
+    return (
+        order.deleted_at is None
+        and order.status == OrderStatus.COMPLETED.value
+        and order.payment_status == PaymentStatus.PAID.value
+    )
+
+
+def _order_status_label(status: Optional[str]) -> str:
+    if not status:
+        return ''
+    try:
+        return OrderStatus.get_label(OrderStatus(status))
+    except ValueError:
+        return status
+
+
+def _payment_status_label(status: Optional[str]) -> str:
+    if not status:
+        return ''
+    try:
+        return PaymentStatus.get_label(PaymentStatus(status))
+    except ValueError:
+        return status
+
+
+def get_order_ineligibility_reason(order: Order) -> Optional[str]:
+    if order.deleted_at is not None:
+        return '已删除'
+    if order.status == OrderStatus.CANCELLED.value:
+        return '已取消'
+    if order.status != OrderStatus.COMPLETED.value:
+        return _order_status_label(order.status) or '未完成'
+    if order.payment_status != PaymentStatus.PAID.value:
+        return _payment_status_label(order.payment_status) or '未付款'
+    return None
 
 
 def get_commission_excluded_user_ids() -> set:
@@ -43,6 +84,37 @@ def get_quarter_datetime_range(year: int, quarter: int) -> Tuple[datetime, datet
     return quarter_start, quarter_end
 
 
+def get_commission_adjustment_discount(order: Order) -> Decimal:
+    """Manual discount magnitude (negative adjustments only; surcharges do not reduce commission)."""
+    adjustment = Decimal(str(order.adjustment_amount or 0))
+    return max(Decimal('0'), -adjustment)
+
+
+def get_commission_net_product_amount(order: Order) -> Decimal:
+    """Net product amount: 商品小计 - 手动调整(折扣) - 积分抵扣 (不计运费)."""
+    subtotal = Decimal(str(order.subtotal or 0))
+    credit = Decimal(str(order.store_credit_applied or 0))
+    discount = get_commission_adjustment_discount(order)
+    return max(Decimal('0'), subtotal - discount - credit)
+
+
+def get_commission_order_amount(order: Order) -> float:
+    """Product order amount used for commission context (excludes delivery/shipping fee)."""
+    return float(round_money(get_commission_net_product_amount(order)))
+
+
+def get_commission_adjustment_ratio(order: Order) -> Decimal:
+    """
+    Scale factor applied to per-item commission when credit or discounts reduce net product amount.
+    Bonuses (positive adjustment) do not increase commission above 100%.
+    """
+    subtotal = Decimal(str(order.subtotal or 0))
+    if subtotal <= 0:
+        return Decimal('0')
+    net = get_commission_net_product_amount(order)
+    return min(Decimal('1'), net / subtotal)
+
+
 def _build_order_summary(
     order: Order,
     products_cache: Dict[int, str],
@@ -65,21 +137,46 @@ def _build_order_summary(
 
     user = User.query.get(order.user_id)
     user_name = None
+    user_wechat = None
     if user:
         user_name = user.nickname or user.wechat_nickname or user.phone or f"User {user.id}"
+        user_wechat = user.wechat
+
+    shipping_fee = float(order.shipping_fee) if order.shipping_fee else 0.0
+    gross_subtotal = float(order.subtotal) if order.subtotal else 0.0
+    adjustment_amount = float(order.adjustment_amount) if order.adjustment_amount else 0.0
+    adjustment_discount = float(get_commission_adjustment_discount(order))
+    store_credit_applied = float(order.store_credit_applied) if order.store_credit_applied else 0.0
+    order_amount = get_commission_order_amount(order)
+    commission_ratio = float(get_commission_adjustment_ratio(order))
 
     summary = {
         'order_id': order.id,
         'order_number': order.order_number,
         'user_id': order.user_id,
         'user_name': user_name,
+        'user_wechat': user_wechat,
         'user_phone': user.phone if user else None,
         'user_source': user.user_source if user else None,
+        'order_status': order.status,
+        'order_status_label': _order_status_label(order.status),
+        'payment_status': order.payment_status,
+        'payment_status_label': _payment_status_label(order.payment_status),
+        'gross_subtotal': gross_subtotal,
+        'adjustment_amount': adjustment_amount,
+        'adjustment_discount': adjustment_discount,
+        'store_credit_applied': store_credit_applied,
+        'order_amount': order_amount,
+        'commission_ratio': commission_ratio,
+        'shipping_fee': shipping_fee,
         'items': order_items_summary,
         'total': float(order.total) if order.total else 0.0,
     }
     if exclusion_note:
         summary['exclusion_note'] = exclusion_note
+    ineligibility_reason = get_order_ineligibility_reason(order)
+    if ineligibility_reason:
+        summary['ineligibility_reason'] = ineligibility_reason
     return summary
 
 
@@ -115,6 +212,8 @@ def get_excluded_orders_for_quarter(year: int, quarter: int) -> Dict:
         orders = Order.query.filter(
             Order.group_deal_id == group_deal.id,
             Order.deleted_at.is_(None),
+            Order.status == OrderStatus.COMPLETED.value,
+            Order.payment_status == PaymentStatus.PAID.value,
             Order.user_id.in_(excluded_user_ids),
         ).all()
 
@@ -126,7 +225,7 @@ def get_excluded_orders_for_quarter(year: int, quarter: int) -> Dict:
         for order in orders:
             exclusion_note = exclusion_notes_by_user.get(order.user_id)
             order_summaries.append(_build_order_summary(order, products_cache, exclusion_note))
-            deal_order_value += Decimal(str(order.total or 0))
+            deal_order_value += get_commission_net_product_amount(order)
 
         total_excluded_orders += len(order_summaries)
         total_excluded_order_value += deal_order_value
@@ -178,14 +277,16 @@ def calculate_commission_for_group_deal(group_deal_id: int, recalculate: bool = 
     if not sdrs:
         return {'success': False, 'error': 'No active SDRs found'}
     
-    # Get all orders for this group deal (exclude soft-deleted orders)
-    orders = Order.query.filter_by(
-        group_deal_id=group_deal_id,
-        deleted_at=None
+    # Only paid, completed orders count toward commission
+    orders = Order.query.filter(
+        Order.group_deal_id == group_deal_id,
+        Order.deleted_at.is_(None),
+        Order.status == OrderStatus.COMPLETED.value,
+        Order.payment_status == PaymentStatus.PAID.value,
     ).all()
-    
+
     if not orders:
-        return {'success': True, 'records': [], 'total_commission': 0, 'message': 'No orders found'}
+        return {'success': True, 'records': [], 'total_commission': 0, 'message': 'No eligible orders found'}
     
     commission_records = []
     total_all_commission = Decimal('0')
@@ -275,7 +376,10 @@ def calculate_sdr_commission(sdr: SDR, orders: List[Order]) -> Dict:
             continue
         
         is_own_customer = (user.user_source == sdr.source_identifier)
-        
+        commission_ratio = get_commission_adjustment_ratio(order)
+        if commission_ratio <= 0:
+            continue
+
         # Process each order item
         for item in order.items:
             product = Product.query.get(item.product_id)
@@ -291,7 +395,8 @@ def calculate_sdr_commission(sdr: SDR, orders: List[Order]) -> Dict:
                 commission_rule=rule,
                 is_own_customer=is_own_customer
             )
-            
+            commission = round_money(commission * commission_ratio)
+
             if commission > 0:
                 # Track totals
                 total_commission += commission
@@ -397,10 +502,11 @@ def calculate_item_commission(
 
 def build_order_grouping_for_sdr(sdr: SDR, orders: List[Order]) -> Dict:
     """
-    Group orders for an SDR into three categories:
+    Group orders for an SDR into four categories:
     - Own customer orders
     - Other customer orders
     - No commission orders (excluded users)
+    - Ineligible orders (cancelled, unpaid, or not completed)
     
     Args:
         sdr: SDR object
@@ -412,32 +518,36 @@ def build_order_grouping_for_sdr(sdr: SDR, orders: List[Order]) -> Dict:
     own_customer_orders = []
     other_customer_orders = []
     no_commission_orders = []
-    
+    ineligible_orders = []
+
     # Get all products for product name lookup
     products_cache = {}
     excluded_user_ids = get_commission_excluded_user_ids()
-    
+
     for order in orders:
         user = User.query.get(order.user_id)
         if not user:
             continue
-        
+
         order_summary = _build_order_summary(order, products_cache)
 
-        # Categorize order
+        if not is_order_eligible_for_commission(order):
+            ineligible_orders.append(order_summary)
+            continue
+
+        # Categorize eligible order
         if is_user_excluded_from_commission(user.id, excluded_user_ids):
             no_commission_orders.append(order_summary)
         elif user.user_source == sdr.source_identifier:
-            # Own customer orders
             own_customer_orders.append(order_summary)
         else:
-            # Other customer orders
             other_customer_orders.append(order_summary)
-    
+
     return {
         'own_customer_orders': own_customer_orders,
         'other_customer_orders': other_customer_orders,
-        'no_commission_orders': no_commission_orders
+        'no_commission_orders': no_commission_orders,
+        'ineligible_orders': ineligible_orders,
     }
 
 
@@ -456,10 +566,11 @@ def get_commission_summary_for_group_deal(group_deal_id: int) -> Optional[Dict]:
     if not records:
         return None
     
-    # Get all orders for this group deal
-    orders = Order.query.filter_by(
-        group_deal_id=group_deal_id,
-        deleted_at=None
+    orders = Order.query.filter(
+        Order.group_deal_id == group_deal_id,
+        Order.deleted_at.is_(None),
+        Order.status == OrderStatus.COMPLETED.value,
+        Order.payment_status == PaymentStatus.PAID.value,
     ).all()
     
     # Build enhanced records with order grouping

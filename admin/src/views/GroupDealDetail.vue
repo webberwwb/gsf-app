@@ -218,6 +218,73 @@
               清除筛选 ({{ selectedProductFilters.length }})
             </button>
           </div>
+
+          <div class="product-stats-controls">
+            <div class="product-stats-segment" role="tablist" aria-label="商品统计分组方式">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="productStatsGroupMode === 'product'"
+                :class="['segment-chip', { active: productStatsGroupMode === 'product' }]"
+                @click="setProductStatsGroupMode('product')"
+              >
+                按商品
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="productStatsGroupMode === 'supplier'"
+                :class="['segment-chip', { active: productStatsGroupMode === 'supplier' }]"
+                @click="setProductStatsGroupMode('supplier')"
+              >
+                按供应商
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="productStatsGroupMode === 'category'"
+                :class="['segment-chip', { active: productStatsGroupMode === 'category' }]"
+                @click="setProductStatsGroupMode('category')"
+              >
+                按分类
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="productStatsGroupMode !== 'product' && productStatsTabs.length > 0"
+            class="product-stats-chips"
+            role="tablist"
+            :aria-label="productStatsGroupMode === 'supplier' ? '供应商' : '分类'"
+          >
+            <button
+              v-for="tab in productStatsTabs"
+              :key="tab.key"
+              type="button"
+              role="tab"
+              :aria-selected="activeProductStatsTab === tab.key"
+              :class="['stats-chip', { active: activeProductStatsTab === tab.key }]"
+              @click="activeProductStatsTab = tab.key"
+            >
+              <span class="stats-chip-label">{{ tab.label }}</span>
+              <span class="stats-chip-badges">
+                <span class="stats-chip-badge">{{ tab.productCount }} 种</span>
+                <span class="stats-chip-badge stats-chip-badge--qty">{{ tab.totalQuantity }} 件</span>
+              </span>
+            </button>
+          </div>
+
+          <div
+            v-if="visibleProductStatsSummary"
+            class="product-stats-tab-summary"
+          >
+            <span class="product-stats-tab-summary-name">{{ visibleProductStatsSummary.label }}</span>
+            <span class="product-stats-tab-summary-stats">
+              {{ visibleProductStatsSummary.productCount }} 种 ·
+              数量 {{ visibleProductStatsSummary.totalQuantity }} ·
+              销售额 ${{ formatStatMoney(visibleProductStatsSummary.totalSalesValue) }}
+            </span>
+          </div>
           
           <!-- Selected Products Summary -->
           <div v-if="selectedProductFilters.length > 0" class="selected-products-summary">
@@ -249,9 +316,12 @@
             </div>
           </div>
           
-          <div class="product-stats-list">
+          <div v-if="visibleProductStats.length === 0" class="product-stats-empty">
+            暂无商品数据
+          </div>
+          <div v-else class="product-stats-list">
             <div 
-              v-for="productStat in statistics.productCounts" 
+              v-for="productStat in visibleProductStats" 
               :key="productStat.statKey"
               :class="['product-stat-item', { active: isProductFilterActive(productStat.statKey), 'is-variant-row': productStat.variantId != null }]"
               @click="toggleProductFilter(productStat.statKey)"
@@ -629,7 +699,27 @@ export default {
       viewMode: orderPrefs.viewMode, // 'card' or 'list'
       narrowMobile: false,
       mobileStatsSummaryOpen: true,
-      mobileProductStatsOpen: true
+      mobileProductStatsOpen: true,
+      productStatsGroupMode: 'product',
+      activeProductStatsTab: null
+    }
+  },
+  watch: {
+    productStatsTabs: {
+      handler(tabs) {
+        if (this.productStatsGroupMode === 'product') {
+          this.activeProductStatsTab = null
+          return
+        }
+        if (!tabs?.length) {
+          this.activeProductStatsTab = null
+          return
+        }
+        if (!tabs.some((tab) => tab.key === this.activeProductStatsTab)) {
+          this.activeProductStatsTab = tabs[0].key
+        }
+      },
+      immediate: true
     }
   },
   created() {
@@ -906,6 +996,8 @@ export default {
             const displayName = variantName ? `${productName} · ${variantName}` : productName
             const quantity = item.quantity || 0
             const itemSalesValue = this.computeItemSalesValue(item)
+            const supplier = catalogProduct?.supplier
+            const category = catalogProduct?.category
 
             if (productCountsMap.has(statKey)) {
               const existing = productCountsMap.get(statKey)
@@ -919,6 +1011,10 @@ export default {
                 productName,
                 variantName,
                 displayName,
+                supplierId: supplier?.id ?? null,
+                supplierName: supplier?.name || '未分配供应商',
+                categoryId: category?.id ?? null,
+                categoryName: category?.name || '未分配分类',
                 totalQuantity: quantity,
                 totalSalesValue: itemSalesValue
               })
@@ -986,6 +1082,67 @@ export default {
         totalSales,
         totalOrders,
         totalQuantity
+      }
+    },
+    productStatsTabs() {
+      const stats = this.statistics.productCounts
+      const mode = this.productStatsGroupMode
+      if (mode === 'product' || !stats.length) return []
+
+      const meta = mode === 'supplier'
+        ? { idKey: 'supplierId', nameKey: 'supplierName' }
+        : { idKey: 'categoryId', nameKey: 'categoryName' }
+
+      const groups = new Map()
+      stats.forEach((stat) => {
+        const id = stat[meta.idKey]
+        const key = id == null ? 'none' : String(id)
+        const label = stat[meta.nameKey]
+        if (groups.has(key)) {
+          const group = groups.get(key)
+          group.totalQuantity += stat.totalQuantity
+          group.totalSalesValue += stat.totalSalesValue
+          group.productCount += 1
+        } else {
+          groups.set(key, {
+            key,
+            label,
+            totalQuantity: stat.totalQuantity,
+            totalSalesValue: stat.totalSalesValue,
+            productCount: 1
+          })
+        }
+      })
+
+      return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+    },
+    visibleProductStats() {
+      const stats = this.statistics.productCounts
+      if (this.productStatsGroupMode === 'product') return stats
+      if (!this.activeProductStatsTab) return stats
+
+      const idKey = this.productStatsGroupMode === 'supplier' ? 'supplierId' : 'categoryId'
+      return stats.filter((stat) => {
+        const id = stat[idKey]
+        const key = id == null ? 'none' : String(id)
+        return key === this.activeProductStatsTab
+      })
+    },
+    visibleProductStatsSummary() {
+      const stats = this.visibleProductStats
+      if (!stats.length) return null
+
+      let label = '全部商品'
+      if (this.productStatsGroupMode === 'supplier' || this.productStatsGroupMode === 'category') {
+        const tab = this.productStatsTabs.find((t) => t.key === this.activeProductStatsTab)
+        label = tab?.label || label
+      }
+
+      return {
+        label,
+        productCount: stats.length,
+        totalQuantity: stats.reduce((sum, stat) => sum + stat.totalQuantity, 0),
+        totalSalesValue: stats.reduce((sum, stat) => sum + stat.totalSalesValue, 0)
       }
     }
   },
@@ -1112,6 +1269,16 @@ export default {
     },
     clearProductFilters() {
       this.selectedProductFilters = []
+    },
+    setProductStatsGroupMode(mode) {
+      if (this.productStatsGroupMode === mode) return
+      this.productStatsGroupMode = mode
+      if (mode === 'product') {
+        this.activeProductStatsTab = null
+        return
+      }
+      const tabs = this.productStatsTabs
+      this.activeProductStatsTab = tabs.length ? tabs[0].key : null
     },
     handleSearch() {
       // Search is handled by computed property filteredOrders
@@ -2427,6 +2594,156 @@ export default {
   font-weight: 500;
 }
 
+.product-stats-controls {
+  margin-bottom: var(--md-spacing-md);
+}
+
+.product-stats-segment {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+}
+
+.segment-chip {
+  padding: 0.4rem 0.85rem;
+  background: transparent;
+  color: var(--md-on-surface-variant);
+  border: none;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+
+.segment-chip:hover:not(.active) {
+  color: var(--md-on-surface);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.segment-chip.active {
+  background: #fff;
+  color: var(--md-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.product-stats-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: var(--md-spacing-md);
+}
+
+.stats-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.35rem 0.45rem 0.35rem 0.75rem;
+  background: #fff;
+  color: var(--md-on-surface);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, color 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.stats-chip:hover:not(.active) {
+  border-color: rgba(255, 140, 0, 0.45);
+  background: rgba(255, 140, 0, 0.04);
+}
+
+.stats-chip.active {
+  border-color: var(--md-primary);
+  background: rgba(255, 140, 0, 0.12);
+  color: #c2410c;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(255, 140, 0, 0.2);
+}
+
+.stats-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-chip-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.stats-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--md-on-surface-variant);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.stats-chip-badge--qty {
+  color: #9a3412;
+  background: rgba(255, 140, 0, 0.14);
+}
+
+.stats-chip.active .stats-chip-badge {
+  color: #9a3412;
+  background: rgba(255, 140, 0, 0.18);
+}
+
+.stats-chip.active .stats-chip-badge--qty {
+  color: #fff;
+  background: var(--md-primary);
+}
+
+.product-stats-tab-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-spacing-sm) var(--md-spacing-md);
+  margin-bottom: var(--md-spacing-md);
+  padding: 0.55rem 0.85rem;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.08) 0%, rgba(255, 140, 0, 0.02) 100%);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 140, 0, 0.22);
+}
+
+.product-stats-tab-summary-name {
+  font-size: var(--md-body-size);
+  font-weight: 600;
+  color: var(--md-on-surface);
+}
+
+.product-stats-tab-summary-stats {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+}
+
+.product-stats-empty {
+  padding: var(--md-spacing-lg);
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-body-size);
+}
+
 .clear-filters-btn {
   display: flex;
   align-items: center;
@@ -3427,6 +3744,36 @@ export default {
   .mobile-stats-toggle.product-stats-toggle {
     margin-top: 0;
     margin-bottom: var(--md-spacing-md);
+  }
+
+  .product-stats-segment {
+    display: flex;
+    width: 100%;
+  }
+
+  .segment-chip {
+    flex: 1;
+    min-width: 0;
+    padding: 0.45rem 0.35rem;
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .product-stats-chips {
+    gap: 0.4rem;
+  }
+
+  .stats-chip {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.35rem 0.3rem 0.65rem;
+  }
+
+  .stats-chip-label {
+    max-width: 8rem;
+  }
+
+  .product-stats-tab-summary {
+    border-radius: var(--md-radius-md);
   }
   
   .stats-grid {

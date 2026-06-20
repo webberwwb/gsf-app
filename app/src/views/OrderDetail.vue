@@ -579,7 +579,7 @@
         <div class="order-breakdown">
           <div class="breakdown-row">
             <span class="breakdown-label">商品小计:</span>
-            <span class="breakdown-amount">${{ formatOrderSummaryMoney(orderSubtotalNumber(order)) }}</span>
+            <span class="breakdown-amount">${{ formatOrderSummaryMoney(displayedSubtotal) }}</span>
           </div>
           <div
             v-if="displayedStoreCreditApplied > 0"
@@ -603,7 +603,7 @@
             </span>
           </div>
           <div
-            v-if="order.delivery_method === 'delivery'"
+            v-if="previewDeliveryMethod === 'delivery'"
             class="breakdown-row"
           >
             <span class="breakdown-label">配送费:</span>
@@ -774,9 +774,10 @@ import {
   orderShippingFeeNumber,
   orderStoreCreditAppliedNumber,
   orderAmountDueNumber,
-  orderFinalTotalNumber,
-  formatOrderMoney2
+  formatOrderMoney2,
+  previewOrderTotals
 } from '../utils/orderPricing'
+import { fetchShippingConfig } from '../utils/shipping'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
@@ -785,7 +786,8 @@ import {
   estimateSelectionTotal,
   isSelectionComplete,
   getSelectionIncompleteMessage,
-  toOrderLineDisplay
+  toOrderLineDisplay,
+  buildPreviewLinesFromSelection
 } from '../utils/orderItemPricing'
 import {
   formatMoney,
@@ -831,7 +833,10 @@ export default {
       referralFeedback: null,
       referralBindTimer: null,
       applyStoreCredit: true,
-      referralUiHadCompletedOrder: null
+      referralUiHadCompletedOrder: null,
+      storeCreditForPreview: 0,
+      shippingConfig: null,
+      shippingConfigReady: false
     }
   },
   setup() {
@@ -905,10 +910,39 @@ export default {
       return this.deal.status === 'closed' || (orderEndDate && orderEndDate < now)
     },
     orderDetailShippingDisplay() {
-      if (!this.order || this.order.delivery_method !== 'delivery') return '免运费'
-      const n = orderShippingFeeNumber(this.order)
+      if (this.previewDeliveryMethod !== 'delivery') return '免运费'
+      const n = this.displayedShipping
       if (!Number.isFinite(n) || n <= 0) return '免运费'
       return `$${formatOrderMoney2(n)}`
+    },
+    previewDeliveryMethod() {
+      return this.deliveryMethod || this.order?.delivery_method || 'pickup'
+    },
+    previewItems() {
+      if (!this.order) return []
+      if (this.canEditProducts && this.deal?.products?.length) {
+        return buildPreviewLinesFromSelection(this.deal.products, this.selectedItems)
+      }
+      return this.order.items || []
+    },
+    previewTotals() {
+      if (!this.order || !this.canUpdateOrder || this.isOrderCompleted) return null
+      return previewOrderTotals({
+        items: this.previewItems,
+        deliveryMethod: this.previewDeliveryMethod,
+        adjustment: orderAdjustmentNumber(this.order),
+        storeCredit: this.storeCreditForPreview,
+        shippingConfig: this.shippingConfigReady ? this.shippingConfig : undefined,
+        shippingFee: orderShippingFeeNumber(this.order)
+      })
+    },
+    displayedSubtotal() {
+      if (this.previewTotals) return this.previewTotals.subtotal
+      return orderSubtotalNumber(this.order)
+    },
+    displayedShipping() {
+      if (this.previewTotals) return this.previewTotals.shipping
+      return orderShippingFeeNumber(this.order)
     },
     profileCompleteForReferral() {
       const u = this.currentUser
@@ -918,7 +952,16 @@ export default {
       if (!this.order || !this.currentUser) return 0
       const bal = Number(this.currentUser.store_credit_balance) || 0
       const already = orderStoreCreditAppliedNumber(this.order)
-      const cap = orderFinalTotalNumber(this.order)
+      let cap
+      if (this.previewTotals) {
+        const adj = Math.max(0, orderAdjustmentNumber(this.order))
+        cap = this.previewTotals.subtotal + this.previewTotals.shipping + adj
+      } else {
+        cap =
+          orderSubtotalNumber(this.order) +
+          orderShippingFeeNumber(this.order) +
+          Math.max(0, orderAdjustmentNumber(this.order))
+      }
       return Math.min(bal + already, cap)
     },
     storeCreditBalanceDisplay() {
@@ -952,16 +995,19 @@ export default {
     },
     displayedAmountDue() {
       if (!this.order) return 0
-      if (!this.canUpdateOrder || this.isOrderCompleted) {
-        return orderAmountDueNumber(this.order)
-      }
-      const credit = this.displayedStoreCreditApplied
-      return orderAmountDueNumber(this.order, { creditOverride: credit })
+      if (this.previewTotals) return this.previewTotals.amountDue
+      return orderAmountDueNumber(this.order)
     }
   },
   watch: {
     referralCodeInput() {
       this.scheduleReferralCodeLiveBind()
+    },
+    creditApplyActive() {
+      this.syncStoreCreditPreview()
+    },
+    maxStoreCreditApplicable() {
+      this.syncStoreCreditPreview()
     },
     'currentUser.referred_by_user_id'(id) {
       if (id) {
@@ -993,6 +1039,15 @@ export default {
     await this.loadOrder()
   },
   methods: {
+    async ensureShippingConfig() {
+      if (this.shippingConfigReady) return
+      try {
+        this.shippingConfig = await fetchShippingConfig()
+        this.shippingConfigReady = true
+      } catch (e) {
+        console.error('Failed to load shipping config', e)
+      }
+    },
     async loadOrder() {
       this.loading = true
       this.error = null
@@ -1043,6 +1098,7 @@ export default {
 
         if (!this.error) {
           await this.authStore.checkAuth()
+          await this.ensureShippingConfig()
           await this.refreshReferralInviteUiGate()
           this.syncPromoUiFromLoadedOrder()
         }
@@ -1060,6 +1116,7 @@ export default {
       const max = this.maxStoreCreditApplicable
       const applied = orderStoreCreditAppliedNumber(this.order)
       this.applyStoreCredit = applied > 0 || max > 0
+      this.syncStoreCreditPreview()
     },
     async refreshReferralInviteUiGate() {
       const u = this.currentUser
@@ -1072,6 +1129,10 @@ export default {
     toggleApplyStoreCredit() {
       if (this.maxStoreCreditApplicable <= 0) return
       this.applyStoreCredit = !this.applyStoreCredit
+    },
+    syncStoreCreditPreview() {
+      const credit = this.creditApplyActive ? Number(this.maxStoreCreditApplicable) || 0 : 0
+      this.storeCreditForPreview = credit
     },
     scheduleReferralCodeLiveBind() {
       if (this.referralBindTimer) {

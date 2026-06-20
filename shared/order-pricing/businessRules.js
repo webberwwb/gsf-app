@@ -1,9 +1,9 @@
 /** Mirror of backend/utils/order_business_rules.py — keep in sync via test_order_business_rules_parity.py */
 
-export const RULES_VERSION = '2026-06-01'
+export const RULES_VERSION = '2026-06-20'
 
 export const ORDER_PRICING_AND_POINTS_RULES = `
-ORDER PRICING AND POINTS RULES (v2026-06-01)
+ORDER PRICING AND POINTS RULES (v2026-06-20)
 ============================================
 
 Change this text and RULES_VERSION when business rules change. Update tests and
@@ -18,13 +18,17 @@ ORDER BREAKDOWN (display and calculation order)
 -----------------------------------------------
 1. subtotal           = sum(line.total_price)
 2. store credit       = deducted from subtotal (代金券)
-3. adjustment         = admin +/- amount
+3. adjustment         = admin +/- amount (user app read-only)
 4. shipping_fee       = delivery tier from shipping_tier_base (pickup = $0)
 5. amount_due         = max(0, subtotal - credit + adjustment + shipping)
 
-shipping_tier_base = max(0, subtotal - store_credit_applied - adjustment_amount)
-Free-shipping tiers use shipping_tier_base (not gross subtotal). Products with
-counts_toward_free_shipping=False are excluded from tier subtotal only.
+adjustment_discount = min(adjustment_amount, 0)   (negative admin discount only)
+shipping_tier_base = max(0, subtotal - store_credit_applied + adjustment_discount)
+Admin penalties (positive adjustment) do not reduce shipping tier base.
+Admin discounts (negative adjustment) reduce shipping tier base.
+
+Free-shipping tiers use shipping_tier_base allocated proportionally across lines.
+Products with counts_toward_free_shipping=False are excluded from tier subtotal only.
 
 Stored order.total = subtotal + shipping_fee + adjustment_amount (before credit).
 amount_due = total - store_credit_applied (equivalent to formula above).
@@ -32,7 +36,7 @@ amount_due = total - store_credit_applied (equivalent to formula above).
 POINTS
 ------
 1 point = $0.01 (cent). Award when admin marks order paid.
-points = max(0, subtotal - store_credit_applied + min(adjustment_amount, 0)) * 100
+points = max(0, subtotal - store_credit_applied + adjustment_discount) * 100
 Admin discounts (negative adjustment) reduce points; surcharges do not add points.
 Shipping does not affect points. Do not backfill historical points balances.
 

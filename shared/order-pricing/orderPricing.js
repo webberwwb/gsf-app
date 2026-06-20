@@ -5,7 +5,7 @@
 
 import { roundMoney, formatMoney } from './money.js'
 import { resolveOrderLineTotal } from './orderItemPricing.js'
-import { previewShippingFeeForOrder } from './shipping.js'
+import { previewShippingFeeForOrder, shippingTierBaseFromParts } from './shipping.js'
 
 export { roundMoney, formatMoney, formatMoneyDisplay } from './money.js'
 
@@ -39,12 +39,13 @@ export function orderStoreCreditAppliedNumber(order) {
   return Number.isFinite(n) && n > 0 ? roundMoney(n) : 0
 }
 
-export function orderShippingTierBaseNumber(order, { creditOverride } = {}) {
+export function orderShippingTierBaseNumber(order, { creditOverride, adjustmentOverride } = {}) {
   const subtotal = orderSubtotalNumber(order)
   const credit =
     creditOverride != null ? roundMoney(creditOverride) : orderStoreCreditAppliedNumber(order)
-  const adjustment = orderAdjustmentNumber(order)
-  return roundMoney(Math.max(0, subtotal - credit - adjustment))
+  const adjustment =
+    adjustmentOverride != null ? roundMoney(adjustmentOverride) : orderAdjustmentNumber(order)
+  return shippingTierBaseFromParts(subtotal, credit, adjustment)
 }
 
 export function orderTotalNumber(order, { deriveFromItems = false } = {}) {
@@ -94,7 +95,13 @@ export function previewOrderTotals({
   const adj = Number(adjustment) || 0
   const shipping =
     shippingConfig !== undefined
-      ? previewShippingFeeForOrder({ items, deliveryMethod, shippingConfig })
+      ? previewShippingFeeForOrder({
+          items,
+          deliveryMethod,
+          shippingConfig,
+          storeCredit: credit,
+          adjustment: adj
+        })
       : deliveryMethod === 'delivery'
         ? Number(shippingFee) || 0
         : 0

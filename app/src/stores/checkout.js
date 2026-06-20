@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { fetchShippingConfig, calculateShippingFee } from '../utils/shipping'
-import { roundMoney } from '../utils/productPriceDisplay'
+import { fetchShippingConfig } from '../utils/shipping'
+import { previewOrderTotals } from '../utils/orderPricing'
 
 export const useCheckoutStore = defineStore('checkout', {
   state: () => ({
@@ -32,10 +32,33 @@ export const useCheckoutStore = defineStore('checkout', {
   getters: {
     hasItems: (state) => state.orderItems.length > 0,
     
-    subtotal: (state) => {
-      return roundMoney(state.orderItems.reduce((sum, item) => {
-        return sum + parseFloat(item.estimated_price || 0)
-      }, 0))
+    previewLines(state) {
+      return state.orderItems.map((item) => ({
+        product: {
+          counts_toward_free_shipping: item.counts_toward_free_shipping !== false
+        },
+        total_price: parseFloat(item.estimated_price || 0)
+      }))
+    },
+
+    previewTotals(state) {
+      const credit = parseFloat(state.storeCreditToApply || 0) || 0
+      return previewOrderTotals({
+        items: state.orderItems.map((item) => ({
+          product: {
+            counts_toward_free_shipping: item.counts_toward_free_shipping !== false
+          },
+          total_price: parseFloat(item.estimated_price || 0)
+        })),
+        deliveryMethod: state.deliveryMethod,
+        storeCredit: credit,
+        adjustment: 0,
+        shippingConfig: state.shippingConfig ?? undefined
+      })
+    },
+    
+    subtotal(state) {
+      return state.previewTotals.subtotal
     },
     
     hasEstimatedTotal: (state) => {
@@ -50,49 +73,12 @@ export const useCheckoutStore = defineStore('checkout', {
       return state.existingOrderStatus === 'completed'
     },
     
-    shippingFee: (state) => {
-      if (state.deliveryMethod === 'pickup') {
-        return 0
-      }
-
-      const credit = parseFloat(state.storeCreditToApply || 0) || 0
-      const tierBase = Math.max(0, state.orderItems.reduce((sum, item) => {
-        return sum + parseFloat(item.estimated_price || 0)
-      }, 0) - credit)
-
-      const freeShippingSubtotal = state.orderItems.reduce((sum, item) => {
-        const countsTowardFreeShipping = item.counts_toward_free_shipping !== false
-        if (countsTowardFreeShipping) {
-          const lineShare = parseFloat(item.estimated_price || 0)
-          const subtotal = state.orderItems.reduce((s, i) => s + parseFloat(i.estimated_price || 0), 0)
-          if (subtotal <= 0) return sum
-          return sum + (lineShare / subtotal) * tierBase
-        }
-        return sum
-      }, 0)
-
-      return calculateShippingFee(freeShippingSubtotal, state.shippingConfig)
+    shippingFee(state) {
+      return state.previewTotals.shipping
     },
     
     total: (state) => {
-      const subtotal = state.orderItems.reduce((sum, item) => {
-        return sum + parseFloat(item.estimated_price || 0)
-      }, 0)
-      
-      let shipping = 0
-      if (state.deliveryMethod === 'delivery') {
-        // Calculate free shipping subtotal (excluding products that don't count)
-        const freeShippingSubtotal = state.orderItems.reduce((sum, item) => {
-          const countsTowardFreeShipping = item.counts_toward_free_shipping !== false
-          if (countsTowardFreeShipping) {
-            return sum + parseFloat(item.estimated_price || 0)
-          }
-          return sum
-        }, 0)
-        shipping = calculateShippingFee(freeShippingSubtotal, state.shippingConfig)
-      }
-      
-      return roundMoney(subtotal + shipping)
+      return state.previewTotals.subtotal + state.previewTotals.shipping
     }
   },
   
@@ -233,4 +219,3 @@ export const useCheckoutStore = defineStore('checkout', {
     }
   }
 })
-

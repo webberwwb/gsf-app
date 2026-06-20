@@ -50,7 +50,7 @@
             </div>
             <p class="excluded-section-description">
               以下订单来自提成排除用户，已从季度提成计算中忽略。
-              订单总额 ${{ formatMoney(quarterData.excluded_orders.total_excluded_order_value) }}。
+              计入提成金额合计 ${{ formatMoney(quarterData.excluded_orders.total_excluded_order_value) }}（商品小计 - 手动调整 - 积分抵扣，不计运费）。
             </p>
 
             <div class="excluded-deals-list">
@@ -63,7 +63,7 @@
                   <div>
                     <h4>{{ deal.group_deal_title }}</h4>
                     <span class="excluded-deal-meta">
-                      {{ deal.order_count }} 笔排除订单 · 订单总额 ${{ formatMoney(deal.total_order_value) }}
+                      {{ deal.order_count }} 笔排除订单 · 计入提成金额 ${{ formatMoney(deal.total_order_value) }}
                     </span>
                   </div>
                 </div>
@@ -76,13 +76,22 @@
                   >
                     <div class="excluded-order-header">
                       <span class="order-number">订单: {{ order.order_number }}</span>
-                      <span class="order-total">${{ formatMoney(order.total) }}</span>
+                      <span class="order-total">${{ formatMoney(order.order_amount ?? order.total) }}</span>
                     </div>
                     <div class="excluded-order-user">
                       <span class="user-name">{{ order.user_name || 'N/A' }}</span>
                       <span v-if="order.user_phone" class="user-phone">{{ order.user_phone }}</span>
                       <span v-if="order.user_source" class="user-source">来源: {{ order.user_source }}</span>
                       <span v-if="order.exclusion_note" class="exclusion-note">{{ order.exclusion_note }}</span>
+                      <span v-if="order.adjustment_discount > 0" class="deduction-tag">
+                        手动调整 -${{ formatMoney(order.adjustment_discount) }}
+                      </span>
+                      <span v-if="order.store_credit_applied > 0" class="deduction-tag">
+                        积分 -${{ formatMoney(order.store_credit_applied) }}
+                      </span>
+                      <span v-if="order.commission_ratio < 1" class="deduction-tag">
+                        提成 {{ formatCommissionRatio(order.commission_ratio) }}
+                      </span>
                     </div>
                     <div class="excluded-order-items">
                       <div v-for="item in order.items" :key="`${order.order_id}-${item.product_id}`" class="order-item">
@@ -103,6 +112,9 @@
           <!-- Commission Records List -->
           <div v-if="hasCommissionRecords" class="commission-records-section">
             <h3>本季度提成记录 ({{ quarterData.commission_records.length }}个团购)</h3>
+            <p class="commission-records-hint">
+              提成金额已按各订单「商品小计 - 手动调整 - 积分抵扣」后的比例计算（不计运费）。
+            </p>
             
             <div class="records-table-container">
               <table class="records-table">
@@ -277,6 +289,10 @@ export default {
   methods: {
     formatMoney(value) {
       return formatOrderMoney2(value)
+    },
+    formatCommissionRatio(ratio) {
+      const pct = (Number(ratio) || 0) * 100
+      return `${pct.toFixed(1)}%`
     },
     generateAvailableYears() {
       const currentYear = new Date().getFullYear()
@@ -739,10 +755,25 @@ export default {
 }
 
 .commission-records-section h3 {
-  margin: 0 0 16px 0;
+  margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
   color: #111827;
+}
+
+.commission-records-hint {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.deduction-tag {
+  font-size: 12px;
+  color: #b45309;
+  padding: 2px 8px;
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 4px;
 }
 
 .records-table-container {
