@@ -19,6 +19,12 @@ const router = createRouter({
     },
     {
       path: '/',
+      name: 'GroupDealsList',
+      component: () => import('../views/GroupDealsList.vue'),
+      meta: { requiresAuth: false, showBottomNav: true }
+    },
+    {
+      path: '/group-deals/:id',
       name: 'GroupDealDetail',
       component: () => import('../views/GroupDealDetail.vue'),
       meta: { requiresAuth: false, showBottomNav: true }

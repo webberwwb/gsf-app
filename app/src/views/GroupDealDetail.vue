@@ -1,6 +1,11 @@
 <template>
   <div class="deal-detail-page">
     <header class="page-header" :class="{ 'admin-draft-header': isAdmin && deal && deal.status === 'draft' }">
+      <button type="button" class="back-button" @click="goBack" aria-label="返回团购列表">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
       <div class="header-center">
         <h1>团购详情</h1>
         <span v-if="isAdmin && deal && deal.status === 'draft'" class="admin-draft-badge">
@@ -18,8 +23,9 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
         </svg>
       </div>
-      <p class="no-deal-title">暂无团购</p>
-      <p class="no-deal-sub">请查看产品介绍，耐心等待下次团购。</p>
+      <p class="no-deal-title">团购不存在或已结束</p>
+      <p class="no-deal-sub">请返回列表查看当前可用的团购。</p>
+      <button type="button" class="back-to-list-btn" @click="goBack">返回团购列表</button>
     </div>
     <div v-else-if="deal" class="deal-content">
       <!-- Deal Info Section -->
@@ -72,7 +78,7 @@
         </div>
       </div>
 
-      <!-- Loaded via GET /group-deals/latest (see backend for statuses) -->
+      <!-- Loaded via GET /group-deals/:id -->
       <div v-if="deal && deal.status === 'closed'" class="deal-status-notice">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="notice-icon">
           <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -596,6 +602,18 @@ export default {
       this.setupScrollSpy()
     })
   },
+  watch: {
+    '$route.params.id': {
+      async handler() {
+        await this.loadDeal()
+        this.$nextTick(() => {
+          this.setupScrollIndicators()
+          this.setupStickyFallback()
+          this.setupScrollSpy()
+        })
+      }
+    }
+  },
   beforeUnmount() {
     // Cleanup scroll listener
     if (this.$refs.categoryTabs) {
@@ -610,12 +628,19 @@ export default {
   },
   methods: {
     async loadDeal() {
+      const dealId = this.$route.params.id
+      if (!dealId) {
+        this.error = '无效的团购链接'
+        this.loading = false
+        return
+      }
+
       this.loading = true
       this.error = null
       this.deal = null
       this.selectedItems = {}
       try {
-        const response = await apiClient.get('/group-deals/latest')
+        const response = await apiClient.get(`/group-deals/${dealId}`)
         this.deal = response.data.deal
         if (this.deal && this.deal.products) {
           this.deal.products.forEach(product => {
@@ -625,11 +650,18 @@ export default {
           })
         }
       } catch (error) {
-        this.error = error.response?.data?.message || error.response?.data?.error || '加载团购详情失败'
+        if (error.response?.status === 404) {
+          this.error = null
+        } else {
+          this.error = error.response?.data?.message || error.response?.data?.error || '加载团购详情失败'
+        }
         console.error('Failed to load deal:', error)
       } finally {
         this.loading = false
       }
+    },
+    goBack() {
+      this.$router.push('/')
     },
     async loadCategories() {
       try {
@@ -1134,9 +1166,28 @@ export default {
   position: sticky;
   top: 0;
   z-index: 200;
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+}
+
+.back-button {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+}
+
+.back-button svg {
+  width: 22px;
+  height: 22px;
 }
 
 .header-center {
@@ -1145,6 +1196,7 @@ export default {
   justify-content: center;
   gap: var(--md-spacing-sm);
   flex-wrap: wrap;
+  grid-column: 2;
 }
 
 .header-logo {
@@ -1207,6 +1259,18 @@ export default {
   font-size: var(--md-body-size);
   margin: 0;
   opacity: 0.85;
+}
+
+.back-to-list-btn {
+  margin-top: var(--md-spacing-lg);
+  padding: 0.625rem 1.25rem;
+  background: var(--md-primary);
+  color: white;
+  border: none;
+  border-radius: var(--md-radius-xl);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .deal-content {

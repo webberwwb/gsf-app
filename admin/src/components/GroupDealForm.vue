@@ -2,7 +2,12 @@
   <div v-if="show" class="modal-overlay" @click.self="close">
     <div class="modal-container large">
       <div class="modal-header">
-        <h2>{{ editingDeal ? '编辑团购' : '创建团购' }}</h2>
+        <div class="modal-header-text">
+          <h2>{{ editingDeal ? '编辑团购' : '创建团购' }}</h2>
+          <p v-if="copyFrom && !editingDeal" class="modal-subtitle">
+            已复制自 {{ copyFrom.title }} · {{ copyFrom.products?.length || 0 }} 个商品
+          </p>
+        </div>
         <button @click="close" class="close-btn">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -12,7 +17,7 @@
 
       <form @submit.prevent="submitForm" class="group-deal-form">
         <!-- Title -->
-        <div class="form-group">
+        <div class="form-group" :class="{ 'field-missing': isFieldMissing('title') }">
           <label for="title">团购标题 *</label>
           <input
             id="title"
@@ -38,7 +43,7 @@
 
         <!-- Dates -->
         <div class="form-row form-row-dates">
-          <div class="form-group">
+          <div class="form-group" :class="{ 'field-missing': isFieldMissing('order_start_date') }">
             <label for="order_start_date">开团时间 *</label>
             <input
               id="order_start_date"
@@ -49,7 +54,7 @@
             />
             <small class="form-hint">团购开始时间</small>
           </div>
-          <div class="form-group">
+          <div class="form-group" :class="{ 'field-missing': isFieldMissing('order_end_date') }">
             <label for="order_end_date">截单时间 *</label>
             <input
               id="order_end_date"
@@ -60,7 +65,7 @@
             />
             <small class="form-hint">团购截止时间</small>
           </div>
-          <div class="form-group">
+          <div class="form-group" :class="{ 'field-missing': isFieldMissing('pickup_date') }">
             <label for="pickup_date">取货日期 *</label>
             <input
               id="pickup_date"
@@ -176,6 +181,10 @@ export default {
     deal: {
       type: Object,
       default: null
+    },
+    copyFrom: {
+      type: Object,
+      default: null
     }
   },
   emits: ['close', 'saved'],
@@ -207,11 +216,17 @@ export default {
         this.fetchProducts()
         if (this.deal) {
           this.loadDealData()
+        } else if (this.copyFrom) {
+          this.loadCopyData()
         }
       }
     }
   },
   methods: {
+    isFieldMissing(field) {
+      const value = this.formData[field]
+      return value === '' || value === null || value === undefined
+    },
     formatDealProductPrice(product) {
       return formatProductListPrice(product)
     },
@@ -255,6 +270,20 @@ export default {
             deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null
           }))
         }
+      }
+    },
+    loadCopyData() {
+      if (!this.copyFrom) return
+
+      this.formData.description = this.copyFrom.description || ''
+
+      if (this.copyFrom.products && this.copyFrom.products.length > 0) {
+        this.selectedProducts = this.copyFrom.products.map(product => ({
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null
+        }))
       }
     },
     formatDateTimeLocal(dateString) {
@@ -386,7 +415,9 @@ export default {
   max-width: 600px;
   width: 100%;
   max-height: 90vh;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--md-elevation-4);
 }
 
@@ -397,16 +428,48 @@ export default {
 .modal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
-  border-bottom: 1px solid var(--md-surface-variant);
+  align-items: flex-start;
+  gap: var(--md-spacing-md);
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+  background: rgb(255, 140, 0);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.modal-header::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: rgb(255, 140, 0);
+}
+
+.modal-header-text {
+  min-width: 0;
+  flex: 1;
 }
 
 .modal-header h2 {
-  font-size: var(--md-headline-size);
-  color: var(--md-on-surface);
-  font-weight: 500;
+  font-size: var(--md-title-size);
+  color: #fff;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.modal-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: var(--md-label-size);
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .close-btn {
@@ -414,12 +477,14 @@ export default {
   border: none;
   cursor: pointer;
   padding: var(--md-spacing-xs);
-  color: var(--md-on-surface-variant);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--md-radius-sm);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .close-btn svg {
@@ -428,16 +493,40 @@ export default {
 }
 
 .close-btn:hover {
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 
 .group-deal-form {
-  padding: var(--md-spacing-lg);
+  padding: var(--md-spacing-md) var(--md-spacing-lg) var(--md-spacing-lg);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .form-group {
   margin-bottom: var(--md-spacing-lg);
+}
+
+.form-group.field-missing label {
+  color: #E65100;
+}
+
+.form-group.field-missing .form-input,
+.form-group.field-missing .form-textarea {
+  border-color: var(--md-primary);
+  background: rgba(255, 140, 0, 0.06);
+  box-shadow: 0 0 0 1px rgba(255, 140, 0, 0.2);
+}
+
+.form-group.field-missing .form-input:focus,
+.form-group.field-missing .form-textarea:focus {
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.15);
+}
+
+.form-group.field-missing .form-hint {
+  color: #E65100;
 }
 
 .form-row {
@@ -728,9 +817,10 @@ select.form-input:focus {
   .modal-header {
     position: sticky;
     top: 0;
-    background: var(--md-surface);
+    background: rgb(255, 140, 0);
     z-index: 10;
     padding: var(--md-spacing-md);
+    border-radius: 0;
   }
   
   .modal-header h2 {

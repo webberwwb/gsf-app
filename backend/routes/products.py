@@ -239,6 +239,28 @@ def get_group_deals():
             'message': str(e)
         }), 500
 
+def _get_open_deal_statuses(is_admin: bool) -> list:
+    """Statuses for storefront 'not ended' group deals (excludes completed)."""
+    statuses = [
+        GroupDealStatus.UPCOMING.value,
+        GroupDealStatus.ACTIVE.value,
+        GroupDealStatus.CLOSED.value,
+        GroupDealStatus.PREPARING.value,
+        GroupDealStatus.READY_FOR_PICKUP.value,
+    ]
+    if is_admin:
+        statuses.append(GroupDealStatus.DRAFT.value)
+    return statuses
+
+
+def _query_open_group_deals(is_admin: bool):
+    """Query all non-completed group deals visible to the current user."""
+    return GroupDeal.query.filter(
+        GroupDeal.status.in_(_get_open_deal_statuses(is_admin)),
+        GroupDeal.deleted_at.is_(None)
+    ).order_by(GroupDeal.order_start_date.desc())
+
+
 def _serialize_group_deal_with_products(deal):
     """Build deal dict with nested products (same shape as list/detail endpoints)."""
     deal_dict = deal.to_dict()
@@ -259,29 +281,36 @@ def _serialize_group_deal_with_products(deal):
     return deal_dict
 
 
-@products_bp.route('/group-deals/latest', methods=['GET'])
-def get_latest_group_deal():
+@products_bp.route('/group-deals/open', methods=['GET'])
+def get_open_group_deals():
     """
-    Latest storefront group deal for the app detail page.
-    Excludes upcoming and completed. Non-admins never see draft.
-    Admins may see draft in this result (same endpoint, auth-aware).
-    Eligible: active, closed, preparing, ready_for_pickup; plus draft if admin.
+    All storefront group deals that have not ended (excludes completed).
+    Non-admins never see draft. Returns lightweight deal metadata without products.
     """
     try:
         current_user = get_current_user_optional()
         is_admin = bool(current_user and getattr(current_user, 'is_admin', False))
-        open_statuses = [
-            GroupDealStatus.ACTIVE.value,
-            GroupDealStatus.CLOSED.value,
-            GroupDealStatus.PREPARING.value,
-            GroupDealStatus.READY_FOR_PICKUP.value,
-        ]
-        if is_admin:
-            open_statuses.append(GroupDealStatus.DRAFT.value)
-        deal = GroupDeal.query.filter(
-            GroupDeal.status.in_(open_statuses),
-            GroupDeal.deleted_at.is_(None)
-        ).order_by(GroupDeal.order_start_date.desc()).first()
+        deals = _query_open_group_deals(is_admin).all()
+        return jsonify({
+            'deals': [deal.to_dict() for deal in deals]
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to fetch open group deals',
+            'message': str(e)
+        }), 500
+
+
+@products_bp.route('/group-deals/latest', methods=['GET'])
+def get_latest_group_deal():
+    """
+    Latest storefront group deal (backward compatible).
+    Uses the same open-deal filter as /group-deals/open but returns only the newest one.
+    """
+    try:
+        current_user = get_current_user_optional()
+        is_admin = bool(current_user and getattr(current_user, 'is_admin', False))
+        deal = _query_open_group_deals(is_admin).first()
         if not deal:
             return jsonify({'deal': None}), 200
         return jsonify({'deal': _serialize_group_deal_with_products(deal)}), 200
@@ -300,6 +329,15 @@ def get_group_deal(deal_id):
             GroupDeal.id == deal_id,
             GroupDeal.deleted_at.is_(None)
         ).first_or_404()
+
+        current_user = get_current_user_optional()
+        is_admin = bool(current_user and getattr(current_user, 'is_admin', False))
+        if deal.status == GroupDealStatus.DRAFT.value and not is_admin:
+            return jsonify({
+                'error': 'Group deal not found',
+                'message': 'Deal not found'
+            }), 404
+
         deal_dict = _serialize_group_deal_with_products(deal)
         return jsonify({'deal': deal_dict}), 200
     except Exception as e:

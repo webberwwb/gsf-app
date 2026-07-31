@@ -75,10 +75,20 @@
       </div>
     </div>
 
+    <!-- Copy From Previous Deal Modal -->
+    <CopyGroupDealModal
+      :show="showCopyModal"
+      :deals="groupDeals"
+      @close="closeCopyModal"
+      @select="handleCopySelect"
+      @blank="handleBlankCreate"
+    />
+
     <!-- Group Deal Form Modal -->
     <GroupDealForm
       :show="showAddModal"
       :deal="editingDeal"
+      :copy-from="copyFromDeal"
       @close="closeModal"
       @saved="handleDealSaved"
     />
@@ -88,6 +98,7 @@
 <script>
 import apiClient from '../api/client'
 import GroupDealForm from '../components/GroupDealForm.vue'
+import CopyGroupDealModal from '../components/CopyGroupDealModal.vue'
 import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import { formatProductListPrice } from '../utils/productPriceDisplay'
@@ -95,7 +106,8 @@ import { formatProductListPrice } from '../utils/productPriceDisplay'
 export default {
   name: 'GroupDeals',
   components: {
-    GroupDealForm
+    GroupDealForm,
+    CopyGroupDealModal
   },
   setup() {
     const { confirm, error: showError } = useModal()
@@ -107,7 +119,9 @@ export default {
       error: null,
       groupDeals: [],
       showAddModal: false,
-      editingDeal: null
+      showCopyModal: false,
+      editingDeal: null,
+      copyFromDeal: null
     }
   },
   mounted() {
@@ -129,15 +143,35 @@ export default {
     },
     openAddModal() {
       this.editingDeal = null
+      this.copyFromDeal = null
+      if (this.groupDeals.length > 0) {
+        this.showCopyModal = true
+      } else {
+        this.showAddModal = true
+      }
+    },
+    closeCopyModal() {
+      this.showCopyModal = false
+    },
+    handleCopySelect(deal) {
+      this.copyFromDeal = deal
+      this.showCopyModal = false
+      this.showAddModal = true
+    },
+    handleBlankCreate() {
+      this.copyFromDeal = null
+      this.showCopyModal = false
       this.showAddModal = true
     },
     editDeal(deal) {
       this.editingDeal = deal
+      this.copyFromDeal = null
       this.showAddModal = true
     },
     closeModal() {
       this.showAddModal = false
       this.editingDeal = null
+      this.copyFromDeal = null
     },
     async handleDealSaved() {
       await this.fetchGroupDeals()
