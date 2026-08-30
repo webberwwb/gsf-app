@@ -54,6 +54,12 @@ const router = createRouter({
       meta: { requiresAuth: false, showBottomNav: true }
     },
     {
+      path: '/contact',
+      name: 'Contact',
+      component: () => import('../views/Contact.vue'),
+      meta: { requiresAuth: false, showBottomNav: true }
+    },
+    {
       path: '/group-deals',
       redirect: '/'
     },

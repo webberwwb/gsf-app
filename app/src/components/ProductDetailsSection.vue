@@ -1,24 +1,40 @@
 <template>
   <template v-if="hasContent">
-    <!-- Variants: 产品细节 -->
+    <!-- Variants: 产品细节 with qty per option -->
     <div v-if="variants.length" class="product-details">
-      <div class="details-head">
-        <span class="details-title">产品细节</span>
-      </div>
-      <div class="chip-row" role="radiogroup" aria-label="产品细节">
-        <button
+      <div class="variant-qty-list">
+        <div
           v-for="v in variants"
           :key="v.id"
-          type="button"
-          role="radio"
-          :aria-checked="variantId === v.id"
-          class="mini-chip"
-          :class="{ selected: variantId === v.id }"
-          @click="$emit('update:variantId', v.id)"
+          class="variant-qty-row"
         >
-          <span>{{ v.name }}</span>
-          <span v-if="hasDelta(v)" class="chip-extra">{{ formatDelta(v.price_delta) }}</span>
-        </button>
+          <div class="variant-qty-info">
+            <span class="variant-qty-name">{{ v.name }}</span>
+            <span v-if="variantPriceLabel(v)" class="chip-extra">{{ variantPriceLabel(v) }}</span>
+          </div>
+          <div class="variant-qty-control">
+            <button
+              type="button"
+              class="vq-btn"
+              :disabled="disabled || variantQty(v.id) === 0"
+              @click="$emit('change-variant-qty', v.id, variantQty(v.id) - 1)"
+            >-</button>
+            <input
+              type="number"
+              class="vq-input"
+              min="0"
+              :value="variantQty(v.id)"
+              :disabled="disabled"
+              @input="$emit('change-variant-qty', v.id, $event.target.value)"
+            />
+            <button
+              type="button"
+              class="vq-btn"
+              :disabled="disabled"
+              @click="$emit('change-variant-qty', v.id, variantQty(v.id) + 1)"
+            >+</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -47,7 +63,7 @@
         <div class="sub-text">
           <span class="sub-name">{{ substitute.name }}</span>
           <span v-if="substitute.description" class="sub-desc">{{ substitute.description }}</span>
-          <span v-if="priceLabel" class="sub-price">{{ priceLabel }}</span>
+          <span v-if="substitutePriceLabel" class="sub-price">{{ substitutePriceLabel }}</span>
         </div>
       </div>
       <div class="chip-row" role="radiogroup" aria-label="备选产品">
@@ -90,8 +106,8 @@
 
 <script>
 import Modal from './Modal.vue'
-import { formatSubstitutePriceLabel } from '../utils/orderItemPricing'
-import { formatVariantDelta } from '../utils/productPriceDisplay'
+import { formatSubstitutePriceLabel, getVariantQuantity } from '../utils/orderItemPricing'
+import { formatVariantPriceLabel } from '../utils/productPriceDisplay'
 
 const SUBSTITUTE_INFO_MESSAGE = `
 <p>若您订购的原商品缺货：</p>
@@ -106,13 +122,16 @@ export default {
   name: 'ProductDetailsSection',
   components: { Modal },
   props: {
+    product: { type: Object, default: null },
     productId: { type: [Number, String], required: true },
     variants: { type: Array, default: () => [] },
     substitute: { type: Object, default: null },
     variantId: { type: [Number, null], default: null },
-    acceptSubstitute: { type: [Boolean, null], default: null }
+    variantQuantities: { type: Object, default: () => ({}) },
+    acceptSubstitute: { type: [Boolean, null], default: null },
+    disabled: { type: Boolean, default: false }
   },
-  emits: ['update:variantId', 'update:acceptSubstitute'],
+  emits: ['update:variantId', 'update:acceptSubstitute', 'change-variant-qty'],
   data() {
     return {
       showSubstituteInfo: false,
@@ -128,18 +147,19 @@ export default {
       const imgs = this.substitute.images || []
       return imgs[0] || this.substitute.image || null
     },
-    priceLabel() {
+    substitutePriceLabel() {
       return formatSubstitutePriceLabel(this.substitute)
     }
   },
   methods: {
-    hasDelta(v) {
-      return parseFloat(v.price_delta || 0) !== 0
+    variantQty(variantId) {
+      return getVariantQuantity(
+        { variant_quantities: this.variantQuantities, variant_id: this.variantId },
+        variantId
+      )
     },
-    formatDelta(delta) {
-      const d = parseFloat(delta || 0)
-      if (d === 0) return ''
-      return formatVariantDelta(d)
+    variantPriceLabel(v) {
+      return formatVariantPriceLabel(this.product, v)
     }
   }
 }
@@ -148,9 +168,9 @@ export default {
 <style scoped>
 .product-details,
 .substitute-section {
-  margin: 0.5rem 0 0.625rem;
-  padding: 0.5rem 0.625rem 0.5625rem;
-  border-radius: 10px;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
   background: linear-gradient(
     145deg,
     rgba(255, 140, 0, 0.05) 0%,
@@ -272,8 +292,90 @@ export default {
 }
 
 .chip-extra {
-  font-size: 0.6875rem;
-  opacity: 0.85;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--md-primary);
+  opacity: 0.9;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.variant-qty-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.variant-qty-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+  min-height: 44px;
+  padding: 0.2rem 0;
+}
+
+.variant-qty-row + .variant-qty-row {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.variant-qty-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.variant-qty-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--md-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.variant-qty-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.vq-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-size: 1.125rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.vq-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.vq-input {
+  width: 2.5rem;
+  height: 36px;
+  text-align: center;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px;
+  font-size: 1rem;
+  -moz-appearance: textfield;
+}
+
+.vq-input::-webkit-outer-spin-button,
+.vq-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .sub-inline {

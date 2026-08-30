@@ -62,13 +62,32 @@ class GroupDealProduct(BaseModel):
     
     # Stock limit for this deal (optional)
     deal_stock_limit = db.Column(db.Integer, nullable=True)
+
+    # Sale applies only in this group deal (catalog product stays at list price)
+    is_discount = db.Column(db.Boolean, default=False, nullable=False)
     
     def to_dict(self):
         data = super().to_dict()
         data.update({
             'group_deal_id': self.group_deal_id,
             'product_id': self.product_id,
-            'deal_stock_limit': self.deal_stock_limit
+            'deal_stock_limit': self.deal_stock_limit,
+            'is_discount': bool(self.is_discount),
         })
         return data
+
+
+def deal_product_to_dict(deal_product, include_all_variants=False, product=None):
+    """Product payload for a specific group deal, with that deal's sale flag."""
+    product = product or deal_product.product
+    if not product:
+        return None
+    data = product.to_dict(
+        include_all_variants=include_all_variants,
+        on_sale=bool(deal_product.is_discount),
+    )
+    data['deal_stock_limit'] = deal_product.deal_stock_limit
+    data['group_deal_product_id'] = deal_product.id
+    data['is_discount'] = bool(deal_product.is_discount)
+    return data
 

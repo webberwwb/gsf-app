@@ -24,32 +24,33 @@
         @click="$emit('update:modelValue', v.id)"
       >
         <span class="chip-label">{{ v.name }}</span>
-        <span v-if="hasDelta(v)" class="chip-meta">{{ formatDelta(v.price_delta) }}</span>
+        <span v-if="priceLabel(v)" class="chip-meta">{{ priceLabel(v) }}</span>
       </button>
     </div>
   </div>
 </template>
 
 <script>
-import { formatVariantDelta } from '../utils/productPriceDisplay'
+import { formatVariantDelta, formatVariantPriceLabel, formatMoneyDisplay } from '../utils/productPriceDisplay'
 
 export default {
   name: 'ProductVariantPicker',
   props: {
     variants: { type: Array, default: () => [] },
     modelValue: { type: [Number, null], default: null },
-    allowNone: { type: Boolean, default: false }
+    allowNone: { type: Boolean, default: false },
+    product: { type: Object, default: null }
   },
   emits: ['update:modelValue'],
   methods: {
-    hasDelta(v) {
+    priceLabel(v) {
+      if (this.product) {
+        return formatVariantPriceLabel(this.product, v)
+      }
       const d = parseFloat(v.price_delta || 0)
-      return d !== 0
-    },
-    formatDelta(delta) {
-      const d = parseFloat(delta || 0)
-      if (d === 0) return ''
-      return formatVariantDelta(d)
+      if (d) return formatVariantDelta(d)
+      if (v.price != null) return formatMoneyDisplay(v.price)
+      return ''
     }
   }
 }

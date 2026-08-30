@@ -3,7 +3,7 @@ from models import db
 from models.product import Product
 from models.product_category import ProductCategory
 from models.user import User, AuthToken, UserRole
-from models.groupdeal import GroupDeal, GroupDealProduct
+from models.groupdeal import GroupDeal, GroupDealProduct, deal_product_to_dict
 from models.otp_attempt import OTPAttempt
 from models.supplier import Supplier
 from models.order import Order, OrderItem
@@ -277,7 +277,9 @@ def create_product():
             is_active=validated_data.get('is_active', True),
             supplier_id=validated_data.get('supplier_id'),
             category_id=validated_data.get('category_id'),
-            counts_toward_free_shipping=validated_data.get('counts_toward_free_shipping', True)
+            counts_toward_free_shipping=validated_data.get('counts_toward_free_shipping', True),
+            variants_share_price=validated_data.get('variants_share_price', True),
+            is_discount=False,
         )
         apply_product_substitute_fields(product, validated_data)
         
@@ -370,6 +372,8 @@ def update_product(product_id):
             product.category_id = validated_data['category_id'] if validated_data['category_id'] else None
         if 'counts_toward_free_shipping' in validated_data:
             product.counts_toward_free_shipping = validated_data['counts_toward_free_shipping']
+        if 'variants_share_price' in validated_data:
+            product.variants_share_price = bool(validated_data['variants_share_price'])
         apply_product_substitute_fields(product, validated_data)
         if 'variants' in validated_data:
             sync_product_variants(product, validated_data.get('variants'))
@@ -1190,10 +1194,7 @@ def get_group_deals():
                 products_by_deal[dp.group_deal_id] = []
             
             if dp.product:
-                product_dict = dp.product.to_dict()
-                product_dict['deal_stock_limit'] = dp.deal_stock_limit
-                product_dict['group_deal_product_id'] = dp.id
-                products_by_deal[dp.group_deal_id].append(product_dict)
+                products_by_deal[dp.group_deal_id].append(deal_product_to_dict(dp))
         
         # Include products for each deal
         deals_data = []
@@ -1241,10 +1242,7 @@ def get_group_deal(deal_id):
         products_data = []
         for dp in deal_products:
             if dp.product:
-                product_dict = dp.product.to_dict()
-                product_dict['deal_stock_limit'] = dp.deal_stock_limit
-                product_dict['group_deal_product_id'] = dp.id
-                products_data.append(product_dict)
+                products_data.append(deal_product_to_dict(dp))
         deal_dict['products'] = products_data
         
         return jsonify({
@@ -1311,7 +1309,8 @@ def create_group_deal():
             deal_product = GroupDealProduct(
                 group_deal_id=group_deal.id,
                 product_id=product_id,
-                deal_stock_limit=product_data.get('deal_stock_limit')
+                deal_stock_limit=product_data.get('deal_stock_limit'),
+                is_discount=bool(product_data.get('is_discount')),
             )
             db.session.add(deal_product)
         
@@ -1326,9 +1325,7 @@ def create_group_deal():
         for dp in deal_products:
             product = Product.query.get(dp.product_id)
             if product:
-                product_dict = product.to_dict()
-                product_dict['deal_stock_limit'] = dp.deal_stock_limit
-                products_data.append(product_dict)
+                products_data.append(deal_product_to_dict(dp, product=product))
         deal_dict['products'] = products_data
         
         return jsonify({
@@ -1510,7 +1507,8 @@ def update_group_deal(deal_id):
                 deal_product = GroupDealProduct(
                     group_deal_id=deal.id,
                     product_id=product_id,
-                    deal_stock_limit=product_data.get('deal_stock_limit')
+                    deal_stock_limit=product_data.get('deal_stock_limit'),
+                    is_discount=bool(product_data.get('is_discount')),
                 )
                 db.session.add(deal_product)
         
@@ -1525,9 +1523,7 @@ def update_group_deal(deal_id):
         for dp in deal_products:
             product = Product.query.get(dp.product_id)
             if product:
-                product_dict = product.to_dict()
-                product_dict['deal_stock_limit'] = dp.deal_stock_limit
-                products_data.append(product_dict)
+                products_data.append(deal_product_to_dict(dp, product=product))
         deal_dict['products'] = products_data
         
         return jsonify({
@@ -2583,7 +2579,7 @@ def update_admin_order(order_id):
         ]
         try:
             priced_items, subtotal = priced_items_from_request(
-                filtered_items, require_variant=False
+                filtered_items, require_variant=False, group_deal_id=order.group_deal_id
             )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400

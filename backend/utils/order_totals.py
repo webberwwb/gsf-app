@@ -99,8 +99,14 @@ def sync_order_pricing(order, *, reprice_lines=True):
     from utils.order_audit import active_items_for_order
 
     if reprice_lines:
+        from collections import defaultdict
+        grouped = defaultdict(list)
         for item in active_items_for_order(order.id):
-            recalculate_existing_item(item)
+            grouped[item.product_id].append(item)
+        for items in grouped.values():
+            pooled = sum(int(i.quantity or 0) for i in items)
+            for item in items:
+                recalculate_existing_item(item, product_qty=pooled)
     recalculate_order_totals(order)
     clamp_store_credit(order)
     recalculate_order_totals(order)

@@ -460,6 +460,11 @@
                 <option value="not_packed">未配货</option>
                 <option value="packing_complete">配货完成</option>
               </select>
+              <select v-model="notesFilter" class="source-filter-select">
+                <option value="">全部备注</option>
+                <option value="has_notes">有备注</option>
+                <option value="no_notes">无备注</option>
+              </select>
               <select v-model="orderSort" class="source-filter-select">
                 <option value="payment">排序: 未付款优先</option>
                 <option value="weight_asc">排序: 未称重优先</option>
@@ -683,6 +688,7 @@ export default {
       showCompletedOrders: orderPrefs.showCompletedOrders,
       weightFilter: orderPrefs.weightFilter,
       packingFilter: orderPrefs.packingFilter,
+      notesFilter: orderPrefs.notesFilter,
       orderSort: orderPrefs.orderSort,
       userSourceFilter: orderPrefs.userSourceFilter,
       // Duplicate orders
@@ -747,6 +753,7 @@ export default {
         showCompletedOrders: this.showCompletedOrders,
         weightFilter: this.weightFilter,
         packingFilter: this.packingFilter,
+        notesFilter: this.notesFilter,
         orderSort: this.orderSort,
         userSourceFilter: this.userSourceFilter,
         viewMode: this.viewMode
@@ -836,6 +843,13 @@ export default {
       } else if (this.packingFilter === 'packing_complete') {
         orders = orders.filter(order => this.isOrderPackingComplete(order))
       }
+
+      // Filter by order notes
+      if (this.notesFilter === 'has_notes') {
+        orders = orders.filter(order => this.orderHasNotes(order))
+      } else if (this.notesFilter === 'no_notes') {
+        orders = orders.filter(order => !this.orderHasNotes(order))
+      }
       
       orders.sort((a, b) => this.compareOrdersForSort(a, b))
       
@@ -847,6 +861,7 @@ export default {
         || !!this.userSourceFilter
         || !!this.weightFilter
         || !!this.packingFilter
+        || !!this.notesFilter
     },
     filteredAllOrders() {
       return this.applyProductFilter(this.orders)
@@ -1193,6 +1208,9 @@ export default {
     },
     isOrderPackingComplete(order) {
       return PACKING_COMPLETE_STATUSES.includes(order?.status)
+    },
+    orderHasNotes(order) {
+      return !!(order?.notes && String(order.notes).trim())
     },
     compareOrdersForSort(a, b) {
       const sortKey = this.orderSort || 'payment'

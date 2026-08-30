@@ -107,6 +107,34 @@
     
     <!-- Checkout Content -->
     <div v-else class="checkout-content">
+      <div v-if="deal && orderItems.length > 0" class="confirm-order-section confirm-order-section--top">
+        <div class="submit-order-hint">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>请先核对配送与支付。点击「提交订单」后才会生成订单。</span>
+        </div>
+        <button
+          v-if="isAuthenticated"
+          type="button"
+          @click="confirmOrder"
+          :disabled="!canConfirm"
+          class="confirm-order-btn"
+        >
+          <span class="btn-text">提交订单</span>
+          <span class="btn-amount">{{ submitAmountLabel }}</span>
+        </button>
+        <button
+          v-else
+          type="button"
+          @click="goToLogin"
+          class="confirm-order-btn login-btn"
+        >
+          <span class="btn-text">登陆下单</span>
+          <span class="btn-amount">{{ submitAmountLabel }}</span>
+        </button>
+      </div>
+
       <!-- Order Summary -->
       <div class="order-summary-section">
         <h3 class="section-title">订单摘要</h3>
@@ -434,24 +462,32 @@
         <p class="notes-hint">{{ notes.length }}/1000</p>
       </div>
 
-      <!-- Confirm Order Button -->
+      <!-- Submit Order Button -->
       <div v-if="deal && orderItems.length > 0" class="confirm-order-section">
+        <div class="submit-order-hint">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>请先核对配送与支付。点击「提交订单」后才会生成订单。</span>
+        </div>
         <button 
           v-if="isAuthenticated"
+          type="button"
           @click="confirmOrder" 
           :disabled="!canConfirm"
           class="confirm-order-btn"
         >
-          <span class="btn-text">确认订单</span>
-          <span class="btn-amount">{{ isOrderCompleted ? '' : (hasEstimatedTotal ? '预估' : '') }}${{ calculateTotal() }}</span>
+          <span class="btn-text">提交订单</span>
+          <span class="btn-amount">{{ submitAmountLabel }}</span>
         </button>
         <button 
           v-else
+          type="button"
           @click="goToLogin"
           class="confirm-order-btn login-btn"
         >
           <span class="btn-text">登陆下单</span>
-          <span class="btn-amount">{{ isOrderCompleted ? '' : (hasEstimatedTotal ? '预估' : '') }}${{ calculateTotal() }}</span>
+          <span class="btn-amount">{{ submitAmountLabel }}</span>
         </button>
       </div>
     </div>
@@ -653,6 +689,10 @@ export default {
         return this.selectedPickupLocation !== null
       }
       return true
+    },
+    submitAmountLabel() {
+      const prefix = this.isOrderCompleted ? '' : (this.hasEstimatedTotal ? '预估' : '')
+      return `${prefix}$${this.calculateTotal()}`
     },
     hasEstimatedTotal() {
       return this.checkoutStore.hasEstimatedTotal
@@ -2476,8 +2516,38 @@ export default {
 
 /* Confirm Order Section */
 .confirm-order-section {
-  padding: var(--md-spacing-xl) var(--md-spacing-md);
+  padding: 0;
   margin-top: var(--md-spacing-lg);
+}
+
+.confirm-order-section--top {
+  padding: 0 0 var(--md-spacing-md);
+  margin-top: 0;
+}
+
+.submit-order-hint {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 8px;
+  text-align: left;
+  font-size: var(--md-label-size);
+  line-height: 1.45;
+  color: #9A5B00;
+  background: rgba(255, 152, 0, 0.12);
+  border: 1px solid rgba(255, 152, 0, 0.35);
+  border-radius: var(--md-radius-md);
+  padding: 10px 12px;
+  margin: 0 0 var(--md-spacing-sm);
+}
+
+.submit-order-hint svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .confirm-order-btn {

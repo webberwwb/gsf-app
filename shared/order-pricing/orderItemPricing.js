@@ -17,17 +17,156 @@ function lowestBandPrice(ranges) {
   return Math.min(...ranges.map((r) => parseFloat(r.price || 0)))
 }
 
+export function normalizeQuantityBreaks(breaks) {
+  if (!Array.isArray(breaks)) return []
+  const seen = new Set()
+  const out = []
+  for (const row of breaks) {
+    if (!row || typeof row !== 'object') continue
+    const minQty = parseInt(row.min_qty, 10)
+    const price = parseFloat(row.price)
+    if (!Number.isFinite(minQty) || minQty < 2) continue
+    if (!Number.isFinite(price) || price < 0) continue
+    if (seen.has(minQty)) continue
+    seen.add(minQty)
+    out.push({ min_qty: minQty, price })
+  }
+  out.sort((a, b) => a.min_qty - b.min_qty)
+  return out
+}
+
+export function lookupBreakPrice(basePrice, breaks, productQty) {
+  let unit = parseFloat(basePrice || 0)
+  const qty = parseInt(productQty, 10) || 1
+  for (const row of normalizeQuantityBreaks(breaks)) {
+    if (qty >= row.min_qty) unit = row.price
+  }
+  return roundMoney(unit)
+}
+
+export function productSharesVariantPrice(product) {
+  if (!product) return true
+  return product.variants_share_price !== false
+}
+
+/** Deal product APIs set is_discount per deal; catalog products are never on sale. */
+export function productOnSale(product) {
+  return !!product?.is_discount
+}
+
+function optionalNumber(value) {
+  if (value == null || value === '') return null
+  const n = parseFloat(value)
+  return Number.isFinite(n) ? n : null
+}
+
+export function paidPricingData(product, pricingData = null) {
+  const pd = { ...(pricingData || product?.pricing_data || {}) }
+  if (!productOnSale(product)) return pd
+  const pt = product?.pricing_type
+  if (pt === 'per_item') {
+    const sale = optionalNumber(pd.sale_price)
+    if (sale != null) pd.price = sale
+  } else if (pt === 'unit_weight' || pt === 'bundled_weight') {
+    const sale = optionalNumber(pd.sale_price_per_unit)
+    if (sale != null) pd.price_per_unit = sale
+  }
+  return pd
+}
+
+function paidPerItemBase(product, variant = null) {
+  const pd = product?.pricing_data || {}
+  const listPrice = parseFloat(pd.price ?? 0)
+  const sale = optionalNumber(pd.sale_price)
+  const productBase = productOnSale(product) && sale != null ? sale : listPrice
+  const share = productSharesVariantPrice(product)
+
+  if (variant && !share) {
+    const variantList =
+      variant.price != null ? parseFloat(variant.price) : listPrice + parseFloat(variant.price_delta || 0)
+    const variantSale = optionalNumber(variant.sale_price)
+    const base = productOnSale(product) && variantSale != null ? variantSale : variantList
+    return { base, listPrice }
+  }
+  return { base: productBase, listPrice }
+}
+
+export function resolvePerItemUnit(product, variant, productQty = 1) {
+  const pd = product?.pricing_data || {}
+  const qty = parseInt(productQty, 10) || 1
+  const share = productSharesVariantPrice(product)
+  const { base: productBase, listPrice } = paidPerItemBase(product, null)
+
+  if (variant && !share) {
+    const { base } = paidPerItemBase(product, variant)
+    const unit = lookupBreakPrice(base, variant.quantity_breaks, qty)
+    return { unitPrice: roundMoney(unit), variantDelta: roundMoney(base - listPrice) }
+  }
+
+  const unit = lookupBreakPrice(productBase, pd.quantity_breaks, qty)
+  const delta = variant ? parseFloat(variant.price_delta || 0) : 0
+  return { unitPrice: roundMoney(unit + delta), variantDelta: roundMoney(delta) }
+}
+
+export function emptyProductSelection() {
+  return { quantity: 0, variant_id: null, variant_quantities: {}, accept_substitute: null }
+}
+
+export function getVariantQuantity(selection = {}, variantId) {
+  if (!selection || variantId == null) return 0
+  const vq = selection.variant_quantities
+  if (vq && typeof vq === 'object') {
+    const raw = vq[variantId] ?? vq[String(variantId)]
+    return Math.max(0, parseInt(raw, 10) || 0)
+  }
+  if (selection.variant_id === variantId || String(selection.variant_id) === String(variantId)) {
+    return Math.max(0, parseInt(selection.quantity, 10) || 0)
+  }
+  return 0
+}
+
+export function getSelectionQuantity(selection = {}) {
+  const vq = selection.variant_quantities
+  if (vq && typeof vq === 'object' && Object.keys(vq).length) {
+    return Object.values(vq).reduce((sum, n) => sum + (parseInt(n, 10) || 0), 0)
+  }
+  return Math.max(0, parseInt(selection.quantity, 10) || 0)
+}
+
+function variantQuantitiesTotal(variantQuantities = {}) {
+  return Object.values(variantQuantities).reduce((sum, n) => sum + (parseInt(n, 10) || 0), 0)
+}
+
+export function setVariantQuantity(selection = {}, variantId, qty) {
+  const next = {
+    ...emptyProductSelection(),
+    ...selection,
+    variant_quantities: { ...(selection.variant_quantities || {}) }
+  }
+  const n = Math.max(0, parseInt(qty, 10) || 0)
+  if (n > 0) next.variant_quantities[variantId] = n
+  else delete next.variant_quantities[variantId]
+  next.quantity = variantQuantitiesTotal(next.variant_quantities)
+  if (next.quantity === 0) next.variant_id = null
+  else if (n > 0) next.variant_id = variantId
+  else if (next.variant_id == null || next.variant_quantities[next.variant_id] == null) {
+    const first = Object.keys(next.variant_quantities)[0]
+    next.variant_id = first != null ? Number(first) || first : null
+  }
+  return next
+}
+
 export function computeBasePrice(product, quantity = 1, finalWeight = null) {
   const pricingType = product.pricing_type || 'per_item'
   const qty = parseInt(quantity, 10) || 1
-  const pd = product.pricing_data || {}
+  const pd = paidPricingData(product)
   const fw = parseWeight(finalWeight)
 
   let unitPrice = 0
   let totalPrice = 0
 
   if (pricingType === 'per_item') {
-    unitPrice = parseFloat(product.price ?? pd.price ?? 0)
+    unitPrice = parseFloat(pd.price ?? product.price ?? 0)
     totalPrice = unitPrice * qty
   } else if (pricingType === 'weight_range') {
     const ranges = pd.ranges || []
@@ -82,16 +221,31 @@ export function applyVariantDelta(unitPrice, totalPrice, delta, pricingType, qua
 }
 
 export function estimateLinePrice(product, selection = {}) {
-  const { quantity = 1, final_weight: finalWeight = null, variant_id: variantId = null } = selection
-  const variant = (product.variants || []).find(v => v.id === variantId)
-  const delta = variant ? parseFloat(variant.price_delta || 0) : 0
+  const {
+    quantity = 1,
+    final_weight: finalWeight = null,
+    variant_id: variantId = null,
+    product_qty: productQty = null
+  } = selection
+  const variant = (product.variants || []).find(
+    (v) => v.id === variantId || String(v.id) === String(variantId)
+  )
+  const pooled = productQty != null ? productQty : quantity
+  const pt = product.pricing_type || 'per_item'
 
+  if (pt === 'per_item') {
+    const { unitPrice } = resolvePerItemUnit(product, variant, pooled)
+    const totalPrice = roundMoney(unitPrice * (parseInt(quantity, 10) || 1))
+    return { unitPrice: roundMoney(unitPrice), totalPrice, variant }
+  }
+
+  const delta = variant ? parseFloat(variant.price_delta || 0) : 0
   let { unitPrice, totalPrice } = computeBasePrice(product, quantity, finalWeight)
   ;({ unitPrice, totalPrice } = applyVariantDelta(
     unitPrice,
     totalPrice,
     delta,
-    product.pricing_type,
+    pt,
     quantity,
     finalWeight,
     product
@@ -152,7 +306,12 @@ export function productRequiresSubstituteChoice(product) {
 }
 
 export function isSelectionComplete(product, selection = {}) {
-  if (productRequiresVariant(product) && !selection.variant_id) return false
+  const qty = getSelectionQuantity(selection)
+  if (qty <= 0) return true
+  if (productRequiresVariant(product)) {
+    const hasVariantQty = (product.variants || []).some((v) => getVariantQuantity(selection, v.id) > 0)
+    if (!hasVariantQty && !selection.variant_id) return false
+  }
   if (productRequiresSubstituteChoice(product) && selection.accept_substitute == null) return false
   return true
 }
@@ -205,24 +364,30 @@ export function estimateAdminLinePrice(product, opts = {}) {
   const quantity = Math.max(1, parseInt(opts.quantity, 10) || 1)
   const finalWeight = opts.final_weight
   const pricingType = product.pricing_type || 'per_item'
-  let variantDelta = parseFloat(opts.variant_price_delta || 0)
-  if (!variantDelta && opts.variant_id != null) {
-    const v = (product.variants || []).find(
-      (x) => x.id === opts.variant_id || String(x.id) === String(opts.variant_id)
-    )
-    variantDelta = parseFloat(v?.price_delta || 0)
-  }
+  const variant = (product.variants || []).find(
+    (x) => x.id === opts.variant_id || String(x.id) === String(opts.variant_id)
+  )
+  const pooled = opts.product_qty != null ? opts.product_qty : quantity
 
-  let { unitPrice, totalPrice } = computeBasePrice(product, quantity, finalWeight)
-  ;({ unitPrice, totalPrice } = applyVariantDelta(
-    unitPrice,
-    totalPrice,
-    variantDelta,
-    pricingType,
-    quantity,
-    finalWeight,
-    product
-  ))
+  let unitPrice
+  let totalPrice
+  if (pricingType === 'per_item') {
+    ;({ unitPrice } = resolvePerItemUnit(product, variant, pooled))
+    totalPrice = roundMoney(unitPrice * quantity)
+  } else {
+    let variantDelta = parseFloat(opts.variant_price_delta || 0)
+    if (!variantDelta && variant) variantDelta = parseFloat(variant.price_delta || 0)
+    ;({ unitPrice, totalPrice } = computeBasePrice(product, quantity, finalWeight))
+    ;({ unitPrice, totalPrice } = applyVariantDelta(
+      unitPrice,
+      totalPrice,
+      variantDelta,
+      pricingType,
+      quantity,
+      finalWeight,
+      product
+    ))
+  }
   ;({ unitPrice, totalPrice } = applyFulfillmentPrice(
     unitPrice,
     totalPrice,
@@ -353,6 +518,7 @@ const WEIGHT_TYPES = ['weight_range', 'unit_weight', 'bundled_weight']
 export function estimateSelectionTotal(product, quantity, selection = {}) {
   const qty = Math.max(0, parseInt(quantity, 10) || 0)
   if (!product || qty === 0) return 0
+  const pooled = selection.product_qty != null ? selection.product_qty : qty
   const pt = product.pricing_type || 'per_item'
   if (WEIGHT_TYPES.includes(pt)) {
     let sum = 0
@@ -361,7 +527,8 @@ export function estimateSelectionTotal(product, quantity, selection = {}) {
       const { totalPrice } = estimateLinePrice(product, {
         quantity: 1,
         final_weight: selection.final_weight ?? refWeight,
-        variant_id: selection.variant_id
+        variant_id: selection.variant_id,
+        product_qty: pooled
       })
       sum += totalPrice
     }
@@ -370,7 +537,8 @@ export function estimateSelectionTotal(product, quantity, selection = {}) {
   const { totalPrice } = estimateLinePrice(product, {
     quantity: qty,
     final_weight: selection.final_weight ?? null,
-    variant_id: selection.variant_id
+    variant_id: selection.variant_id,
+    product_qty: pooled
   })
   return roundMoney(totalPrice)
 }
@@ -380,18 +548,41 @@ export function buildPreviewLinesFromSelection(products = [], selectedItems = {}
   const lines = []
   for (const product of products) {
     const selection = selectedItems[product.id]
-    if (!selection || selection.quantity <= 0) continue
-    const totalPrice = estimateSelectionTotal(product, selection.quantity, {
-      variant_id: selection.variant_id,
-      final_weight: selection.weight
-    })
-    lines.push({
-      product,
-      product_id: product.id,
-      quantity: selection.quantity,
-      variant_id: selection.variant_id,
-      total_price: totalPrice
-    })
+    if (!selection) continue
+    const pooled = getSelectionQuantity(selection)
+    if (pooled <= 0) continue
+    const variants = product.variants || []
+    if (variants.length) {
+      for (const variant of variants) {
+        const qty = getVariantQuantity(selection, variant.id)
+        if (qty <= 0) continue
+        const totalPrice = estimateSelectionTotal(product, qty, {
+          variant_id: variant.id,
+          final_weight: selection.weight,
+          product_qty: pooled
+        })
+        lines.push({
+          product,
+          product_id: product.id,
+          quantity: qty,
+          variant_id: variant.id,
+          total_price: totalPrice
+        })
+      }
+    } else {
+      const totalPrice = estimateSelectionTotal(product, pooled, {
+        variant_id: selection.variant_id,
+        final_weight: selection.weight,
+        product_qty: pooled
+      })
+      lines.push({
+        product,
+        product_id: product.id,
+        quantity: pooled,
+        variant_id: selection.variant_id,
+        total_price: totalPrice
+      })
+    }
   }
   return lines
 }

@@ -1,9 +1,9 @@
 /** Mirror of backend/utils/order_business_rules.py — keep in sync via test_order_business_rules_parity.py */
 
-export const RULES_VERSION = '2026-06-20'
+export const RULES_VERSION = '2026-08-25-deal'
 
 export const ORDER_PRICING_AND_POINTS_RULES = `
-ORDER PRICING AND POINTS RULES (v2026-06-20)
+ORDER PRICING AND POINTS RULES (v2026-08-24)
 ============================================
 
 Change this text and RULES_VERSION when business rules change. Update tests and
@@ -42,7 +42,13 @@ Shipping does not affect points. Do not backfill historical points balances.
 
 LINE PRICING TYPES
 ------------------
-per_item: unit_price = price + variant_delta; total = unit_price * quantity
+per_item: unit from catalog schedule; total = unit_price * quantity.
+  Quantity breaks (optional): pricing_data.quantity_breaks = [{min_qty, price}, ...].
+  Highest min_qty with (pooled product qty on the order) >= min_qty wins.
+  Pooled qty = sum of all variant lines of the same product on that order.
+  variants_share_price=true (default): unit = break(product.price) + variant_delta.
+  variants_share_price=false: unit = break(variant.price); each variant may have
+  its own quantity_breaks. Mixed variants are separate order lines.
 
 weight_range: band match weight >= min AND (max null OR weight < max).
   Estimate (no final_weight): unit_price = min(all band prices); qty=1 per line.
@@ -57,6 +63,19 @@ bundled_weight: rate per lb; one 份 per line (qty=1).
   Final: total = rate * final_weight (weight of that 份)
 
 Weight-based products: user selects count N → N separate order lines (quantity=1 each).
+Quantity breaks do not apply to weight pricing types.
+
+DISCOUNT PRODUCTS
+-----------------
+Sale is per group-deal product (group_deal_products.is_discount), not a catalog-wide
+flag. The same product can be on sale in one overlapping deal and list price in
+another. Catalog sale_price / sale_price_per_unit / variant.sale_price are promo
+amounts used only when that deal marks the product 本团折扣.
+is_discount=true on a deal product pins it to the top of that deal's list (still
+listed in its category). Out-of-stock items still sort last.
+Customers see original + sale on that deal; order lines and points use the sale
+(paid) amount. Quantity-break tiers still override the paid base when the pooled
+qty matches. Catalog /products and Home 热门 always show list price.
 
 SUBSTITUTES
 -----------

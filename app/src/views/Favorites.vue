@@ -40,6 +40,7 @@
             </p>
             <div class="item-price">
               <span class="sale-price">${{ item.price }}</span>
+              <span v-if="compareAt(item)" class="original-price">{{ compareAt(item) }}</span>
             </div>
             <div class="item-actions">
               <button @click="removeFavorite(item.id)" class="remove-btn">取消收藏</button>
@@ -56,6 +57,7 @@
 import { useModal } from '../composables/useModal'
 import { useFavoritesStore } from '../stores/favorites'
 import { useCartStore } from '../stores/cart'
+import { formatProductCompareAt } from '../utils/productPriceDisplay'
 
 export default {
   name: 'Favorites',
@@ -75,6 +77,9 @@ export default {
     this.favoritesStore.loadFromStorage()
   },
   methods: {
+    compareAt(product) {
+      return formatProductCompareAt(product)
+    },
     removeFavorite(productId) {
       this.favoritesStore.removeFavorite(productId)
     },

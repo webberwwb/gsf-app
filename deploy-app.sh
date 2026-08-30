@@ -4,7 +4,9 @@
 
 set -e
 
-PROJECT_ID="focused-mote-477703-f0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-gcloud-project.sh"
+
 REGION=${1:-"us-central1"}
 SERVICE_ACCOUNT_KEY="${2:-instance/service_accounts/focused-mote-477703-f0-0571d061607f.json}"
 
@@ -22,9 +24,6 @@ else
     echo "Error: Service account key not found at $SERVICE_ACCOUNT_KEY"
     exit 1
 fi
-
-# Set the project
-gcloud config set project $PROJECT_ID
 
 # Function to update frontend version
 update_frontend_version() {

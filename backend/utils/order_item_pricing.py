@@ -26,6 +26,63 @@ def _safe_float(value, default=0.0):
         return default
 
 
+def _optional_float(value):
+    if value is None or value == '':
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def product_on_sale(product):
+    """True when this product is on sale in the current deal context.
+
+    Catalog products are never on sale by themselves. Pass deal context via
+    product._deal_is_discount, or (for tests) product.is_discount.
+    """
+    if product is None:
+        return False
+    if getattr(product, '_deal_is_discount', None) is not None:
+        return bool(product._deal_is_discount)
+    return bool(getattr(product, 'is_discount', False))
+
+
+def attach_deal_sale(product, group_deal_id=None, deal_product=None):
+    """Mark a product instance with this deal's sale flag for pricing."""
+    if product is None:
+        return product
+    on_sale = False
+    if deal_product is not None:
+        on_sale = bool(getattr(deal_product, 'is_discount', False))
+    elif group_deal_id:
+        from models.groupdeal import GroupDealProduct
+        dp = GroupDealProduct.query.filter_by(
+            group_deal_id=group_deal_id,
+            product_id=getattr(product, 'id', None),
+        ).first()
+        on_sale = bool(dp and dp.is_discount)
+    product._deal_is_discount = on_sale
+    return product
+
+
+def paid_pricing_data(product, pricing_data=None):
+    """Copy of pricing_data with sale fields applied when the product is on sale."""
+    pd = dict(pricing_data if pricing_data is not None else (getattr(product, 'pricing_data', None) or {}))
+    if not product_on_sale(product):
+        return pd
+    pricing_type = getattr(product, 'pricing_type', None)
+    if pricing_type == 'per_item':
+        sale = _optional_float(pd.get('sale_price'))
+        if sale is not None:
+            pd['price'] = sale
+    elif pricing_type in ('unit_weight', 'bundled_weight'):
+        sale = _optional_float(pd.get('sale_price_per_unit'))
+        if sale is not None:
+            pd['price_per_unit'] = sale
+    return pd
+
+
 def get_display_price_from_config(pricing_type, pricing_data):
     """Default display price for a pricing_type + pricing_data config."""
     from utils.money import round_money_float
@@ -62,6 +119,114 @@ def _lowest_band_price(ranges):
 
 
 WEIGHT_PRICING_TYPES = ('weight_range', 'unit_weight', 'bundled_weight')
+
+
+def normalize_quantity_breaks(breaks):
+    """Return sorted [{min_qty, price}, ...] ignoring invalid rows."""
+    if not breaks or not isinstance(breaks, list):
+        return []
+    out = []
+    seen = set()
+    for row in breaks:
+        if not isinstance(row, dict):
+            continue
+        try:
+            min_qty = int(row.get('min_qty'))
+            price = float(row.get('price'))
+        except (TypeError, ValueError):
+            continue
+        if min_qty < 2 or price < 0 or min_qty in seen:
+            continue
+        seen.add(min_qty)
+        out.append({'min_qty': min_qty, 'price': price})
+    out.sort(key=lambda x: x['min_qty'])
+    return out
+
+
+def lookup_break_price(base_price, breaks, product_qty):
+    """Highest matching min_qty wins; otherwise base_price."""
+    unit = _safe_float(base_price, 0)
+    qty = int(product_qty or 1)
+    for row in normalize_quantity_breaks(breaks):
+        if qty >= row['min_qty']:
+            unit = row['price']
+    return unit
+
+
+def product_shares_variant_price(product):
+    share = getattr(product, 'variants_share_price', True)
+    return True if share is None else bool(share)
+
+
+def pooled_product_qty_for_item(item, product_qty=None):
+    """Total qty of this product on the order (all variant lines)."""
+    if product_qty is not None:
+        try:
+            return max(1, int(product_qty))
+        except (TypeError, ValueError):
+            pass
+    order_id = getattr(item, 'order_id', None)
+    product_id = getattr(item, 'product_id', None)
+    if order_id and product_id:
+        try:
+            from utils.order_audit import active_items_for_order
+            siblings = active_items_for_order(order_id)
+            total = sum(int(i.quantity or 0) for i in siblings if i.product_id == product_id)
+            if total > 0:
+                return total
+        except Exception:
+            pass
+    try:
+        return max(1, int(item.quantity or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _paid_per_item_base(product, variant=None):
+    """Paid unit base (before quantity breaks) and catalog list price."""
+    pd = product.pricing_data or {}
+    list_price = _safe_float(pd.get('price'), 0)
+    sale = _optional_float(pd.get('sale_price'))
+    product_base = sale if product_on_sale(product) and sale is not None else list_price
+    share = product_shares_variant_price(product)
+
+    if variant is not None and not share:
+        variant_list = getattr(variant, 'price', None)
+        if variant_list is None:
+            variant_list = list_price + _safe_float(getattr(variant, 'price_delta', 0), 0)
+        variant_list = _safe_float(variant_list, 0)
+        variant_sale = _optional_float(getattr(variant, 'sale_price', None))
+        base = variant_sale if product_on_sale(product) and variant_sale is not None else variant_list
+        return base, list_price
+
+    return product_base, list_price
+
+
+def resolve_per_item_unit(product, variant, product_qty, snapshot_delta=None):
+    """
+    Paid per-item unit price after quantity breaks.
+    Returns (unit_price, snapshot_delta).
+    """
+    pd = product.pricing_data or {}
+    qty = int(product_qty or 1)
+    share = product_shares_variant_price(product)
+    product_base, list_price = _paid_per_item_base(product, None)
+
+    if variant is not None and not share:
+        base, _ = _paid_per_item_base(product, variant)
+        breaks = getattr(variant, 'quantity_breaks', None)
+        unit = lookup_break_price(base, breaks, qty)
+        delta = round_money_float(base - list_price)
+        return round_money_float(unit), delta
+
+    unit = lookup_break_price(product_base, pd.get('quantity_breaks'), qty)
+    if variant is not None:
+        delta = _safe_float(getattr(variant, 'price_delta', 0), 0)
+    elif snapshot_delta is not None:
+        delta = _safe_float(snapshot_delta, 0)
+    else:
+        delta = 0.0
+    return round_money_float(unit + delta), round_money_float(delta)
 
 
 def expand_request_items(items):
@@ -134,7 +299,9 @@ def compute_price_from_config(pricing_type, pricing_data, quantity=1, final_weig
 def compute_base_price(product, quantity, pricing_type=None, final_weight=None):
     """Compute base unit_price and total_price from a Product (no variant/substitute)."""
     pricing_type = pricing_type or product.pricing_type
-    return compute_price_from_config(pricing_type, product.pricing_data, quantity, final_weight)
+    return compute_price_from_config(
+        pricing_type, paid_pricing_data(product), quantity, final_weight
+    )
 
 
 def get_substitute_pricing(product):
@@ -250,10 +417,12 @@ def build_priced_order_item(
     is_unavailable=False,
     cannot_fulfill=False,
     require_variant=True,
+    product_qty=None,
 ):
     """
     Build dict of order item fields with prices and snapshots.
     Raises ValueError on validation errors.
+    product_qty: total units of this product on the order (all variants); defaults to quantity.
     """
     variant, err = resolve_variant(product, variant_id, required=require_variant)
     if err:
@@ -264,12 +433,21 @@ def build_priced_order_item(
         raise ValueError(err)
 
     pricing_type = pricing_type or product.pricing_type
-    unit_price, base_total = compute_base_price(product, quantity, pricing_type, final_weight)
+    pooled_qty = int(product_qty) if product_qty is not None else int(quantity or 1)
 
-    variant_delta = float(variant.price_delta) if variant else 0
-    unit_price, base_total = apply_variant_delta_safe(
-        unit_price, base_total, variant_delta, pricing_type, quantity, final_weight, product
-    )
+    if pricing_type == 'per_item':
+        unit_price, variant_delta = resolve_per_item_unit(product, variant, pooled_qty)
+        base_total = round_money_float(unit_price * int(quantity or 1))
+        if variant is None:
+            variant_delta = None
+    else:
+        unit_price, base_total = compute_base_price(product, quantity, pricing_type, final_weight)
+        variant_delta = float(variant.price_delta) if variant else 0
+        unit_price, base_total = apply_variant_delta_safe(
+            unit_price, base_total, variant_delta, pricing_type, quantity, final_weight, product
+        )
+        if variant is None:
+            variant_delta = None
 
     unit_price, total_price = apply_fulfillment_price(
         unit_price,
@@ -299,22 +477,45 @@ def build_priced_order_item(
     }
 
 
-def recalculate_existing_item(item, product=None):
+def recalculate_existing_item(item, product=None, product_qty=None):
     """Recalculate prices for an existing OrderItem row."""
     from models.product import Product
 
     product = product or Product.query.get(item.product_id)
     if not product:
         return
+    order = getattr(item, 'order', None)
+    if order is None and getattr(item, 'order_id', None):
+        from models.order import Order
+        order = Order.query.get(item.order_id)
+    attach_deal_sale(product, group_deal_id=getattr(order, 'group_deal_id', None))
 
     pricing_type = product.pricing_type
-    unit_price, base_total = compute_base_price(
-        product, item.quantity, pricing_type, item.final_weight
-    )
-    variant_delta = float(item.variant_price_delta or 0)
-    unit_price, base_total = apply_variant_delta_safe(
-        unit_price, base_total, variant_delta, pricing_type, item.quantity, item.final_weight, product
-    )
+    pooled_qty = pooled_product_qty_for_item(item, product_qty)
+    variant = None
+    variant_id = getattr(item, 'variant_id', None)
+    if variant_id:
+        variant = ProductVariant.query.filter_by(id=variant_id).first()
+
+    if pricing_type == 'per_item':
+        unit_price, _delta = resolve_per_item_unit(
+            product, variant, pooled_qty, snapshot_delta=item.variant_price_delta
+        )
+        if variant is None and item.variant_price_delta is not None:
+            # Live variant gone; apply snapshotted delta on product schedule
+            unit_price, _delta = resolve_per_item_unit(
+                product, None, pooled_qty, snapshot_delta=item.variant_price_delta
+            )
+        base_total = round_money_float(unit_price * int(item.quantity or 1))
+    else:
+        unit_price, base_total = compute_base_price(
+            product, item.quantity, pricing_type, item.final_weight
+        )
+        variant_delta = float(item.variant_price_delta or 0)
+        unit_price, base_total = apply_variant_delta_safe(
+            unit_price, base_total, variant_delta, pricing_type, item.quantity, item.final_weight, product
+        )
+
     unit_price, total_price = apply_fulfillment_price(
         unit_price,
         base_total,
@@ -476,7 +677,6 @@ def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
             if bool(item.is_unavailable) == bool(is_unavailable):
                 continue
             item.is_unavailable = bool(is_unavailable)
-            recalculate_existing_item(item, product)
             stats['items_updated'] += 1
             order_changed = True
             if is_unavailable:
@@ -487,24 +687,31 @@ def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
             else:
                 stats['restored'] += 1
         if order_changed:
-            from utils.order_totals import recalculate_order_totals
-            recalculate_order_totals(order)
+            from utils.order_totals import sync_order_pricing
+            sync_order_pricing(order, reprice_lines=True)
             stats['orders_updated'] += 1
 
     db.session.commit()
     return stats
 
 
-def priced_items_from_request(items, unavailable_by_item_id=None, *, require_variant=True):
+def priced_items_from_request(items, unavailable_by_item_id=None, *, require_variant=True, group_deal_id=None):
     """Build priced order line dicts from request items. Raises ValueError on error."""
     unavailable_by_item_id = unavailable_by_item_id or {}
     order_items = []
     subtotal = Decimal('0')
+    expanded = expand_request_items(items)
 
-    for item_data in expand_request_items(items):
+    pooled_qty = {}
+    for item_data in expanded:
+        pid = item_data['product_id']
+        pooled_qty[pid] = pooled_qty.get(pid, 0) + int(item_data.get('quantity') or 0)
+
+    for item_data in expanded:
         product = Product.query.get(item_data['product_id'])
         if not product:
             raise ValueError(f'Product {item_data["product_id"]} not found')
+        attach_deal_sale(product, group_deal_id=group_deal_id)
 
         item_id = item_data.get('id')
         is_unavailable = item_data.get('is_unavailable')
@@ -523,6 +730,7 @@ def priced_items_from_request(items, unavailable_by_item_id=None, *, require_var
             is_unavailable=is_unavailable,
             cannot_fulfill=bool(item_data.get('cannot_fulfill', False)),
             require_variant=require_variant,
+            product_qty=pooled_qty.get(item_data['product_id']),
         )
         priced['_request_item_id'] = item_data.get('id')
         subtotal += round_money(priced['total_price'])
@@ -595,11 +803,17 @@ def sync_product_variants(product, variants_data):
         price_delta = row.get('price_delta', 0)
         sort_order = row.get('sort_order', idx)
         is_active = row.get('is_active', True)
+        price = row.get('price')
+        sale_price = row.get('sale_price')
+        quantity_breaks = normalize_quantity_breaks(row.get('quantity_breaks')) or None
 
         if vid and vid in existing:
             v = existing[vid]
             v.name = name
             v.price_delta = price_delta
+            v.price = price
+            v.sale_price = sale_price
+            v.quantity_breaks = quantity_breaks
             v.sort_order = sort_order
             v.is_active = is_active
             keep_ids.add(vid)
@@ -608,6 +822,9 @@ def sync_product_variants(product, variants_data):
                 product_id=product.id,
                 name=name,
                 price_delta=price_delta,
+                price=price,
+                sale_price=sale_price,
+                quantity_breaks=quantity_breaks,
                 sort_order=sort_order,
                 is_active=is_active,
             )

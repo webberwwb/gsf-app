@@ -38,3 +38,13 @@ def test_points_zero_when_fully_covered_by_credit():
 
 def test_points_never_negative():
     assert calculate_order_points(FakeOrder(10.00, store_credit_applied=25.00)) == 0
+
+
+def test_points_use_paid_product_dollars_after_quantity_break():
+    """3 items at $8 (list $10) earn points on $24, not $30."""
+    assert calculate_order_points(FakeOrder(24.00)) == 2400
+
+
+def test_points_use_sale_price_not_list_price():
+    """2 items at sale $8 (list $10) earn points on $16, not $20."""
+    assert calculate_order_points(FakeOrder(16.00)) == 1600

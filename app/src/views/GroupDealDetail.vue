@@ -108,6 +108,15 @@
             <div class="category-tabs-container">
               <div class="category-tabs" ref="categoryTabs">
                 <button
+                  v-if="hasDiscountProducts"
+                  type="button"
+                  class="category-tab discount-tab"
+                  :class="{ 'active': selectedCategoryId === 'discount' }"
+                  @click="selectCategory('discount')"
+                >
+                  折扣
+                </button>
+                <button
                   v-for="category in visibleCategories"
                   :key="category.id"
                   :class="['category-tab', { 'active': selectedCategoryId === category.id }]"
@@ -124,10 +133,33 @@
           <p>暂无商品</p>
         </div>
         <div v-else class="products-list">
-          <template v-for="group in groupedProducts" :key="group.category?.id || 'uncategorized'">
+          <div
+            v-for="group in groupedProducts"
+            :key="group.category?.id || 'uncategorized'"
+            class="product-group"
+            :class="{ 'discount-group': group.isDiscountGroup }"
+          >
             <!-- Category Header -->
-            <div v-if="group.category" class="category-header" :data-category-id="group.category.id">
+            <div
+              v-if="group.category"
+              class="category-header"
+              :class="{ 'discount-header': group.isDiscountGroup }"
+              :data-category-id="group.category.id"
+            >
+              <svg
+                v-if="group.isDiscountGroup"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+                class="discount-header-icon"
+                aria-hidden="true"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
               <h3>{{ group.category.name }}</h3>
+              <span v-if="group.isDiscountGroup" class="discount-header-chip">特价</span>
             </div>
             
             <!-- Products in this category -->
@@ -152,6 +184,7 @@
             <div class="product-details">
               <div class="product-name-row">
                 <h4 class="product-name" @click="openProductModal(product)">{{ product.name }}</h4>
+                <span v-if="product.is_discount" class="discount-product-badge">折扣</span>
                 <span v-if="product.counts_toward_free_shipping === false" class="shipping-excluded-badge">
                   不计入免运
                 </span>
@@ -164,14 +197,16 @@
               <div class="product-price-container">
                 <div class="product-price">
                   <span class="price-label">团购价:</span>
-                  <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
-                    ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                  <span v-if="product.pricing_type === 'bundled_weight'" class="price-value" :class="{ 'is-sale': isOnSale(product) }">
+                    ${{ moneyPlain(paidUnitRate(product)) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
                   </span>
-                  <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
+                  <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range" :class="{ 'is-sale': isOnSale(product) }">
                     {{ formatPriceRange(product) }}
                   </span>
-                  <span v-else class="price-value">${{ formatPrice(product) }}</span>
+                  <span v-else class="price-value" :class="{ 'is-sale': isOnSale(product) }">${{ formatPrice(product) }}</span>
+                  <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                 </div>
+                <div v-if="quantityBreakHint(product)" class="qty-break-hint">{{ quantityBreakHint(product) }}</div>
                 
                 <!-- Detailed Weight Range Pricing -->
                 <div v-if="product.pricing_type === 'weight_range'" class="pricing-details-inline">
@@ -312,11 +347,13 @@
               <div v-else-if="product.stock_limit !== undefined && product.stock_limit !== null && product.stock_limit === 0" class="stock-info out-of-stock">
                 <span>缺货</span>
               </div>
+            </div>
 
               <!-- Product Selection Controls -->
               <div class="product-selection" :class="{ 'disabled': isOutOfStock(product) }">
                 <ProductDetailsSection
                   v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
+                  :product="product"
                   :product-id="product.id"
                   :variants="product.variants || []"
                   :substitute="product.substitute_enabled || product.substitute?.enabled
@@ -330,13 +367,15 @@
                       })
                     : null"
                   :variant-id="getSelection(product).variant_id"
+                  :variant-quantities="getSelection(product).variant_quantities || {}"
                   :accept-substitute="getSelection(product).accept_substitute"
-                  @update:variant-id="(v) => setVariantId(product, v)"
+                  :disabled="!isOrderEditable || isOutOfStock(product)"
                   @update:accept-substitute="(v) => setAcceptSubstitute(product, v)"
+                  @change-variant-qty="(variantId, qty) => setVariantQuantity(product, variantId, qty)"
                 />
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
                       type="number"
@@ -356,7 +395,7 @@
 
                 <!-- Weight Range Pricing -->
                 <div v-else-if="product.pricing_type === 'weight_range'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <label>数量:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
@@ -381,7 +420,7 @@
 
                 <!-- Unit Weight Pricing -->
                 <div v-else-if="product.pricing_type === 'unit_weight'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <label>数量:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
@@ -406,7 +445,7 @@
 
                 <!-- Bundled Weight Pricing -->
                 <div v-else-if="product.pricing_type === 'bundled_weight'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <label>份数:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !isOrderEditable || isOutOfStock(product)" class="qty-btn">-</button>
                     <input
@@ -433,9 +472,8 @@
                   </div>
                 </div>
               </div>
-            </div>
           </div>
-          </template>
+          </div>
         </div>
       </div>
     </div>
@@ -447,8 +485,9 @@
         <span class="total-amount">${{ calculateTotal().total }}</span>
         <span v-if="hasEstimatedTotal() && !isOrderCompleted" class="estimated-note">(估算)</span>
       </div>
-      <button @click="confirmOrder" class="confirm-order-btn" :disabled="!isOrderEditable">
-        确认下单
+      <button @click="goToCheckout" class="confirm-order-btn" :disabled="!isOrderEditable">
+        <span class="btn-main">去结算</span>
+        <span class="btn-sub">尚未下单</span>
       </button>
     </div>
 
@@ -487,14 +526,22 @@ import {
   estimateLinePrice,
   estimateSelectionTotal,
   isSelectionComplete,
-  getSelectionIncompleteMessage
+  getSelectionIncompleteMessage,
+  getSelectionQuantity,
+  getVariantQuantity,
+  setVariantQuantity as applyVariantQuantity,
+  emptyProductSelection,
+  productRequiresSubstituteChoice
 } from '../utils/orderItemPricing'
 import {
   formatMoney,
   formatMoneyDisplay,
   formatProductListPrice,
   formatProductPriceRange,
-  roundMoney
+  formatQuantityBreakHint,
+  formatProductCompareAt,
+  isProductOnSale,
+  getProductPaidAmount
 } from '../utils/productPriceDisplay'
 
 export default {
@@ -552,12 +599,18 @@ export default {
       return this.deal.products
     },
     groupedProducts() {
-      // Group products by category for display with headers
       if (!this.deal || !this.deal.products || !this.categories) return []
       
       const groups = []
-      
-      // First, add products that have categories
+      const discountProducts = this.deal.products.filter(p => p.is_discount)
+      if (discountProducts.length > 0) {
+        groups.push({
+          category: { id: 'discount', name: '折扣商品' },
+          products: discountProducts,
+          isDiscountGroup: true
+        })
+      }
+
       this.visibleCategories.forEach(category => {
         const categoryProducts = this.deal.products.filter(p => p.category_id === category.id)
         if (categoryProducts.length > 0) {
@@ -568,7 +621,6 @@ export default {
         }
       })
       
-      // Then, add products without category (if any)
       const uncategorizedProducts = this.deal.products.filter(p => !p.category_id)
       if (uncategorizedProducts.length > 0) {
         groups.push({
@@ -578,6 +630,9 @@ export default {
       }
       
       return groups
+    },
+    hasDiscountProducts() {
+      return !!(this.deal?.products || []).some(p => p.is_discount)
     },
     visibleCategories() {
       if (!this.deal || !this.deal.products || !this.categories) return []
@@ -644,9 +699,7 @@ export default {
         this.deal = response.data.deal
         if (this.deal && this.deal.products) {
           this.deal.products.forEach(product => {
-            this.selectedItems[product.id] = {
-              quantity: 0
-            }
+            this.selectedItems[product.id] = emptyProductSelection()
           })
         }
       } catch (error) {
@@ -663,6 +716,12 @@ export default {
     goBack() {
       this.$router.push('/')
     },
+    normalizeCategoryId(id) {
+      if (id == null || id === '') return null
+      if (id === 'discount') return 'discount'
+      const n = parseInt(id, 10)
+      return Number.isNaN(n) ? id : n
+    },
     async loadCategories() {
       try {
         const response = await apiClient.get('/product-categories')
@@ -672,7 +731,7 @@ export default {
       }
     },
     selectCategory(categoryId) {
-      this.selectedCategoryId = categoryId
+      this.selectedCategoryId = this.normalizeCategoryId(categoryId)
       
       // Scroll to the category section
       this.$nextTick(() => {
@@ -839,12 +898,13 @@ export default {
         }
         
         // Update selected category if changed
-        if (currentCategoryId && this.selectedCategoryId !== parseInt(currentCategoryId)) {
-          this.selectedCategoryId = parseInt(currentCategoryId)
+        const normalizedId = this.normalizeCategoryId(currentCategoryId)
+        if (normalizedId != null && this.selectedCategoryId !== normalizedId) {
+          this.selectedCategoryId = normalizedId
           
           // Auto-scroll the tab bar to show the active tab
           this.$nextTick(() => {
-            this.scrollTabIntoView(parseInt(currentCategoryId))
+            this.scrollTabIntoView(normalizedId)
           })
         }
       }, 100) // 100ms throttle
@@ -929,6 +989,15 @@ export default {
     formatPrice(product) {
       return formatProductListPrice(product)
     },
+    isOnSale(product) {
+      return isProductOnSale(product)
+    },
+    compareAt(product) {
+      return formatProductCompareAt(product)
+    },
+    paidUnitRate(product) {
+      return getProductPaidAmount(product) || 0
+    },
     formatPriceRange(product) {
       return formatProductPriceRange(product)
     },
@@ -952,10 +1021,9 @@ export default {
       return false // This is for the deal detail page, not order completion
     },
     getQuantity(product) {
-      return this.selectedItems[product.id]?.quantity || 0
+      return getSelectionQuantity(this.getSelection(product))
     },
     setQuantity(product, value) {
-      // Check if product is out of stock
       if (this.isOutOfStock(product)) {
         return
       }
@@ -966,24 +1034,22 @@ export default {
 
       if (finalQty > 0) {
         const selection = this.getSelection(product)
-        if (!isSelectionComplete(product, selection)) {
-          this.warning(getSelectionIncompleteMessage(product, selection))
+        if (!isSelectionComplete(product, { ...selection, quantity: finalQty })) {
+          this.warning(getSelectionIncompleteMessage(product, { ...selection, quantity: finalQty }))
           return
         }
       }
 
-      if (!this.selectedItems[product.id]) {
-        this.selectedItems[product.id] = { quantity: 0, variant_id: null, accept_substitute: null }
-      }
-      this.selectedItems[product.id].quantity = finalQty
+      const sel = this.getSelection(product)
+      sel.quantity = finalQty
     },
     increaseQuantity(product) {
       if (this.isOutOfStock(product)) {
         return
       }
       const selection = this.getSelection(product)
-      if (!isSelectionComplete(product, selection)) {
-        this.warning(getSelectionIncompleteMessage(product, selection))
+      if (!isSelectionComplete(product, { ...selection, quantity: this.getQuantity(product) + 1 })) {
+        this.warning(getSelectionIncompleteMessage(product, { ...selection, quantity: 1 }))
         return
       }
 
@@ -994,13 +1060,11 @@ export default {
     isOutOfStock(product) {
       if (!product) return false
       
-      // Check deal_stock_limit (deal-specific inventory)
-      // null or undefined means unlimited stock, only 0 means out of stock
       if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
         return product.deal_stock_limit === 0
       }
       
-      return false // No stock limit means unlimited stock
+      return false
     },
     decreaseQuantity(product) {
       const current = this.getQuantity(product)
@@ -1008,31 +1072,67 @@ export default {
     },
     getSelection(product) {
       if (!this.selectedItems[product.id]) {
-        this.selectedItems[product.id] = { quantity: 0, variant_id: null, accept_substitute: null }
+        this.selectedItems[product.id] = emptyProductSelection()
+      }
+      if (!this.selectedItems[product.id].variant_quantities) {
+        this.selectedItems[product.id].variant_quantities = {}
       }
       return this.selectedItems[product.id]
     },
-    setVariantId(product, variantId) {
-      this.getSelection(product).variant_id = variantId
+    setVariantQuantity(product, variantId, qty) {
+      if (this.isOutOfStock(product)) return
+      const sel = this.getSelection(product)
+      const nextQty = Math.max(0, parseInt(qty, 10) || 0)
+      if (nextQty > 0 && productRequiresSubstituteChoice(product) && sel.accept_substitute == null) {
+        this.warning(getSelectionIncompleteMessage(product, { ...sel, quantity: 1, variant_id: variantId }))
+        return
+      }
+      const proposed = applyVariantQuantity(sel, variantId, nextQty)
+      const maxQty = product.deal_stock_limit || 999
+      if (getSelectionQuantity(proposed) > maxQty) return
+      this.selectedItems[product.id] = { ...sel, ...proposed }
     },
     setAcceptSubstitute(product, value) {
       this.getSelection(product).accept_substitute = value
     },
+    quantityBreakHint(product) {
+      return formatQuantityBreakHint(product)
+    },
     calculateItemTotal(product) {
-      const quantity = this.getQuantity(product)
-      if (quantity === 0) return '0.00'
       const sel = this.getSelection(product)
+      const variants = product.variants || []
+      if (variants.length) {
+        let pooled = 0
+        for (const v of variants) pooled += getVariantQuantity(sel, v.id)
+        if (pooled === 0) return '0.00'
+        let total = 0
+        for (const v of variants) {
+          const qty = getVariantQuantity(sel, v.id)
+          if (qty <= 0) continue
+          total += estimateSelectionTotal(product, qty, {
+            variant_id: v.id,
+            product_qty: pooled
+          })
+        }
+        return formatMoney(total)
+      }
+      const pooled = getSelectionQuantity(sel)
+      if (pooled === 0) return '0.00'
       const { totalPrice } = estimateLinePrice(product, {
-        quantity,
-        variant_id: sel.variant_id
+        quantity: pooled,
+        variant_id: sel.variant_id,
+        product_qty: pooled
       })
       return formatMoney(totalPrice)
     },
     calculateBundledItemTotal(product) {
-      const quantity = this.getQuantity(product)
-      if (quantity === 0) return '$0.00'
       const sel = this.getSelection(product)
-      const total = estimateSelectionTotal(product, quantity, { variant_id: sel.variant_id })
+      const pooled = getSelectionQuantity(sel)
+      if (pooled === 0) return '$0.00'
+      const total = estimateSelectionTotal(product, pooled, {
+        variant_id: sel.variant_id,
+        product_qty: pooled
+      })
       return formatMoneyDisplay(total)
     },
     calculateTotal() {
@@ -1050,42 +1150,55 @@ export default {
       return { total: formatMoney(total), hasEstimated: hasEstimatedItems }
     },
     hasSelectedItems() {
-      return Object.values(this.selectedItems).some(item => item.quantity > 0)
+      return Object.values(this.selectedItems).some(item => getSelectionQuantity(item) > 0)
     },
     hasEstimatedTotal() {
       const result = this.calculateTotal()
       return result.hasEstimated
     },
-    async confirmOrder() {
+    async goToCheckout() {
       const orderItems = []
       
       for (const product of this.deal.products) {
         const selection = this.selectedItems[product.id]
-        if (!selection || selection.quantity <= 0) continue
+        const pooled = getSelectionQuantity(selection || {})
+        if (!selection || pooled <= 0) continue
 
         if (!isSelectionComplete(product, selection)) {
           await this.warning(getSelectionIncompleteMessage(product, selection))
           return
         }
 
-        const variant = (product.variants || []).find((v) => v.id === selection.variant_id)
-        const { totalPrice } = estimateLinePrice(product, {
-          quantity: selection.quantity,
-          variant_id: selection.variant_id
-        })
         const isEstimated = ['weight_range', 'unit_weight', 'bundled_weight'].includes(product.pricing_type)
+        const variants = product.variants || []
+        const pushLine = (qty, variantId) => {
+          const variant = variants.find((v) => v.id === variantId)
+          const { totalPrice } = estimateLinePrice(product, {
+            quantity: qty,
+            variant_id: variantId,
+            product_qty: pooled
+          })
+          orderItems.push({
+            product_id: product.id,
+            quantity: qty,
+            pricing_type: product.pricing_type,
+            variant_id: variantId || undefined,
+            variant_name: variant?.name || undefined,
+            accept_substitute: selection.accept_substitute,
+            estimated_price: formatMoney(totalPrice),
+            is_estimated: isEstimated,
+            counts_toward_free_shipping: product.counts_toward_free_shipping !== false
+          })
+        }
 
-        orderItems.push({
-          product_id: product.id,
-          quantity: selection.quantity,
-          pricing_type: product.pricing_type,
-          variant_id: selection.variant_id || undefined,
-          variant_name: variant?.name || undefined,
-          accept_substitute: selection.accept_substitute,
-          estimated_price: formatMoney(totalPrice),
-          is_estimated: isEstimated,
-          counts_toward_free_shipping: product.counts_toward_free_shipping !== false
-        })
+        if (variants.length) {
+          for (const variant of variants) {
+            const qty = getVariantQuantity(selection, variant.id)
+            if (qty > 0) pushLine(qty, variant.id)
+          }
+        } else {
+          pushLine(pooled, selection.variant_id)
+        }
       }
       
       if (orderItems.length === 0) {
@@ -1597,6 +1710,20 @@ export default {
   color: white;
 }
 
+.category-tab.discount-tab {
+  background: #FFEBEE;
+  color: #E53935;
+}
+
+.category-tab.discount-tab:hover {
+  background: #FFCDD2;
+}
+
+.category-tab.discount-tab.active {
+  background: #FF4444;
+  color: #fff;
+}
+
 .category-tab:active {
   transform: scale(0.96);
 }
@@ -1630,14 +1757,23 @@ export default {
   gap: var(--md-spacing-lg);
 }
 
+.product-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .category-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   margin-top: var(--md-spacing-lg);
   margin-bottom: var(--md-spacing-md);
   padding-bottom: var(--md-spacing-sm);
   border-bottom: 2px solid var(--md-primary);
 }
 
-.category-header:first-child {
+.product-group:first-child .category-header {
   margin-top: 0;
 }
 
@@ -1646,6 +1782,55 @@ export default {
   color: var(--md-primary);
   font-weight: 600;
   margin: 0;
+}
+
+.discount-group {
+  margin: 0 calc(-1 * var(--md-spacing-xs));
+  padding: 0.75rem 0.85rem 0.35rem;
+  border-radius: 16px;
+  background: #FFF8F7;
+  border: 1px solid rgba(255, 68, 68, 0.18);
+}
+
+.discount-header {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(255, 68, 68, 0.14);
+}
+
+.discount-header-icon {
+  width: 18px;
+  height: 18px;
+  color: #FF4444;
+  flex-shrink: 0;
+}
+
+.discount-header h3 {
+  color: #E53935;
+}
+
+.discount-header-chip {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: #FF4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.discount-group .product-item {
+  border-bottom-color: rgba(255, 68, 68, 0.1);
+}
+
+.discount-group .product-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0.35rem;
 }
 
 .product-item {
@@ -1709,6 +1894,7 @@ export default {
 
 .product-details {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--md-spacing-sm);
@@ -1743,6 +1929,23 @@ export default {
   background: #FFF3E0;
   color: #E65100;
   flex-shrink: 0;
+}
+
+.discount-product-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #FFEBEE;
+  color: #E53935;
+  flex-shrink: 0;
+}
+
+.qty-break-hint {
+  font-size: 12px;
+  color: #B45309;
+  margin-top: 0.2rem;
 }
 
 .product-description-preview {
@@ -1791,6 +1994,10 @@ export default {
   font-size: var(--md-body-size);
   font-weight: 600;
   color: var(--md-primary);
+}
+
+.price-value.is-sale {
+  color: #FF4444;
 }
 
 .price-value.price-range {
@@ -2049,7 +2256,9 @@ export default {
 }
 
 .product-selection {
-  margin-top: var(--md-spacing-sm);
+  flex: 1 1 100%;
+  width: 100%;
+  margin-top: var(--md-spacing-xs);
 }
 
 .selection-controls {
@@ -2316,7 +2525,7 @@ export default {
 .confirm-order-btn {
   flex: 1;
   max-width: 200px;
-  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  padding: 10px var(--md-spacing-md);
   background: var(--md-primary);
   color: white;
   border: none;
@@ -2325,6 +2534,23 @@ export default {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.confirm-order-btn .btn-main {
+  font-size: var(--md-body-size);
+  font-weight: 600;
+}
+
+.confirm-order-btn .btn-sub {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.9;
   white-space: nowrap;
 }
 

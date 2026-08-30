@@ -97,6 +97,7 @@
             <div class="product-details">
               <div class="product-name-row">
                 <h4 class="product-name" @click="openProductModal(product)">{{ product.name }}</h4>
+                <span v-if="product.is_discount" class="discount-product-badge">折扣</span>
                 <span v-if="product.counts_toward_free_shipping === false" class="shipping-excluded-badge">
                   不计入免运
                 </span>
@@ -108,19 +109,21 @@
               <!-- Price Display -->
               <div class="product-price">
                 <span class="price-label">团购价:</span>
-                <span v-if="product.pricing_type === 'bundled_weight'" class="price-value">
+                <span v-if="product.pricing_type === 'bundled_weight'" class="price-value" :class="{ 'is-sale': isOnSale(product) }">
                   <template v-if="getOrderItemForProduct(product) && getOrderItemForProduct(product).final_weight">
-                    ${{ moneyPlain(parseFloat(product.pricing_data?.price_per_unit || 0) * parseFloat(getOrderItemForProduct(product).final_weight)) }}
+                    ${{ moneyPlain(parseFloat(paidUnitRate(product) || 0) * parseFloat(getOrderItemForProduct(product).final_weight)) }}
                   </template>
                   <template v-else>
-                    ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                    ${{ moneyPlain(paidUnitRate(product)) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
                   </template>
                 </span>
-                <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range">
+                <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range" :class="{ 'is-sale': isOnSale(product) }">
                   {{ formatPriceRange(product) }}
                 </span>
-                <span v-else class="price-value">${{ formatPrice(product) }}</span>
+                <span v-else class="price-value" :class="{ 'is-sale': isOnSale(product) }">${{ formatPrice(product) }}</span>
+                <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
               </div>
+              <div v-if="quantityBreakHint(product)" class="qty-break-hint">{{ quantityBreakHint(product) }}</div>
 
               <!-- Stock Info -->
               <!-- Only show stock when it's less than 10 (or out of stock) -->
@@ -128,11 +131,13 @@
                 <span v-if="isOutOfStock(product)">缺货</span>
                 <span v-else>库存: {{ product.deal_stock_limit }} 件</span>
               </div>
+            </div>
 
               <!-- Product Selection Controls -->
               <div class="product-selection" :class="{ 'disabled': !canEditProducts || isOrderCompleted }">
                 <ProductDetailsSection
                   v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
+                  :product="product"
                   :product-id="product.id"
                   :variants="product.variants || []"
                   :substitute="product.substitute_enabled || product.substitute?.enabled
@@ -146,13 +151,15 @@
                       })
                     : null"
                   :variant-id="getSelection(product).variant_id"
+                  :variant-quantities="getSelection(product).variant_quantities || {}"
                   :accept-substitute="getSelection(product).accept_substitute"
-                  @update:variant-id="(v) => setVariantId(product, v)"
+                  :disabled="!canEditProducts || isOrderCompleted"
                   @update:accept-substitute="(v) => setAcceptSubstitute(product, v)"
+                  @change-variant-qty="(variantId, qty) => setVariantQuantity(product, variantId, qty)"
                 />
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
                       type="number"
@@ -172,7 +179,7 @@
 
                 <!-- Weight Range Pricing -->
                 <div v-else-if="product.pricing_type === 'weight_range'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <label>数量:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
@@ -197,7 +204,7 @@
 
                 <!-- Unit Weight Pricing -->
                 <div v-else-if="product.pricing_type === 'unit_weight'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <label>数量:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
@@ -222,7 +229,7 @@
 
                 <!-- Bundled Weight Pricing -->
                 <div v-else-if="product.pricing_type === 'bundled_weight'" class="selection-controls">
-                  <div class="quantity-control">
+                  <div v-if="!(product.variants || []).length" class="quantity-control">
                     <label>份数:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
@@ -271,7 +278,6 @@
                 <span v-else-if="isDealClosed">团购已截单，无法修改商品</span>
                 <span v-else-if="order && order.status === 'confirmed'">订单已确认，无法修改商品</span>
               </div>
-            </div>
           </div>
         </div>
       </div>
@@ -787,13 +793,22 @@ import {
   isSelectionComplete,
   getSelectionIncompleteMessage,
   toOrderLineDisplay,
-  buildPreviewLinesFromSelection
+  buildPreviewLinesFromSelection,
+  getSelectionQuantity,
+  getVariantQuantity,
+  setVariantQuantity as applyVariantQuantity,
+  emptyProductSelection,
+  productRequiresSubstituteChoice
 } from '../utils/orderItemPricing'
 import {
   formatMoney,
   formatMoneyDisplay,
   formatProductListPrice,
-  formatProductPriceRange
+  formatProductPriceRange,
+  formatQuantityBreakHint,
+  formatProductCompareAt,
+  isProductOnSale,
+  getProductPaidAmount
 } from '../utils/productPriceDisplay'
 
 export default {
@@ -1066,18 +1081,7 @@ export default {
         
         // Load order items into selectedItems
         if (this.order.items && this.order.items.length > 0) {
-          this.order.items.forEach(item => {
-            if (this.selectedItems[item.product_id] === undefined) {
-              this.selectedItems[item.product_id] = { quantity: 0 }
-            }
-            this.selectedItems[item.product_id].quantity = item.quantity
-            this.selectedItems[item.product_id].variant_id = item.variant_id || null
-            this.selectedItems[item.product_id].accept_substitute = item.accept_substitute
-            this.selectedItems[item.product_id].item_id = item.id
-            if (item.final_weight != null && item.final_weight > 0) {
-              this.selectedItems[item.product_id].weight = parseFloat(item.final_weight)
-            }
-          })
+          this.applyOrderItemsToSelection(this.order.items)
         }
         
         // Load order settings
@@ -1205,7 +1209,7 @@ export default {
         if (this.deal.products) {
           this.deal.products.forEach(product => {
             if (this.selectedItems[product.id] === undefined) {
-              this.selectedItems[product.id] = { quantity: 0 }
+              this.selectedItems[product.id] = emptyProductSelection()
             }
           })
         }
@@ -1270,6 +1274,15 @@ export default {
     formatPrice(product) {
       return formatProductListPrice(product)
     },
+    isOnSale(product) {
+      return isProductOnSale(product)
+    },
+    compareAt(product) {
+      return formatProductCompareAt(product)
+    },
+    paidUnitRate(product) {
+      return getProductPaidAmount(product) || 0
+    },
     formatPriceRange(product) {
       return formatProductPriceRange(product)
     },
@@ -1277,7 +1290,36 @@ export default {
       return formatMoney(value)
     },
     getQuantity(product) {
-      return this.selectedItems[product.id]?.quantity || 0
+      return getSelectionQuantity(this.getSelection(product))
+    },
+    applyOrderItemsToSelection(items) {
+      const reset = new Set()
+      for (const item of items || []) {
+        if (!this.selectedItems[item.product_id]) {
+          this.selectedItems[item.product_id] = emptyProductSelection()
+        }
+        const sel = this.selectedItems[item.product_id]
+        if (!sel.variant_quantities) sel.variant_quantities = {}
+        if (!sel.item_ids) sel.item_ids = {}
+        if (!reset.has(item.product_id)) {
+          sel.variant_quantities = {}
+          sel.item_ids = {}
+          sel.quantity = 0
+          reset.add(item.product_id)
+        }
+        const qty = item.quantity || 0
+        if (item.variant_id != null) {
+          sel.variant_quantities[item.variant_id] = (sel.variant_quantities[item.variant_id] || 0) + qty
+          sel.item_ids[item.variant_id] = item.id
+        }
+        sel.quantity = getSelectionQuantity(sel)
+        if (item.variant_id) sel.variant_id = item.variant_id
+        sel.accept_substitute = item.accept_substitute
+        sel.item_id = item.id
+        if (item.final_weight != null && item.final_weight > 0) {
+          sel.weight = parseFloat(item.final_weight)
+        }
+      }
     },
     setQuantity(product, value) {
       const qty = parseInt(value) || 0
@@ -1349,19 +1391,40 @@ export default {
       return false // No stock limit means unlimited stock
     },
     calculateItemTotal(product) {
-      const quantity = this.getQuantity(product)
-      if (quantity === 0) return '0.00'
       const sel = this.getSelection(product)
-      return formatMoney(estimateSelectionTotal(product, quantity, {
+      const variants = product.variants || []
+      if (variants.length) {
+        let pooled = 0
+        for (const v of variants) pooled += getVariantQuantity(sel, v.id)
+        if (pooled === 0) return '0.00'
+        let total = 0
+        for (const v of variants) {
+          const qty = getVariantQuantity(sel, v.id)
+          if (qty <= 0) continue
+          total += estimateSelectionTotal(product, qty, {
+            variant_id: v.id,
+            final_weight: this.getWeight(product),
+            product_qty: pooled
+          })
+        }
+        return formatMoney(total)
+      }
+      const pooled = getSelectionQuantity(sel)
+      if (pooled === 0) return '0.00'
+      return formatMoney(estimateSelectionTotal(product, pooled, {
         variant_id: sel.variant_id,
-        final_weight: this.getWeight(product)
+        final_weight: this.getWeight(product),
+        product_qty: pooled
       }))
     },
     calculateBundledItemTotal(product) {
-      const quantity = this.getQuantity(product)
-      if (quantity === 0) return '$0.00'
       const sel = this.getSelection(product)
-      const total = estimateSelectionTotal(product, quantity, { variant_id: sel.variant_id })
+      const pooled = getSelectionQuantity(sel)
+      if (pooled === 0) return '$0.00'
+      const total = estimateSelectionTotal(product, pooled, {
+        variant_id: sel.variant_id,
+        product_qty: pooled
+      })
       return formatMoneyDisplay(total)
     },
     orderSubtotalNumber,
@@ -1372,16 +1435,36 @@ export default {
       return formatOrderMoney2(value)
     },
     hasSelectedItems() {
-      return Object.values(this.selectedItems).some(item => item.quantity > 0)
+      return Object.values(this.selectedItems).some(item => getSelectionQuantity(item) > 0)
     },
     getSelection(product) {
       if (!this.selectedItems[product.id]) {
-        this.selectedItems[product.id] = { quantity: 0, variant_id: null, accept_substitute: null }
+        this.selectedItems[product.id] = emptyProductSelection()
+      }
+      if (!this.selectedItems[product.id].variant_quantities) {
+        this.selectedItems[product.id].variant_quantities = {}
       }
       return this.selectedItems[product.id]
     },
-    setVariantId(product, variantId) {
-      this.getSelection(product).variant_id = variantId
+    setVariantQuantity(product, variantId, qty) {
+      if (this.isOutOfStock(product) && (parseInt(qty, 10) || 0) > getVariantQuantity(this.getSelection(product), variantId)) {
+        return
+      }
+      const sel = this.getSelection(product)
+      const nextQty = Math.max(0, parseInt(qty, 10) || 0)
+      if (nextQty > 0 && productRequiresSubstituteChoice(product) && sel.accept_substitute == null) {
+        this.warning(getSelectionIncompleteMessage(product, { ...sel, quantity: 1, variant_id: variantId }))
+        return
+      }
+      const proposed = applyVariantQuantity(sel, variantId, nextQty)
+      const maxQty = product.deal_stock_limit || 999
+      if (getSelectionQuantity(proposed) > maxQty) return
+      const weight = sel.weight
+      const itemIds = sel.item_ids
+      this.selectedItems[product.id] = { ...sel, ...proposed, item_ids: itemIds, weight }
+    },
+    quantityBreakHint(product) {
+      return formatQuantityBreakHint(product)
     },
     setAcceptSubstitute(product, value) {
       this.getSelection(product).accept_substitute = value
@@ -1399,25 +1482,37 @@ export default {
         // Can edit products - build from current selections
         for (const product of this.deal.products) {
           const selection = this.selectedItems[product.id]
-          if (!selection || selection.quantity <= 0) continue
+          const pooled = getSelectionQuantity(selection || {})
+          if (!selection || pooled <= 0) continue
 
           if (!isSelectionComplete(product, selection)) {
             await this.warning(getSelectionIncompleteMessage(product, selection))
             return
           }
 
-          const itemData = {
-            id: selection.item_id,
-            product_id: product.id,
-            quantity: selection.quantity,
-            pricing_type: product.pricing_type,
-            variant_id: selection.variant_id || undefined,
-            accept_substitute: selection.accept_substitute
+          const variants = product.variants || []
+          const pushLine = (qty, variantId) => {
+            const itemData = {
+              id: (selection.item_ids && variantId != null) ? selection.item_ids[variantId] : selection.item_id,
+              product_id: product.id,
+              quantity: qty,
+              pricing_type: product.pricing_type,
+              variant_id: variantId || undefined,
+              accept_substitute: selection.accept_substitute
+            }
+            if (product.pricing_type === 'bundled_weight' && selection.weight != null) {
+              itemData.final_weight = parseFloat(selection.weight)
+            }
+            orderItems.push(itemData)
           }
-          if (product.pricing_type === 'bundled_weight' && selection.weight != null) {
-            itemData.final_weight = parseFloat(selection.weight)
+          if (variants.length) {
+            for (const variant of variants) {
+              const qty = getVariantQuantity(selection, variant.id)
+              if (qty > 0) pushLine(qty, variant.id)
+            }
+          } else {
+            pushLine(pooled, selection.variant_id)
           }
-          orderItems.push(itemData)
         }
         
         if (orderItems.length === 0) {
@@ -1495,18 +1590,8 @@ export default {
         if (updatedOrder.items && updatedOrder.items.length > 0) {
           updatedOrder.items.forEach(item => {
             orderProductIds.add(item.product_id)
-            if (this.selectedItems[item.product_id] === undefined) {
-              this.selectedItems[item.product_id] = { quantity: 0 }
-            }
-            this.selectedItems[item.product_id].quantity = item.quantity
-            // Update weight if available (for bundled_weight products)
-            if (item.final_weight != null && item.final_weight > 0) {
-              this.selectedItems[item.product_id].weight = parseFloat(item.final_weight)
-            } else {
-              // Clear weight if not present
-              delete this.selectedItems[item.product_id].weight
-            }
           })
+          this.applyOrderItemsToSelection(updatedOrder.items)
         }
         
         // Clear quantity for products that are no longer in the order
@@ -1516,6 +1601,7 @@ export default {
             if (!orderProductIds.has(product.id)) {
               if (this.selectedItems[product.id]) {
                 this.selectedItems[product.id].quantity = 0
+                this.selectedItems[product.id].variant_quantities = {}
                 delete this.selectedItems[product.id].weight
               }
             }
@@ -2147,6 +2233,7 @@ export default {
 
 .product-details {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--md-spacing-sm);
@@ -2178,6 +2265,23 @@ export default {
   flex-shrink: 0;
 }
 
+.discount-product-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #FEF3C7;
+  color: #B45309;
+  flex-shrink: 0;
+}
+
+.qty-break-hint {
+  font-size: 12px;
+  color: #B45309;
+  margin-top: 0.2rem;
+}
+
 .product-description-preview {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
@@ -2195,6 +2299,16 @@ export default {
 .price-label {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
+}
+
+.price-value.is-sale {
+  color: #FF4444;
+}
+
+.original-price {
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  text-decoration: line-through;
 }
 
 .price-value {
@@ -2230,7 +2344,9 @@ export default {
 }
 
 .product-selection {
-  margin-top: var(--md-spacing-sm);
+  flex: 1 1 100%;
+  width: 100%;
+  margin-top: var(--md-spacing-xs);
 }
 
 .selection-controls {
@@ -2745,6 +2861,8 @@ export default {
 }
 
 .deal-closed-product-note {
+  flex: 1 1 100%;
+  width: 100%;
   font-size: var(--md-label-size);
   color: #E65100;
   margin-top: var(--md-spacing-xs);

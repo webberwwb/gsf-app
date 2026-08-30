@@ -49,6 +49,12 @@ export default {
           label: '账号管理',
           icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>',
           badge: null
+        },
+        {
+          path: '/contact',
+          label: '联系我们',
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>',
+          badge: null
         }
       ]
     }
@@ -86,10 +92,11 @@ export default {
   right: 0;
   display: flex;
   justify-content: space-around;
-  align-items: center;
+  align-items: stretch;
+  gap: 2px;
   background: var(--md-surface);
   border-top: none;
-  padding: 0.75rem 0;
+  padding: 0.75rem 0.25rem;
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
   z-index: 1000;
@@ -99,23 +106,25 @@ export default {
 
 .nav-item {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-decoration: none;
   color: var(--md-on-surface-variant);
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.2rem;
   position: relative;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  min-width: 64px;
+  transition: color 0.15s ease;
+  min-width: 0;
+  margin: 0;
   border-radius: var(--md-radius-md);
-  margin: 0 0.25rem;
+  background: transparent;
+  overflow: hidden;
 }
 
 .nav-item.active {
   color: var(--md-primary);
   background: rgba(255, 140, 0, 0.1);
-  border-radius: var(--md-radius-md);
 }
 
 .nav-icon {
@@ -139,9 +148,10 @@ export default {
 }
 
 .nav-label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 500;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .nav-badge {

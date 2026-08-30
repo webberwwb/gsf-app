@@ -37,6 +37,7 @@ class GroupDealProductSchema(Schema):
     """Schema for product in a group deal"""
     product_id = fields.Integer(required=True, validate=validate.Range(min=1))
     deal_stock_limit = fields.Integer(allow_none=True, validate=validate.Range(min=0))
+    is_discount = fields.Boolean(missing=False)
     
     class Meta:
         unknown = EXCLUDE

@@ -2,9 +2,20 @@
 from marshmallow import Schema, fields, validate, validates, ValidationError, post_load, EXCLUDE
 
 
+class QuantityBreakSchema(Schema):
+    """Quantity-break tier: min_qty units or more use this unit price."""
+    min_qty = fields.Integer(required=True, validate=validate.Range(min=2))
+    price = fields.Float(required=True, validate=validate.Range(min=0))
+
+    class Meta:
+        unknown = EXCLUDE
+
+
 class PricingDataPerItemSchema(Schema):
     """Schema for per_item pricing_data"""
     price = fields.Float(required=True, validate=validate.Range(min=0))
+    sale_price = fields.Float(allow_none=True, validate=validate.Range(min=0))
+    quantity_breaks = fields.List(fields.Nested(QuantityBreakSchema), allow_none=True)
 
 
 class WeightRangeSchema(Schema):
@@ -22,6 +33,7 @@ class PricingDataWeightRangeSchema(Schema):
 class PricingDataUnitWeightSchema(Schema):
     """Schema for unit_weight pricing_data"""
     price_per_unit = fields.Float(required=True, validate=validate.Range(min=0))
+    sale_price_per_unit = fields.Float(allow_none=True, validate=validate.Range(min=0))
     unit = fields.String(missing='lb')
 
 
@@ -30,6 +42,9 @@ class ProductVariantSchema(Schema):
     id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     name = fields.String(required=True, validate=validate.Length(min=1, max=255))
     price_delta = fields.Float(missing=0)
+    price = fields.Float(allow_none=True, validate=validate.Range(min=0))
+    sale_price = fields.Float(allow_none=True, validate=validate.Range(min=0))
+    quantity_breaks = fields.List(fields.Nested(QuantityBreakSchema), allow_none=True)
     sort_order = fields.Integer(missing=0, validate=validate.Range(min=0))
     is_active = fields.Boolean(missing=True)
 
@@ -37,6 +52,7 @@ class ProductVariantSchema(Schema):
 class PricingDataBundledWeightSchema(Schema):
     """Schema for bundled_weight pricing_data"""
     price_per_unit = fields.Float(required=True, validate=validate.Range(min=0))
+    sale_price_per_unit = fields.Float(allow_none=True, validate=validate.Range(min=0))
     unit = fields.String(missing='lb')
     min_weight = fields.Float(required=True, validate=validate.Range(min=0))
     max_weight = fields.Float(required=True, validate=validate.Range(min=0))
@@ -52,6 +68,32 @@ def validate_pricing_config(pricing_type, pricing_data, field_label='pricing_dat
             raise ValidationError(f'{field_label}.price is required for per_item pricing')
         if not isinstance(pricing_data['price'], (int, float)) or pricing_data['price'] < 0:
             raise ValidationError(f'{field_label}.price must be a non-negative number')
+        sale_price = pricing_data.get('sale_price')
+        if sale_price is not None:
+            if not isinstance(sale_price, (int, float)) or sale_price < 0:
+                raise ValidationError(f'{field_label}.sale_price must be a non-negative number')
+        breaks = pricing_data.get('quantity_breaks')
+        if breaks is not None:
+            if not isinstance(breaks, list):
+                raise ValidationError(f'{field_label}.quantity_breaks must be a list')
+            seen = set()
+            for break_item in breaks:
+                if not isinstance(break_item, dict):
+                    raise ValidationError('Each quantity break must have min_qty and price')
+                if 'min_qty' not in break_item or 'price' not in break_item:
+                    raise ValidationError('Each quantity break must have min_qty and price')
+                try:
+                    min_qty = int(break_item['min_qty'])
+                    price = float(break_item['price'])
+                except (TypeError, ValueError):
+                    raise ValidationError('quantity_breaks min_qty and price must be numbers')
+                if min_qty < 2:
+                    raise ValidationError('quantity_breaks min_qty must be at least 2')
+                if price < 0:
+                    raise ValidationError('quantity_breaks price must be non-negative')
+                if min_qty in seen:
+                    raise ValidationError('quantity_breaks min_qty values must be unique')
+                seen.add(min_qty)
     elif pricing_type == 'weight_range':
         if 'ranges' not in pricing_data or not isinstance(pricing_data['ranges'], list):
             raise ValidationError(f'{field_label}.ranges is required for weight_range pricing')
@@ -65,11 +107,19 @@ def validate_pricing_config(pricing_type, pricing_data, field_label='pricing_dat
             raise ValidationError(f'{field_label}.price_per_unit is required for unit_weight pricing')
         if not isinstance(pricing_data['price_per_unit'], (int, float)) or pricing_data['price_per_unit'] < 0:
             raise ValidationError(f'{field_label}.price_per_unit must be a non-negative number')
+        sale_unit = pricing_data.get('sale_price_per_unit')
+        if sale_unit is not None:
+            if not isinstance(sale_unit, (int, float)) or sale_unit < 0:
+                raise ValidationError(f'{field_label}.sale_price_per_unit must be a non-negative number')
     elif pricing_type == 'bundled_weight':
         if 'price_per_unit' not in pricing_data:
             raise ValidationError(f'{field_label}.price_per_unit is required for bundled_weight pricing')
         if not isinstance(pricing_data['price_per_unit'], (int, float)) or pricing_data['price_per_unit'] < 0:
             raise ValidationError(f'{field_label}.price_per_unit must be a non-negative number')
+        sale_unit = pricing_data.get('sale_price_per_unit')
+        if sale_unit is not None:
+            if not isinstance(sale_unit, (int, float)) or sale_unit < 0:
+                raise ValidationError(f'{field_label}.sale_price_per_unit must be a non-negative number')
         if 'min_weight' not in pricing_data:
             raise ValidationError(f'{field_label}.min_weight is required for bundled_weight pricing')
         if not isinstance(pricing_data['min_weight'], (int, float)) or pricing_data['min_weight'] < 0:
@@ -80,6 +130,11 @@ def validate_pricing_config(pricing_type, pricing_data, field_label='pricing_dat
             raise ValidationError(f'{field_label}.max_weight must be a non-negative number')
         if pricing_data['max_weight'] < pricing_data['min_weight']:
             raise ValidationError(f'{field_label}.max_weight must be greater than or equal to min_weight')
+
+
+def validate_discount_sale_fields(data, pricing_type):
+    """Sale prices are optional catalog fields; they apply only when a deal marks 本团折扣."""
+    return
 
 
 class CreateProductSchema(Schema):
@@ -95,6 +150,8 @@ class CreateProductSchema(Schema):
     category_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(missing=True)
     sort_order = fields.Float(missing=0, validate=validate.Range(min=0))
+    variants_share_price = fields.Boolean(missing=True)
+    is_discount = fields.Boolean(missing=False)
     variants = fields.List(fields.Nested(ProductVariantSchema), allow_none=True)
     substitute_enabled = fields.Boolean(missing=False)
     substitute_name = fields.String(allow_none=True, validate=validate.Length(max=255))
@@ -130,7 +187,15 @@ class CreateProductSchema(Schema):
                 raise ValidationError('substitute_pricing_type must match product pricing_type')
             data['substitute_pricing_type'] = sub_type
             validate_pricing_config(sub_type, sub_data, 'substitute_pricing_data')
-        
+
+        share = data.get('variants_share_price', True)
+        if share is False and pricing_type == 'per_item':
+            variants = data.get('variants') or []
+            for v in variants:
+                if (v.get('name') or '').strip() and v.get('price') is None:
+                    raise ValidationError('Each variant needs a price when 规格不同价')
+
+        validate_discount_sale_fields(data, pricing_type)
         return data
     
     class Meta:
@@ -150,6 +215,8 @@ class UpdateProductSchema(Schema):
     category_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     counts_toward_free_shipping = fields.Boolean(allow_none=True)
     sort_order = fields.Float(allow_none=True, validate=validate.Range(min=0))
+    variants_share_price = fields.Boolean(allow_none=True)
+    is_discount = fields.Boolean(allow_none=True)
     variants = fields.List(fields.Nested(ProductVariantSchema), allow_none=True)
     substitute_enabled = fields.Boolean(allow_none=True)
     substitute_name = fields.String(allow_none=True, validate=validate.Length(max=255))
@@ -191,7 +258,16 @@ class UpdateProductSchema(Schema):
             sub_data = data.get('substitute_pricing_data')
             if sub_data is not None:
                 validate_pricing_config(sub_type, sub_data, 'substitute_pricing_data')
-        
+
+        share = data.get('variants_share_price')
+        if share is False and pricing_type == 'per_item':
+            variants = data.get('variants') or []
+            for v in variants:
+                if (v.get('name') or '').strip() and v.get('price') is None:
+                    raise ValidationError('Each variant needs a price when 规格不同价')
+
+        if pricing_type:
+            validate_discount_sale_fields(data, pricing_type)
         return data
     
     class Meta:

@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 from models import db
 from models.product import Product
 from models.product_category import ProductCategory
-from models.groupdeal import GroupDeal, GroupDealProduct
+from models.groupdeal import GroupDeal, GroupDealProduct, deal_product_to_dict
 from models.product_sales_stats import ProductSalesStats
 from models.user import AuthToken, User
 from datetime import datetime, timezone, date, timedelta
@@ -217,16 +217,11 @@ def get_group_deals():
             for dp in deal_products:
                 product = products_map.get(dp.product_id)
                 if product:
-                    product_dict = product.to_dict()
-                    product_dict['deal_stock_limit'] = dp.deal_stock_limit
+                    product_dict = deal_product_to_dict(dp, product=product)
                     products_data.append(product_dict)
             
-            # Sort products by custom sort_order, then move out of stock items to bottom
-            products_data.sort(key=lambda p: (
-                p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
-                p.get('sort_order', 0),
-                p.get('id', 0)
-            ))
+            # Sort products: out of stock last, discount first, then sort_order
+            _sort_deal_products(products_data)
             deal_dict['products'] = products_data
             deals_data.append(deal_dict)
         
@@ -238,6 +233,17 @@ def get_group_deals():
             'error': 'Failed to fetch group deals',
             'message': str(e)
         }), 500
+
+def _sort_deal_products(products_data):
+    """Out of stock last, discount products first, then sort_order."""
+    products_data.sort(key=lambda p: (
+        p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
+        not bool(p.get('is_discount')),
+        p.get('sort_order', 0),
+        p.get('id', 0)
+    ))
+    return products_data
+
 
 def _get_open_deal_statuses(is_admin: bool) -> list:
     """Statuses for storefront 'not ended' group deals (excludes completed)."""
@@ -269,14 +275,8 @@ def _serialize_group_deal_with_products(deal):
     for dp in deal_products:
         product = Product.query.get(dp.product_id)
         if product:
-            product_dict = product.to_dict()
-            product_dict['deal_stock_limit'] = dp.deal_stock_limit
-            products_data.append(product_dict)
-    products_data.sort(key=lambda p: (
-        p.get('deal_stock_limit') == 0 if p.get('deal_stock_limit') is not None else False,
-        p.get('sort_order', 0),
-        p.get('id', 0)
-    ))
+            products_data.append(deal_product_to_dict(dp, product=product))
+    _sort_deal_products(products_data)
     deal_dict['products'] = products_data
     return deal_dict
 

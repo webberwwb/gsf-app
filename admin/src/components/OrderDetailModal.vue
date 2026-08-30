@@ -349,6 +349,7 @@
                       <ProductVariantPicker
                         v-if="productVariants(item).length"
                         :variants="productVariants(item)"
+                        :product="item.product"
                         :model-value="item.variant_id"
                         :allow-none="true"
                         @update:model-value="(id) => setItemVariant(index, id)"
@@ -1355,12 +1356,15 @@ export default {
       }
       this.recalculateItemPrice(index)
     },
-    recalculateItemPrice(index) {
+    recalculateItemPrice(index, { skipSiblings = false } = {}) {
       const item = this.editableItems[index]
       const product = item.product
       if (!product) return
 
       item.quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
+      const pooled = this.editableItems
+        .filter(i => i.product_id === item.product_id)
+        .reduce((sum, i) => sum + (parseInt(i.quantity, 10) || 0), 0)
 
       const { unitPrice, totalPrice } = estimateAdminLinePrice(product, {
         quantity: item.quantity,
@@ -1368,10 +1372,18 @@ export default {
         variant_id: item.variant_id,
         variant_price_delta: item.variant_price_delta,
         accept_substitute: item.accept_substitute,
-        is_unavailable: item.is_unavailable
+        is_unavailable: item.is_unavailable,
+        product_qty: pooled
       })
       item.unit_price = unitPrice
       item.total_price = totalPrice
+      if (!skipSiblings) {
+        this.editableItems.forEach((_, i) => {
+          if (i !== index && this.editableItems[i].product_id === item.product_id) {
+            this.recalculateItemPrice(i, { skipSiblings: true })
+          }
+        })
+      }
     },
     async setAcceptSubstitute(index, value) {
       const item = this.editableItems[index]

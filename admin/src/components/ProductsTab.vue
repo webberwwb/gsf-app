@@ -105,6 +105,7 @@
               </td>
               <td class="col-name">
                 <span class="table-product-name">{{ product.name }}</span>
+                <span v-if="productHasCatalogSale(product)" class="discount-badge">促销价</span>
                 <span v-if="product.supplier" class="table-supplier">{{ product.supplier.name }}</span>
               </td>
               <td class="col-category">{{ product.category?.name || '—' }}</td>
@@ -170,18 +171,21 @@
           </div>
           <div class="price-info">
             <template v-if="product.pricing_type === 'per_item'">
-              <span class="sale-price">${{ product.price || product.pricing_data?.price || '0.00' }}</span>
+              <span class="sale-price">${{ formatProductListPrice(product) }}</span>
+              <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
             </template>
             <template v-else-if="product.pricing_type === 'weight_range'">
               <span class="sale-price">{{ formatWeightRangePrice(product) }}</span>
               <span class="price-type-badge">重量区间</span>
             </template>
             <template v-else-if="product.pricing_type === 'unit_weight'">
-              <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price || '0.00' }}</span>
+              <span class="sale-price">${{ paidUnitRate(product) }}</span>
+              <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
               <span class="price-type-badge">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
             </template>
             <template v-else-if="product.pricing_type === 'bundled_weight'">
               <span class="sale-price">{{ formatBundledPrice(product) }}</span>
+              <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
               <span class="price-type-badge">/ 份</span>
             </template>
             <template v-else>
@@ -227,7 +231,7 @@
 import apiClient from '../api/client'
 import ProductForm from '../components/ProductForm.vue'
 import { useModal } from '../composables/useModal'
-import { formatProductPriceRange } from '../utils/productPriceDisplay'
+import { formatProductPriceRange, formatProductCompareAt, formatProductListPrice, getProductPaidAmount } from '../utils/productPriceDisplay'
 
 export default {
   name: 'ProductsTab',
@@ -275,6 +279,19 @@ export default {
     this.fetchProducts()
   },
   methods: {
+    productHasCatalogSale(product) {
+      const pd = product?.pricing_data || {}
+      if (product.pricing_type === 'per_item') {
+        if (product.variants_share_price === false) {
+          return (product.variants || []).some(v => v.sale_price != null && v.sale_price !== '')
+        }
+        return pd.sale_price != null && pd.sale_price !== ''
+      }
+      if (product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight') {
+        return pd.sale_price_per_unit != null && pd.sale_price_per_unit !== ''
+      }
+      return false
+    },
     async fetchProducts() {
       this.loading = true
       this.error = null
@@ -390,6 +407,13 @@ export default {
         await this.showError(error.response?.data?.message || error.response?.data?.error || '删除失败')
         console.error('Delete product error:', error)
       }
+    },
+    formatProductListPrice,
+    compareAt(product) {
+      return formatProductCompareAt(product)
+    },
+    paidUnitRate(product) {
+      return getProductPaidAmount(product) || 0
     },
     formatWeightRangePrice(product) {
       if (product.pricing_data && product.pricing_data.ranges && product.pricing_data.ranges.length > 0) {
@@ -843,10 +867,22 @@ export default {
 }
 
 .table-product-name {
-  display: block;
+  display: inline;
   font-weight: 500;
   color: var(--md-on-surface);
   line-height: 1.3;
+}
+
+.discount-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 999px;
+  vertical-align: middle;
 }
 
 .table-supplier {

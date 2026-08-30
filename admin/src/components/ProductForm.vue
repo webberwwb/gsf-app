@@ -89,7 +89,7 @@
         <!-- Per Item Pricing -->
         <div v-if="formData.pricing_type === 'per_item'">
           <div class="form-group">
-            <label for="price">价格 ($) *</label>
+            <label for="price">{{ perItemPriceLabel }}</label>
             <input
               id="price"
               v-model.number="formData.pricing_data.price"
@@ -100,7 +100,30 @@
               placeholder="0.00"
               class="form-input"
             />
-            <small class="form-hint">商品的标准价格</small>
+            <small class="form-hint">{{ formData.variants_share_price ? '商品的标准价格（团购折扣时作为划线原价）' : '列表展示价；各规格使用自己的价格' }}</small>
+          </div>
+          <div v-if="formData.variants_share_price" class="form-group">
+            <label for="sale_price">促销价 ($)</label>
+            <input
+              id="sale_price"
+              v-model.number="formData.pricing_data.sale_price"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              class="form-input"
+            />
+            <small class="form-hint">仅在团购中勾选「本团折扣」时对顾客生效</small>
+          </div>
+          <div class="form-group">
+            <label>数量优惠（满件单价，可选）</label>
+            <div v-for="(brk, index) in formData.pricing_data.quantity_breaks" :key="'brk-' + index" class="variant-row">
+              <input v-model.number="brk.min_qty" type="number" min="2" step="1" placeholder="满件数" class="form-input variant-name" />
+              <input v-model.number="brk.price" type="number" step="0.01" min="0" placeholder="每件价格" class="form-input variant-delta" />
+              <button type="button" @click="removeQuantityBreak(index)" class="remove-range-btn">×</button>
+            </div>
+            <button type="button" @click="addQuantityBreak" class="add-range-btn">+ 添加满件价</button>
+            <small class="form-hint">例如：单件 $10，满 3 件 $8。规格混买按同一商品总件数计算。</small>
           </div>
         </div>
 
@@ -172,6 +195,19 @@
             />
           </div>
           <div class="form-group">
+            <label for="sale_price_per_unit">促销单价 ($)</label>
+            <input
+              id="sale_price_per_unit"
+              v-model.number="formData.pricing_data.sale_price_per_unit"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              class="form-input"
+            />
+            <small class="form-hint">仅在团购中勾选「本团折扣」时对顾客生效</small>
+          </div>
+          <div class="form-group">
             <label for="unit">单位 *</label>
             <select
               id="unit"
@@ -201,6 +237,19 @@
                 class="form-input"
               />
               <small class="form-hint">每磅价格</small>
+            </div>
+            <div class="form-group">
+              <label for="bundled_sale_price_per_unit">促销单价 ($)</label>
+              <input
+                id="bundled_sale_price_per_unit"
+                v-model.number="formData.pricing_data.sale_price_per_unit"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                class="form-input"
+              />
+              <small class="form-hint">仅在团购中勾选「本团折扣」时对顾客生效</small>
             </div>
             <div class="form-group">
               <label for="bundled_unit">单位 *</label>
@@ -253,11 +302,52 @@
         <!-- Variants -->
         <div class="form-section">
           <h3 class="section-title">规格选项</h3>
-          <p class="form-hint section-hint">用户下单时必须选择一项（可设置价格增减）</p>
-          <div v-for="(variant, index) in formData.variants" :key="index" class="variant-row">
-            <input v-model="variant.name" type="text" placeholder="规格名称" class="form-input variant-name" />
-            <input v-model.number="variant.price_delta" type="number" step="0.01" placeholder="价格增减" class="form-input variant-delta" />
-            <button type="button" @click="removeVariant(index)" class="remove-range-btn">×</button>
+          <p class="form-hint section-hint">用户可混买多种规格（每种规格单独计数量）</p>
+          <label v-if="formData.pricing_type === 'per_item'" class="checkbox-label" style="margin-bottom: 0.75rem;">
+            <input type="checkbox" v-model="formData.variants_share_price" class="checkbox-input" />
+            <span>规格同价（取消勾选后为每个规格单独定价）</span>
+          </label>
+          <div v-for="(variant, index) in formData.variants" :key="index" class="variant-block">
+            <div class="variant-row">
+              <input v-model="variant.name" type="text" placeholder="规格名称" class="form-input variant-name" />
+              <input
+                v-if="formData.pricing_type === 'per_item' && !formData.variants_share_price"
+                v-model.number="variant.price"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="规格价格"
+                class="form-input variant-delta"
+              />
+              <input
+                v-if="formData.pricing_type === 'per_item' && !formData.variants_share_price"
+                v-model.number="variant.sale_price"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="促销价"
+                class="form-input variant-delta"
+              />
+              <input
+                v-if="formData.pricing_type !== 'per_item' || formData.variants_share_price"
+                v-model.number="variant.price_delta"
+                type="number"
+                step="0.01"
+                placeholder="价格增减"
+                class="form-input variant-delta"
+              />
+              <button type="button" @click="removeVariant(index)" class="remove-range-btn">×</button>
+            </div>
+            <div
+              v-if="formData.pricing_type === 'per_item' && !formData.variants_share_price && (formData.pricing_data.quantity_breaks || []).length"
+              class="variant-breaks"
+            >
+              <span class="form-hint">该规格满件价</span>
+              <div v-for="(brk, bidx) in variant.quantity_breaks" :key="'vb-' + index + '-' + bidx" class="variant-row">
+                <input v-model.number="brk.min_qty" type="number" min="2" step="1" placeholder="满件数" class="form-input variant-name" />
+                <input v-model.number="brk.price" type="number" step="0.01" min="0" placeholder="每件价格" class="form-input variant-delta" />
+              </div>
+            </div>
           </div>
           <button type="button" @click="addVariant" class="add-range-btn">+ 添加规格</button>
         </div>
@@ -457,16 +547,20 @@ export default {
         pricing_type: 'per_item',
         pricing_data: {
           price: null,
+          sale_price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
+          sale_price_per_unit: null,
           unit: 'lb',
           min_weight: null,
-          max_weight: null
+          max_weight: null,
+          quantity_breaks: []
         },
         supplier_id: null,
         category_id: null,
         is_active: true,
         counts_toward_free_shipping: true,
+        variants_share_price: true,
         variants: [],
         substitute_enabled: false,
         substitute_name: '',
@@ -503,6 +597,9 @@ export default {
         bundled_weight: '按份计价（可变重量）'
       }
       return labels[this.formData.pricing_type] || this.formData.pricing_type
+    },
+    perItemPriceLabel() {
+      return this.formData.variants_share_price ? '价格 ($) *' : '展示价 / 基准价 ($) *'
     }
   },
   watch: {
@@ -515,6 +612,9 @@ export default {
           this.loadProductData()
         }
       }
+    },
+    'formData.variants_share_price'(share) {
+      if (!share) this.syncVariantBreakThresholds()
     }
   },
   mounted() {
@@ -545,15 +645,19 @@ export default {
         pricing_type: 'per_item',
         pricing_data: {
           price: null,
+          sale_price: null,
           ranges: [{ min: 0, max: null, price: null }],
           price_per_unit: null,
+          sale_price_per_unit: null,
           unit: 'lb',
           min_weight: null,
-          max_weight: null
+          max_weight: null,
+          quantity_breaks: []
         },
         supplier_id: null,
         is_active: true,
         counts_toward_free_shipping: true,
+        variants_share_price: true,
         variants: [],
         substitute_enabled: false,
         substitute_name: '',
@@ -607,20 +711,30 @@ export default {
           pricing_type: pricingType,
           pricing_data: {
             price: pricingData.price || null,
+            sale_price: pricingData.sale_price != null ? pricingData.sale_price : null,
             ranges: pricingData.ranges || [{ min: 0, max: null, price: null }],
             price_per_unit: pricingData.price_per_unit || null,
+            sale_price_per_unit: pricingData.sale_price_per_unit != null ? pricingData.sale_price_per_unit : null,
             unit: pricingData.unit || 'lb',
             min_weight: pricingData.min_weight || null,
-            max_weight: pricingData.max_weight || null
+            max_weight: pricingData.max_weight || null,
+            quantity_breaks: (pricingData.quantity_breaks || []).map(b => ({
+              min_qty: b.min_qty,
+              price: b.price
+            }))
           },
           supplier_id: this.product.supplier_id || null,
           category_id: this.product.category_id || null,
           is_active: this.product.is_active !== undefined ? this.product.is_active : true,
           counts_toward_free_shipping: this.product.counts_toward_free_shipping !== undefined ? this.product.counts_toward_free_shipping : true,
+          variants_share_price: this.product.variants_share_price !== false,
           variants: (this.product.variants || []).map(v => ({
             id: v.id,
             name: v.name,
             price_delta: v.price_delta || 0,
+            price: v.price != null ? v.price : null,
+            sale_price: v.sale_price != null ? v.sale_price : null,
+            quantity_breaks: (v.quantity_breaks || []).map(b => ({ min_qty: b.min_qty, price: b.price })),
             sort_order: v.sort_order || 0,
             is_active: v.is_active !== false
           })),
@@ -673,14 +787,15 @@ export default {
     onPricingTypeChange() {
       const pricingType = this.formData.pricing_type
       if (pricingType === 'per_item') {
-        this.formData.pricing_data = { price: null }
+        this.formData.pricing_data = { price: null, sale_price: null, quantity_breaks: [] }
       } else if (pricingType === 'weight_range') {
         this.formData.pricing_data = { ranges: [{ min: 0, max: null, price: null }] }
       } else if (pricingType === 'unit_weight') {
-        this.formData.pricing_data = { price_per_unit: null, unit: 'lb' }
+        this.formData.pricing_data = { price_per_unit: null, sale_price_per_unit: null, unit: 'lb' }
       } else if (pricingType === 'bundled_weight') {
         this.formData.pricing_data = {
           price_per_unit: null,
+          sale_price_per_unit: null,
           unit: 'lb',
           min_weight: null,
           max_weight: null
@@ -779,8 +894,42 @@ export default {
       this.formData.images.splice(index, 1)
       this.imagePreviews.splice(index, 1)
     },
+    addQuantityBreak() {
+      if (!this.formData.pricing_data.quantity_breaks) {
+        this.formData.pricing_data.quantity_breaks = []
+      }
+      this.formData.pricing_data.quantity_breaks.push({ min_qty: 3, price: null })
+      this.syncVariantBreakThresholds()
+    },
+    removeQuantityBreak(index) {
+      this.formData.pricing_data.quantity_breaks.splice(index, 1)
+      this.syncVariantBreakThresholds()
+    },
+    syncVariantBreakThresholds() {
+      const thresholds = (this.formData.pricing_data.quantity_breaks || [])
+        .filter(b => b.min_qty)
+        .map(b => parseInt(b.min_qty, 10))
+      this.formData.variants.forEach(v => {
+        const existing = v.quantity_breaks || []
+        v.quantity_breaks = thresholds.map(minQty => {
+          const found = existing.find(b => parseInt(b.min_qty, 10) === minQty)
+          return { min_qty: minQty, price: found ? found.price : null }
+        })
+      })
+    },
     addVariant() {
-      this.formData.variants.push({ name: '', price_delta: 0, sort_order: this.formData.variants.length, is_active: true })
+      const breaks = (this.formData.pricing_data.quantity_breaks || [])
+        .filter(b => b.min_qty)
+        .map(b => ({ min_qty: parseInt(b.min_qty, 10), price: null }))
+      this.formData.variants.push({
+        name: '',
+        price_delta: 0,
+        price: null,
+        sale_price: null,
+        quantity_breaks: breaks,
+        sort_order: this.formData.variants.length,
+        is_active: true
+      })
     },
     removeVariant(index) {
       this.formData.variants.splice(index, 1)
@@ -810,10 +959,22 @@ export default {
       try {
         // Validate per_item pricing
         if (this.formData.pricing_type === 'per_item') {
-          if (!this.formData.pricing_data.price) {
+          if (!this.formData.pricing_data.price && this.formData.variants_share_price) {
             this.error = '请输入价格'
             this.submitting = false
             return
+          }
+          if (!this.formData.variants_share_price) {
+            const named = this.formData.variants.filter(v => (v.name || '').trim())
+            if (named.some(v => v.price == null || v.price === '')) {
+              this.error = '规格不同价时请为每个规格填写价格'
+              this.submitting = false
+              return
+            }
+            if (!this.formData.pricing_data.price && named.length) {
+              const prices = named.map(v => parseFloat(v.price)).filter(n => Number.isFinite(n))
+              if (prices.length) this.formData.pricing_data.price = Math.min(...prices)
+            }
           }
         }
 
@@ -823,25 +984,39 @@ export default {
           pricing_type: this.formData.pricing_type,
           pricing_data: { ...this.formData.pricing_data },
           is_active: this.formData.is_active,
-          counts_toward_free_shipping: this.formData.counts_toward_free_shipping
+          counts_toward_free_shipping: this.formData.counts_toward_free_shipping,
+          variants_share_price: this.formData.pricing_type === 'per_item' ? !!this.formData.variants_share_price : true
         }
 
         // Clean up pricing_data based on type
         if (this.formData.pricing_type === 'per_item') {
+          const breaks = (this.formData.pricing_data.quantity_breaks || [])
+            .filter(b => b.min_qty && b.price != null && b.price !== '')
+            .map(b => ({ min_qty: parseInt(b.min_qty, 10), price: parseFloat(b.price) }))
           data.pricing_data = {
             price: parseFloat(this.formData.pricing_data.price) || 0
           }
+          if (this.formData.pricing_data.sale_price != null && this.formData.pricing_data.sale_price !== '') {
+            data.pricing_data.sale_price = parseFloat(this.formData.pricing_data.sale_price)
+          }
+          if (breaks.length) data.pricing_data.quantity_breaks = breaks
         } else if (this.formData.pricing_type === 'weight_range') {
           // Filter out empty ranges and ensure all have prices
           data.pricing_data.ranges = this.formData.pricing_data.ranges.filter(r => r.price !== null && r.price !== '')
         } else if (this.formData.pricing_type === 'unit_weight') {
           data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit) || 0
           data.pricing_data.unit = this.formData.pricing_data.unit
+          if (this.formData.pricing_data.sale_price_per_unit != null && this.formData.pricing_data.sale_price_per_unit !== '') {
+            data.pricing_data.sale_price_per_unit = parseFloat(this.formData.pricing_data.sale_price_per_unit)
+          }
         } else if (this.formData.pricing_type === 'bundled_weight') {
           data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit) || 0
           data.pricing_data.unit = this.formData.pricing_data.unit
           data.pricing_data.min_weight = parseFloat(this.formData.pricing_data.min_weight) || 0
           data.pricing_data.max_weight = parseFloat(this.formData.pricing_data.max_weight) || 0
+          if (this.formData.pricing_data.sale_price_per_unit != null && this.formData.pricing_data.sale_price_per_unit !== '') {
+            data.pricing_data.sale_price_per_unit = parseFloat(this.formData.pricing_data.sale_price_per_unit)
+          }
         }
 
         if (this.formData.images && this.formData.images.length > 0) {
@@ -861,13 +1036,29 @@ export default {
 
         data.variants = this.formData.variants
           .filter(v => (v.name || '').trim())
-          .map((v, i) => ({
-            id: v.id,
-            name: v.name.trim(),
-            price_delta: parseFloat(v.price_delta) || 0,
-            sort_order: i,
-            is_active: v.is_active !== false
-          }))
+          .map((v, i) => {
+            const share = data.variants_share_price
+            const basePrice = parseFloat(this.formData.pricing_data.price) || 0
+            const absolute = v.price != null && v.price !== '' ? parseFloat(v.price) : null
+            const row = {
+              id: v.id,
+              name: v.name.trim(),
+              sort_order: i,
+              is_active: v.is_active !== false,
+              price_delta: share ? (parseFloat(v.price_delta) || 0) : (absolute != null ? absolute - basePrice : 0)
+            }
+            if (!share && this.formData.pricing_type === 'per_item') {
+              row.price = absolute
+              if (v.sale_price != null && v.sale_price !== '') {
+                row.sale_price = parseFloat(v.sale_price)
+              }
+              const vBreaks = (v.quantity_breaks || [])
+                .filter(b => b.min_qty && b.price != null && b.price !== '')
+                .map(b => ({ min_qty: parseInt(b.min_qty, 10), price: parseFloat(b.price) }))
+              if (vBreaks.length) row.quantity_breaks = vBreaks
+            }
+            return row
+          })
         data.substitute_enabled = !!this.formData.substitute_enabled
         if (data.substitute_enabled) {
           data.substitute_name = this.formData.substitute_name
@@ -1054,6 +1245,14 @@ label {
   font-size: 1rem;
   font-weight: 600;
   margin: 0 0 var(--md-spacing-xs);
+}
+
+.variant-block {
+  margin-bottom: 10px;
+}
+
+.variant-breaks {
+  margin: 0 0 8px 8px;
 }
 
 .variant-row {

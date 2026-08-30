@@ -17,24 +17,33 @@
       <div v-if="loading" class="global-loading">
         <div class="loading">加载中...</div>
       </div>
-      <!-- Hot Products -->
-      <section v-if="!loading" class="products-section">
+      <template v-if="!loading">
+      <section
+        v-for="section in productSections"
+        :key="section.id"
+        class="products-section"
+        :class="{ 'specials-section': section.id === 'special' }"
+      >
         <h2 class="section-title">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
+          <svg v-if="section.id === 'special'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon special-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
           </svg>
-          热门商品
+          {{ section.title }}
         </h2>
-        <p class="section-subtitle">浏览商品信息，下单请前往「团购下单」</p>
-        <div v-if="products.length === 0" class="empty-state">
+        <p class="section-subtitle">{{ section.subtitle }}</p>
+        <div v-if="section.products.length === 0" class="empty-state">
           <p>暂无商品</p>
         </div>
         <div v-else class="products-grid">
           <div
-            v-for="product in products"
-            :key="product.id"
+            v-for="product in section.products"
+            :key="section.id + '-' + product.id"
             class="product-card browse-only"
+            :class="{ 'is-special': !!product.is_discount }"
             @click="openProductModal(product)"
           >
             <div class="product-image">
@@ -54,27 +63,33 @@
               </div>
             </div>
             <div class="product-info">
-              <h3 class="product-name">{{ product.name }}</h3>
+              <div class="product-name-row">
+                <h3 class="product-name">{{ product.name }}</h3>
+                <span v-if="product.is_discount" class="special-badge">特价</span>
+              </div>
               <div v-if="product.counts_toward_free_shipping === false" class="shipping-excluded-badge">
                 不计入免运门槛
               </div>
               <div class="product-price">
                 <template v-if="product.pricing_type === 'per_item'">
                   <span class="sale-price">${{ product.price }}</span>
+                  <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'weight_range'">
                   <span class="sale-price">${{ formatWeightRangePrice(product) }}</span>
                   <span class="price-note">按重量区间</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'unit_weight'">
-                  <span class="sale-price">${{ product.pricing_data?.price_per_unit || product.price }}</span>
+                  <span class="sale-price">${{ paidUnitRate(product) }}</span>
+                  <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                   <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'bundled_weight'">
                   <div class="bundled-price-compact">
                     <span class="sale-price">{{ formatBundledPrice(product) }}</span>
+                    <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                     <span class="price-note">/ 份</span>
-                    <span class="unit-price-note">(${{ formatMoney(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
+                    <span class="unit-price-note">(${{ formatMoney(paidUnitRate(product)) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
                   </div>
                 </template>
                 <template v-else>
@@ -89,6 +104,7 @@
           </div>
         </div>
       </section>
+      </template>
     </main>
 
     <!-- Product Detail Modal -->
@@ -104,7 +120,7 @@
 import apiClient from '../api/client'
 import { parseDateEST, getNowEST } from '../utils/date'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
-import { formatMoneyRangeDisplay, formatMoney } from '../utils/productPriceDisplay'
+import { formatMoneyRangeDisplay, formatMoney, formatProductCompareAt, getProductPaidAmount, isProductOnSale } from '../utils/productPriceDisplay'
 
 export default {
   name: 'Home',
@@ -120,11 +136,54 @@ export default {
       selectedProduct: null
     }
   },
+  computed: {
+    discountProducts() {
+      const seen = new Set()
+      const products = []
+      for (const deal of this.deals) {
+        if (deal.status !== 'active' && deal.status !== 'upcoming') continue
+        for (const product of deal.products || []) {
+          if (!product.is_discount || product.is_active === false) continue
+          if (seen.has(product.id)) continue
+          seen.add(product.id)
+          products.push(product)
+        }
+      }
+      return products
+    },
+    productSections() {
+      const sections = []
+      if (this.discountProducts.length) {
+        sections.push({
+          id: 'special',
+          title: '特价商品',
+          subtitle: '当前团购中的折扣商品，下单请前往对应团购',
+          products: this.discountProducts
+        })
+      }
+      sections.push({
+        id: 'hot',
+        title: '热门商品',
+        subtitle: '浏览商品信息，下单请前往「团购下单」',
+        products: this.products
+      })
+      return sections
+    }
+  },
   async mounted() {
     await this.loadData()
   },
   methods: {
     formatMoney,
+    compareAt(product) {
+      return formatProductCompareAt(product)
+    },
+    paidUnitRate(product) {
+      return getProductPaidAmount(product) || 0
+    },
+    isOnSale(product) {
+      return isProductOnSale(product)
+    },
     async loadData() {
       this.loading = true
       try {
@@ -486,10 +545,17 @@ export default {
   padding: var(--md-spacing-md);
 }
 
+.product-name-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-bottom: var(--md-spacing-sm);
+}
+
 .product-name {
   font-size: var(--md-body-size);
   color: var(--md-on-surface);
-  margin-bottom: var(--md-spacing-sm);
+  margin-bottom: 0;
   font-weight: 500;
   letter-spacing: 0.15px;
   display: -webkit-box;
@@ -497,6 +563,31 @@ export default {
   -webkit-box-orient: vertical;
   overflow: hidden;
   line-height: 1.4;
+  flex: 1;
+}
+
+.special-badge {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #FEF3C7;
+  color: #B45309;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.specials-section .section-title {
+  color: #B45309;
+}
+
+.special-icon {
+  color: #D97706;
+}
+
+.product-card.is-special {
+  border-color: rgba(217, 119, 6, 0.25);
 }
 
 .shipping-excluded-badge {

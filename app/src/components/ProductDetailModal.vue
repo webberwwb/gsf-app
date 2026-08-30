@@ -72,7 +72,10 @@
 
           <!-- Product Info -->
           <div class="product-info-section">
-            <h2 class="product-name">{{ product.name }}</h2>
+            <h2 class="product-name">
+              {{ product.name }}
+              <span v-if="product.is_discount" class="discount-product-badge">折扣</span>
+            </h2>
             
             <!-- Price Display -->
             <div class="product-price-section">
@@ -80,6 +83,14 @@
               <div class="price-value">
                 <template v-if="product.pricing_type === 'per_item'">
                   <span class="sale-price">${{ formatPrice(product) }}</span>
+                  <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
+                  <div v-if="quantityBreakHint(product)" class="qty-break-hint">{{ quantityBreakHint(product) }}</div>
+                  <div v-if="(product.variants || []).length" class="variant-price-list">
+                    <div v-for="v in product.variants" :key="v.id" class="variant-price-row">
+                      <span>{{ v.name }}</span>
+                      <span v-if="variantPriceLabel(v)">{{ variantPriceLabel(v) }}</span>
+                    </div>
+                  </div>
                 </template>
                 <template v-else-if="product.pricing_type === 'weight_range'">
                   <div class="weight-range-pricing">
@@ -116,7 +127,8 @@
                 <template v-else-if="product.pricing_type === 'unit_weight'">
                   <div class="unit-weight-pricing">
                     <div class="pricing-header">
-                      <span class="sale-price">${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}</span>
+                      <span class="sale-price">${{ moneyPlain(paidUnitRate(product)) }}</span>
+                      <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                       <span class="price-note">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                     </div>
                     <div class="pricing-breakdown">
@@ -124,7 +136,7 @@
                       <div class="calculation-formula">
                         <div class="formula-line">
                           <span class="formula-label">最终价格 =</span>
-                          <span class="formula-value">实际重量 × ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                          <span class="formula-value">实际重量 × ${{ moneyPlain(paidUnitRate(product)) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                         </div>
                       </div>
                       <div class="pricing-examples">
@@ -132,17 +144,17 @@
                         <div class="example-row">
                           <span class="example-weight">1 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                           <span class="example-arrow">→</span>
-                          <span class="example-price">${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}</span>
+                          <span class="example-price">${{ moneyPlain(paidUnitRate(product)) }}</span>
                         </div>
                         <div class="example-row">
                           <span class="example-weight">2 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                           <span class="example-arrow">→</span>
-                          <span class="example-price">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * 2) }}</span>
+                          <span class="example-price">${{ moneyPlain((paidUnitRate(product)) * 2) }}</span>
                         </div>
                         <div class="example-row">
                           <span class="example-weight">3 {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                           <span class="example-arrow">→</span>
-                          <span class="example-price">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * 3) }}</span>
+                          <span class="example-price">${{ moneyPlain((paidUnitRate(product)) * 3) }}</span>
                         </div>
                       </div>
                       <div class="pricing-note">
@@ -158,6 +170,7 @@
                   <div class="bundled-weight-pricing">
                     <div class="pricing-header">
                       <span class="sale-price">{{ formatBundledPrice(product) }}</span>
+                      <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                       <span class="price-note">/ 份</span>
                     </div>
                     <div class="pricing-breakdown">
@@ -169,13 +182,13 @@
                         </div>
                         <div class="info-item">
                           <div class="info-label">单价</div>
-                          <div class="info-value">${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</div>
+                          <div class="info-value">${{ moneyPlain(paidUnitRate(product)) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</div>
                         </div>
                       </div>
                       <div class="calculation-formula">
                         <div class="formula-line">
                           <span class="formula-label">最终价格 =</span>
-                          <span class="formula-value">实际重量 × ${{ moneyPlain(product.pricing_data?.price_per_unit || 0) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
+                          <span class="formula-value">实际重量 × ${{ moneyPlain(paidUnitRate(product)) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                         </div>
                       </div>
                       <div class="pricing-examples">
@@ -183,17 +196,17 @@
                         <div class="example-row">
                           <span class="example-weight">{{ product.pricing_data?.min_weight || 7 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                           <span class="example-arrow">→</span>
-                          <span class="example-price">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.min_weight || 7)) }}</span>
+                          <span class="example-price">${{ moneyPlain((paidUnitRate(product)) * (product.pricing_data?.min_weight || 7)) }}</span>
                         </div>
                         <div class="example-row">
                           <span class="example-weight">{{ Math.round((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                           <span class="example-arrow">→</span>
-                          <span class="example-price">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * Math.round(((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2)) }}</span>
+                          <span class="example-price">${{ moneyPlain((paidUnitRate(product)) * Math.round(((product.pricing_data?.min_weight || 7) + (product.pricing_data?.max_weight || 15)) / 2)) }}</span>
                         </div>
                         <div class="example-row">
                           <span class="example-weight">{{ product.pricing_data?.max_weight || 15 }} {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
                           <span class="example-arrow">→</span>
-                          <span class="example-price">${{ moneyPlain((product.pricing_data?.price_per_unit || 0) * (product.pricing_data?.max_weight || 15)) }}</span>
+                          <span class="example-price">${{ moneyPlain((paidUnitRate(product)) * (product.pricing_data?.max_weight || 15)) }}</span>
                         </div>
                       </div>
                       <div class="pricing-note">
@@ -275,7 +288,12 @@ import {
   formatMoney,
   formatMoneyDisplay,
   formatProductListPrice,
-  formatProductPriceRange
+  formatProductPriceRange,
+  formatQuantityBreakHint,
+  formatProductCompareAt,
+  formatVariantPriceLabel,
+  isProductOnSale,
+  getProductPaidAmount
 } from '../utils/productPriceDisplay'
 
 export default {
@@ -366,6 +384,21 @@ export default {
     },
     formatPrice(product) {
       return formatProductListPrice(product)
+    },
+    compareAt(product) {
+      return formatProductCompareAt(product)
+    },
+    isOnSale(product) {
+      return isProductOnSale(product)
+    },
+    paidUnitRate(product) {
+      return getProductPaidAmount(product) || 0
+    },
+    quantityBreakHint(product) {
+      return formatQuantityBreakHint(product)
+    },
+    variantPriceLabel(v) {
+      return formatVariantPriceLabel(this.product, v)
     },
     formatPriceRange(product) {
       return formatProductPriceRange(product)
@@ -701,6 +734,39 @@ export default {
   color: #111827;
   margin: 0;
   line-height: 1.3;
+}
+
+.discount-product-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #FEF3C7;
+  color: #B45309;
+  vertical-align: middle;
+}
+
+.qty-break-hint {
+  font-size: 13px;
+  color: #B45309;
+  margin-top: 6px;
+}
+
+.variant-price-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.variant-price-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .product-price-section {

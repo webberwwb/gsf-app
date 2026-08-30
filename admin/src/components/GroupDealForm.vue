@@ -121,7 +121,8 @@
 
         <!-- Selected Products Details -->
         <div v-if="selectedProducts.length > 0" class="form-group">
-          <label>设置商品价格和库存</label>
+          <label>设置本团库存与折扣</label>
+          <small class="form-hint">勾选「本团折扣」后该商品仅在本团使用促销价，其他团购仍按原价。</small>
           <div class="selected-products-details">
             <div
               v-for="(selectedProduct, index) in selectedProducts"
@@ -143,6 +144,16 @@
                     placeholder="留空表示无限制"
                     class="form-input-small"
                   />
+                </div>
+                <div class="form-group-inline">
+                  <label class="deal-discount-label">
+                    <input type="checkbox" v-model="selectedProduct.is_discount" />
+                    本团折扣
+                  </label>
+                  <small v-if="selectedProduct.is_discount && !productHasCatalogSale(selectedProduct.id)" class="form-hint deal-discount-warn">
+                    请先在商品资料中填写促销价，否则顾客仍按原价结算
+                  </small>
+                  <small v-else class="form-hint">仅对本团生效，其他团购仍按原价</small>
                 </div>
               </div>
             </div>
@@ -267,7 +278,8 @@ export default {
             id: product.id,
             name: product.name,
             price: product.price,
-            deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null
+            deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null,
+            is_discount: !!product.is_discount
           }))
         }
       }
@@ -282,7 +294,8 @@ export default {
           id: product.id,
           name: product.name,
           price: product.price,
-          deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null
+          deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null,
+          is_discount: !!product.is_discount
         }))
       }
     },
@@ -316,7 +329,8 @@ export default {
           id: product.id,
           name: product.name,
           price: product.price,
-          deal_stock_limit: null
+          deal_stock_limit: null,
+          is_discount: false
         })
       }
     },
@@ -325,6 +339,21 @@ export default {
     },
     removeProduct(index) {
       this.selectedProducts.splice(index, 1)
+    },
+    productHasCatalogSale(productId) {
+      const product = this.availableProducts.find(p => p.id === productId)
+      if (!product) return false
+      const pd = product.pricing_data || {}
+      if (product.pricing_type === 'per_item') {
+        if (product.variants_share_price === false) {
+          return (product.variants || []).some(v => v.sale_price != null && v.sale_price !== '')
+        }
+        return pd.sale_price != null && pd.sale_price !== ''
+      }
+      if (product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight') {
+        return pd.sale_price_per_unit != null && pd.sale_price_per_unit !== ''
+      }
+      return false
     },
     handleStockLimitInput(index, event) {
       const value = event.target.value
@@ -365,7 +394,8 @@ export default {
               : stockLimit
             return {
               product_id: p.id,
-              deal_stock_limit: finalStockLimit
+              deal_stock_limit: finalStockLimit,
+              is_discount: !!p.is_discount
             }
           })
         }
@@ -713,6 +743,17 @@ select.form-input:focus {
 .form-group-inline label {
   font-size: var(--md-label-size);
   margin-bottom: 0;
+}
+
+.deal-discount-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+}
+
+.deal-discount-warn {
+  color: #C62828;
 }
 
 .form-input-small {

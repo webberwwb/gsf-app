@@ -5,6 +5,7 @@ const DEFAULTS = {
   showCompletedOrders: true,
   weightFilter: '',
   packingFilter: '',
+  notesFilter: '',
   orderSort: 'payment',
   userSourceFilter: '',
   viewMode: 'card'
@@ -14,6 +15,7 @@ const VALID = {
   activeOrderTab: ['pickup', 'delivery', 'all'],
   weightFilter: ['', 'not_weighed', 'weighed'],
   packingFilter: ['', 'not_packed', 'packing_complete'],
+  notesFilter: ['', 'has_notes', 'no_notes'],
   orderSort: ['payment', 'weight_asc', 'weight_desc', 'packing_asc', 'packing_desc'],
   userSourceFilter: ['', '花泽', 'default'],
   viewMode: ['card', 'list']

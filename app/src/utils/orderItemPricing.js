@@ -1,6 +1,11 @@
 export * from '@shared/order-pricing/orderItemPricing.js'
 
-import { productRequiresVariant, productRequiresSubstituteChoice } from '@shared/order-pricing/orderItemPricing.js'
+import {
+  productRequiresVariant,
+  productRequiresSubstituteChoice,
+  getSelectionQuantity,
+  getVariantQuantity
+} from '@shared/order-pricing/orderItemPricing.js'
 
 /** Build display fields for checkout / summary line items. */
 export function toCheckoutLineDisplay(item, product) {
@@ -43,10 +48,14 @@ export function toOrderLineDisplay(item) {
 
 export function getSelectionIncompleteMessage(product, selection = {}) {
   const name = product?.name || '该商品'
-  if (productRequiresVariant(product) && !selection.variant_id) {
-    return `请完成「${name}」的产品细节`
+  const qty = getSelectionQuantity(selection)
+  if (qty > 0 && productRequiresVariant(product)) {
+    const hasVariantQty = (product.variants || []).some((v) => getVariantQuantity(selection, v.id) > 0)
+    if (!hasVariantQty && !selection.variant_id) {
+      return `请完成「${name}」的产品细节`
+    }
   }
-  if (productRequiresSubstituteChoice(product) && selection.accept_substitute == null) {
+  if (qty > 0 && productRequiresSubstituteChoice(product) && selection.accept_substitute == null) {
     return `请确认「${name}」的备选产品`
   }
   return null

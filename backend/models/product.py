@@ -15,10 +15,10 @@ class Product(BaseModel):
     
     # Pricing data (JSON) - main pricing field
     # Structure depends on pricing_type:
-    # - per_item: {"price": 10.00}
+    # - per_item: {"price": 10.00, "sale_price": 8.00, "quantity_breaks": [{"min_qty": 3, "price": 7.00}]}
     # - weight_range: {"ranges": [{"min": 0, "max": 2, "price": 10.00}, ...]}
-    # - unit_weight: {"price_per_unit": 5.00, "unit": "lb"}
-    # - bundled_weight: {"price_per_unit": 5.00, "unit": "lb", "min_weight": 7, "max_weight": 15}
+    # - unit_weight: {"price_per_unit": 5.00, "sale_price_per_unit": 4.00, "unit": "lb"}
+    # - bundled_weight: {"price_per_unit": 5.00, "sale_price_per_unit": 4.00, "unit": "lb", "min_weight": 7, "max_weight": 15}
     pricing_data = db.Column(JSON, nullable=True)
     
     description = db.Column(db.Text, nullable=True)
@@ -42,6 +42,13 @@ class Product(BaseModel):
     
     # Custom sort order (lower numbers appear first; decimals allowed e.g. 1.1 between 1 and 2)
     sort_order = db.Column(db.Numeric(12, 4), default=0, nullable=False, index=True)
+
+    # When True (default), all variants use product price (+ optional price_delta).
+    # When False, each variant has its own absolute price.
+    variants_share_price = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Legacy catalog flag; sale now lives on group_deal_products.is_discount.
+    is_discount = db.Column(db.Boolean, default=False, nullable=False)
 
     # Embedded substitute product (when primary is unavailable)
     substitute_enabled = db.Column(db.Boolean, default=False, nullable=False)
@@ -73,20 +80,27 @@ class Product(BaseModel):
         # TODO: Calculate available stock from orders
         return True
     
-    def get_display_price(self):
-        """Get display price - the default price shown to customers"""
+    def get_original_price(self):
+        """Catalog list price (before sale)."""
         from utils.order_item_pricing import get_display_price_from_config
         return get_display_price_from_config(self.pricing_type, self.pricing_data)
+
+    def get_display_price(self):
+        """Price shown to customers: sale price when on sale, otherwise list price."""
+        from utils.order_item_pricing import get_display_price_from_config, paid_pricing_data
+        return get_display_price_from_config(self.pricing_type, paid_pricing_data(self))
     
     def calculate_price(self, quantity=1, weight=None):
         """Calculate price based on pricing type, quantity, and weight"""
         if self.pricing_type == 'per_item':
             price = self.get_display_price()
             return price * quantity if price else None
-        elif self.pricing_type == 'weight_range':
-            if not weight or not self.pricing_data or 'ranges' not in self.pricing_data:
+        from utils.order_item_pricing import paid_pricing_data
+        pricing_data = paid_pricing_data(self)
+        if self.pricing_type == 'weight_range':
+            if not weight or not pricing_data or 'ranges' not in pricing_data:
                 return None
-            ranges = self.pricing_data['ranges']
+            ranges = pricing_data['ranges']
             for range_item in ranges:
                 min_weight = range_item.get('min', 0)
                 max_weight = range_item.get('max')
@@ -98,18 +112,18 @@ class Product(BaseModel):
             # unit_price = price_per_unit (the rate)
             # total_price = price_per_unit * weight (or estimated weight)
             # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-            if not weight or not self.pricing_data or 'price_per_unit' not in self.pricing_data:
+            if not weight or not pricing_data or 'price_per_unit' not in pricing_data:
                 return None
-            price_per_unit = float(self.pricing_data['price_per_unit'])
+            price_per_unit = float(pricing_data['price_per_unit'])
             return price_per_unit * weight  # No quantity multiplication
         elif self.pricing_type == 'bundled_weight':
             # bundled_weight: products are weighed individually, not stacked
             # unit_price = price_per_unit (the rate)
             # total_price = price_per_unit * weight (or estimated weight)
             # Quantity is always 1 for weight-based products (they're weighed individually, not stacked)
-            if not self.pricing_data or 'price_per_unit' not in self.pricing_data:
+            if not pricing_data or 'price_per_unit' not in pricing_data:
                 return None
-            price_per_unit = float(self.pricing_data['price_per_unit'])
+            price_per_unit = float(pricing_data['price_per_unit'])
             # If weight is provided, use it; otherwise return None (needs weight)
             if weight:
                 return price_per_unit * weight  # No quantity multiplication
@@ -160,7 +174,7 @@ class Product(BaseModel):
             'price': self.get_substitute_display_price(),
         }
 
-    def to_dict(self, include_all_variants=False):
+    def to_dict(self, include_all_variants=False, on_sale=False):
         data = super().to_dict()
         # Convert images: use images array if available, otherwise convert single image to array
         images = self.images if self.images and isinstance(self.images, list) else []
@@ -170,14 +184,26 @@ class Product(BaseModel):
         variant_list = self.variants if include_all_variants else self.get_active_variants()
         variants_data = [v.to_dict() for v in sorted(variant_list, key=lambda x: x.sort_order)]
 
+        prev_sale = getattr(self, '_deal_is_discount', None)
+        self._deal_is_discount = bool(on_sale)
+        try:
+            display = self.get_display_price()
+            original = self.get_original_price()
+        finally:
+            if prev_sale is None:
+                if hasattr(self, '_deal_is_discount'):
+                    delattr(self, '_deal_is_discount')
+            else:
+                self._deal_is_discount = prev_sale
+
         data.update({
             'name': self.name,
             'image': images[0] if images else None,  # Keep for backward compatibility
             'images': images,  # New multiple images array
             'pricing_type': self.pricing_type,
             'pricing_data': self.pricing_data,
-            'price': self.get_display_price(),  # Main price field for FE (2-decimal rounded)
-            'display_price': self.get_display_price(),
+            'price': display,  # Main price field for FE (2-decimal rounded)
+            'display_price': display,
             'description': self.description,
             'stock_limit': self.stock_limit,
             'is_active': self.is_active,
@@ -188,6 +214,10 @@ class Product(BaseModel):
             'category': self.category.to_dict() if self.category else None,
             'counts_toward_free_shipping': self.counts_toward_free_shipping,
             'sort_order': float(self.sort_order) if self.sort_order is not None else 0,
+            'variants_share_price': True if self.variants_share_price is None else bool(self.variants_share_price),
+            'is_discount': bool(on_sale),
+            'original_price': original if on_sale else None,
+            'sale_price': display if on_sale else None,
             'variants': variants_data,
             'substitute_enabled': self.substitute_enabled,
             'substitute': self.get_substitute_dict(),
