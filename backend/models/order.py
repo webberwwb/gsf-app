@@ -44,6 +44,15 @@ class Order(BaseModel):
     payment_method = db.Column(db.String(50), nullable=True)  # 'cash', 'card', 'online', etc.
     payment_date = db.Column(db.DateTime, nullable=True)
     payment_transaction_id = db.Column(db.String(255), nullable=True)
+
+    stripe_customer_id = db.Column(db.String(255), nullable=True)
+    stripe_payment_method_id = db.Column(db.String(255), nullable=True)
+    stripe_charge_status = db.Column(db.String(32), nullable=True)
+    stripe_last_error = db.Column(db.Text, nullable=True)
+    stripe_payment_link_url = db.Column(db.String(512), nullable=True)
+    stripe_card_brand = db.Column(db.String(32), nullable=True)
+    stripe_card_last4 = db.Column(db.String(4), nullable=True)
+    stripe_amount_charged = db.Column(Numeric(10, 2), nullable=True)
     
     # Pickup status (kept for backwards compatibility)
     pickup_status = db.Column(db.String(50), default='pending', nullable=False)  # 'pending', 'ready', 'picked_up', 'cancelled'
@@ -122,6 +131,22 @@ class Order(BaseModel):
             'payment_method': self.payment_method,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'payment_transaction_id': self.payment_transaction_id,
+            'stripe_customer_id': self.stripe_customer_id,
+            'stripe_payment_method_id': self.stripe_payment_method_id,
+            'stripe_charge_status': self.stripe_charge_status,
+            'stripe_last_error': self.stripe_last_error,
+            'stripe_payment_link_url': self.stripe_payment_link_url,
+            'stripe_card_brand': self.stripe_card_brand,
+            'stripe_card_last4': self.stripe_card_last4,
+            'stripe_amount_charged': float(self.stripe_amount_charged) if self.stripe_amount_charged is not None else None,
+            'stripe_dashboard_url': None,
+        })
+        try:
+            from utils.stripe_client import stripe_dashboard_payment_url
+            data['stripe_dashboard_url'] = stripe_dashboard_payment_url(self.payment_transaction_id)
+        except Exception:
+            pass
+        data.update({
             'pickup_status': self.pickup_status,
             'pickup_date': self.pickup_date.isoformat() if self.pickup_date else None,
             'status': self.status,

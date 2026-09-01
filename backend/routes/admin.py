@@ -2035,6 +2035,9 @@ def update_order_status(order_id):
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        from utils.order_payment import delivery_ship_blocked
+        if delivery_ship_blocked(order, status):
+            return jsonify({'error': '配送订单未付款，不能发货'}), 400
         old_status = order.status
         old_payment_status = order.payment_status
         
@@ -2167,9 +2170,13 @@ def bulk_update_order_status():
                 'updated_count': 0
             }), 200
         
-        # Update all orders
+        from utils.order_payment import delivery_ship_blocked
         updated_count = 0
+        skipped_unpaid_delivery = 0
         for order in orders:
+            if delivery_ship_blocked(order, new_status):
+                skipped_unpaid_delivery += 1
+                continue
             old_status = order.status
             order.status = new_status
             order.updated_at = utc_now()
@@ -2179,9 +2186,13 @@ def bulk_update_order_status():
         
         db.session.commit()
         
+        message = f'Successfully updated {updated_count} orders to {OrderStatus.get_label(new_status)}'
+        if skipped_unpaid_delivery:
+            message += f'（{skipped_unpaid_delivery} 笔配送未付款，已跳过）'
         return jsonify({
-            'message': f'Successfully updated {updated_count} orders to {OrderStatus.get_label(new_status)}',
-            'updated_count': updated_count
+            'message': message,
+            'updated_count': updated_count,
+            'skipped_unpaid_delivery': skipped_unpaid_delivery,
         }), 200
         
     except Exception as e:

@@ -153,6 +153,11 @@ def create_app(config_class=Config):
         app.register_blueprint(referrals_bp, url_prefix='/api/referrals')
     except ImportError:
         pass
+    try:
+        from routes.payments import payments_bp
+        app.register_blueprint(payments_bp, url_prefix='/api')
+    except ImportError:
+        pass
     app.register_blueprint(api_bp, url_prefix='/api')
 
     @app.route('/invite/<code>')

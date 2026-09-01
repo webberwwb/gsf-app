@@ -208,6 +208,7 @@ class PaymentMethod(str, Enum):
     """
     CASH = 'cash'          # 现金
     ETRANSFER = 'etransfer'  # 电子转账
+    CARD = 'card'          # 信用卡 / Apple Pay / Google Pay
 
     @classmethod
     def get_label(cls, method):
@@ -215,6 +216,7 @@ class PaymentMethod(str, Enum):
         labels = {
             cls.CASH: '现金',
             cls.ETRANSFER: '电子转账',
+            cls.CARD: '信用卡',
         }
         return labels.get(method, method)
     

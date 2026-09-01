@@ -102,6 +102,12 @@ class Config:
         'https://backend.grainstoryfarm.ca/api/images',
     ).rstrip('/')
 
+    # Stripe (sandbox/test keys locally; never commit live secrets)
+    STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+    STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+    STRIPE_DASHBOARD_BASE = os.environ.get('STRIPE_DASHBOARD_BASE', 'https://dashboard.stripe.com/test')
+
 
 class TestConfig(Config):
     """In-memory SQLite for automated tests — never prod MySQL."""
