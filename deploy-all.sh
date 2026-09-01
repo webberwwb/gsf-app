@@ -152,7 +152,7 @@ BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --cpu 2 \
     --max-instances 10 \
     --min-instances 1 \
-    --cpu-throttling \
+    --no-cpu-throttling \
     --project=$PROJECT_ID \
     --format="value(status.url)")
 

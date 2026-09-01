@@ -23,6 +23,7 @@ COPY . .
 # Cloud Run will provide PORT environment variable
 EXPOSE 8080
 
-# Use gunicorn with gevent-websocket worker for SocketIO support
-CMD exec gunicorn --bind 0.0.0.0:${PORT:-8080} --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --timeout 0 wsgi:app
+# Timeout 60: recycle a wedged gevent hub. Safe with Cloud Run CPU always allocated
+# (cpu-throttling off). Timeout 0 left a dead worker serving 504s until the next deploy.
+CMD exec gunicorn --bind 0.0.0.0:${PORT:-8080} --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --timeout 60 --graceful-timeout 30 wsgi:app
 

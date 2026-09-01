@@ -1,6 +1,7 @@
 """Shared order line pricing: base product price, variants, and substitute fulfillment."""
 from decimal import Decimal
 from utils.money import round_money, round_money_float
+from utils.image_urls import public_image_url, public_image_urls
 from models.product_variant import ProductVariant
 from models.product import Product
 from models.order import OrderItem
@@ -585,10 +586,11 @@ def enrich_order_item_dict(item, product=None):
         images = product.images if product.images and isinstance(product.images, list) else []
         if not images and product.image:
             images = [product.image]
+        images = public_image_urls(images)
         item_dict['product'] = {
             'id': product.id,
             'name': product.name,
-            'image': images[0] if images else product.image,
+            'image': images[0] if images else public_image_url(product.image),
             'images': images,
             'description': product.description,
             'pricing_type': product.pricing_type,
@@ -626,7 +628,7 @@ def enrich_order_item_dict(item, product=None):
             imgs = product.images if product.images and isinstance(product.images, list) else []
             if not imgs and product.image:
                 imgs = [product.image]
-            item_dict['display_images'] = imgs
+            item_dict['display_images'] = public_image_urls(imgs)
 
     item_dict['is_substituted'] = is_substituted
     item_dict['is_struck_out'] = is_struck_out

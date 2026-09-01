@@ -17,6 +17,7 @@ from models.base import utc_now, est_now
 from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
 from utils.product_repurchase import compute_product_repurchase_rates
 from utils.date_helpers import normalize_date_start, normalize_date_end
+from utils.image_urls import proxy_image_url, public_image_url
 from utils.commission import (
     calculate_commission_for_group_deal,
     get_commission_summary_for_group_deal,
@@ -214,18 +215,10 @@ def upload_image():
         
         # Set content type
         content_type = f'image/{format.lower()}'
+        blob.cache_control = f'public, max-age={365 * 24 * 3600}'
         blob.upload_from_string(image_data, content_type=content_type)
         
-        # Return URL pointing to backend image serving endpoint
-        # Backend will proxy the image from GCS (bucket stays private)
-        # Use /api/images/ endpoint (public, no auth required for images)
-        base_url = request.host_url.rstrip('/')
-        if 'localhost' in base_url or '127.0.0.1' in base_url:
-            # Local dev
-            public_url = f"{base_url}/api/images/{filename}"
-        else:
-            # Production - use backend domain
-            public_url = f"https://backend.grainstoryfarm.ca/api/images/{filename}"
+        public_url = proxy_image_url(filename)
         
         current_app.logger.info(f'Uploaded image to GCS: {filename}, serving via: {public_url}')
         
@@ -2891,7 +2884,7 @@ def find_duplicate_orders():
                         item_dict['product'] = {
                             'id': product.id,
                             'name': product.name,
-                            'image': product.image,
+                            'image': public_image_url(product.image),
                             'pricing_type': product.pricing_type,
                             'pricing_data': product.pricing_data
                         }

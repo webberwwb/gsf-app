@@ -96,6 +96,11 @@ class Config:
     GCS_PROJECT_ID = os.environ.get('GCS_PROJECT_ID', 'focused-mote-477703-f0')
     # Public URL base for images (e.g., https://storage.googleapis.com/gsf-app-product-images/)
     GCS_PUBLIC_URL_BASE = os.environ.get('GCS_PUBLIC_URL_BASE', f'https://storage.googleapis.com/{GCS_BUCKET_NAME}')
+    # Stable browser-facing image URL (proxied at /api/images/<object>).
+    IMAGE_PROXY_BASE = os.environ.get(
+        'IMAGE_PROXY_BASE',
+        'https://backend.grainstoryfarm.ca/api/images',
+    ).rstrip('/')
 
 
 class TestConfig(Config):

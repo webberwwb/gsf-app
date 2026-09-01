@@ -1,6 +1,7 @@
 from models.base import BaseModel
 from models import db
 from sqlalchemy import JSON, Numeric
+from utils.image_urls import public_image_urls
 
 class Product(BaseModel):
     """Product model"""
@@ -160,7 +161,9 @@ class Product(BaseModel):
     def get_substitute_dict(self):
         if not self.substitute_enabled:
             return None
-        images = self.substitute_images if self.substitute_images and isinstance(self.substitute_images, list) else []
+        images = public_image_urls(
+            self.substitute_images if self.substitute_images and isinstance(self.substitute_images, list) else []
+        )
         pt = self.get_substitute_pricing_type()
         pd = self.get_substitute_pricing_data()
         return {
@@ -180,6 +183,7 @@ class Product(BaseModel):
         images = self.images if self.images and isinstance(self.images, list) else []
         if not images and self.image:
             images = [self.image]
+        images = public_image_urls(images)
         
         variant_list = self.variants if include_all_variants else self.get_active_variants()
         variants_data = [v.to_dict() for v in sorted(variant_list, key=lambda x: x.sort_order)]

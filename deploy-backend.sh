@@ -66,7 +66,7 @@ gcloud run deploy gsf-app-backend \
     --timeout 300 \
     --max-instances 10 \
     --min-instances 1 \
-    --cpu-throttling \
+    --no-cpu-throttling \
     --project=$PROJECT_ID
 
 # Clean up temporary file
