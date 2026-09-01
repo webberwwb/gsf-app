@@ -47,6 +47,12 @@ class User(BaseModel):
     
     # WeChat ID for group buying (required for users)
     wechat = db.Column(db.String(255), nullable=True)
+
+    # Stripe customer + saved payment method (IDs only; never store PAN)
+    stripe_customer_id = db.Column(db.String(255), nullable=True, index=True)
+    stripe_payment_method_id = db.Column(db.String(255), nullable=True)
+    stripe_card_brand = db.Column(db.String(32), nullable=True)
+    stripe_card_last4 = db.Column(db.String(4), nullable=True)
     
     # User source (e.g., "花泽", "default")
     user_source = db.Column(db.String(50), nullable=True, default='default')
@@ -100,6 +106,9 @@ class User(BaseModel):
             'last_login_date': self.last_login_date.isoformat() if self.last_login_date else None,
             'status': self.status,
             'email': self.email,
+            'has_card_on_file': bool(self.stripe_payment_method_id),
+            'stripe_card_brand': self.stripe_card_brand,
+            'stripe_card_last4': self.stripe_card_last4,
             'wechat': self.wechat,
             'user_source': self.user_source or 'default',
             'is_active': self.is_active,

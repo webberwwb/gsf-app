@@ -221,6 +221,14 @@
                 <span :class="['payment-badge', getListPaymentStatusClass(order)]">
                   {{ getListPaymentStatusLabel(order) }}
                 </span>
+                <button
+                  v-if="canPayAgain(order)"
+                  type="button"
+                  class="pay-again-list-btn"
+                  @click.stop="goPayAgain(order)"
+                >
+                  去付款
+                </button>
               </div>
               <div class="order-actions" @click.stop>
                 <span v-if="order.status === 'completed'" class="completed-badge">订单已完成</span>
@@ -541,11 +549,26 @@ export default {
     },
     getListPaymentStatusLabel(order) {
       if (this.isOrderPaidDisplay(order)) return '已支付'
+      if (order.payment_method === 'card' && order.stripe_charge_status === 'failed') return '扣款失败'
+      if (order.payment_method === 'card' && order.payment_status !== 'paid') return '已绑卡 · 称重后扣款'
       return this.getPaymentStatusLabel(order.payment_status)
     },
     getListPaymentStatusClass(order) {
       if (this.isOrderPaidDisplay(order)) return 'paid'
+      if (order.payment_method === 'card' && order.stripe_charge_status === 'failed') return 'failed'
+      if (order.payment_method === 'card' && order.payment_status !== 'paid') return 'card-on-file'
       return this.getPaymentStatusClass(order.payment_status)
+    },
+    canPayAgain(order) {
+      return order
+        && order.payment_status !== 'paid'
+        && order.stripe_charge_status === 'failed'
+        && Boolean(order.stripe_payment_link_url)
+    },
+    goPayAgain(order) {
+      if (order?.stripe_payment_link_url) {
+        window.location.href = order.stripe_payment_link_url
+      }
     },
     viewOrderDetail(order) {
       // Navigate to order detail page
@@ -1365,6 +1388,22 @@ export default {
 .payment-badge.failed {
   background: #FFEBEE;
   color: #C62828;
+}
+
+.payment-badge.card-on-file {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
+.pay-again-list-btn {
+  margin-left: 8px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--md-primary);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .payment-badge.refunded {

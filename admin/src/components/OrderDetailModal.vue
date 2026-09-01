@@ -100,7 +100,8 @@
                 <select v-model="localPaymentMethod" class="payment-method-select" @change="handlePaymentMethodChange" :disabled="order && order.delivery_method === 'delivery'">
                   <option value="">未选择</option>
                   <option value="cash" :disabled="order && order.delivery_method === 'delivery'">现金</option>
-                  <option value="etransfer">电子转账</option>
+                  <option value="etransfer" :disabled="order && order.delivery_method === 'delivery'">电子转账</option>
+                  <option value="card" :disabled="order && order.delivery_method === 'pickup'">信用卡</option>
                 </select>
               </div>
             </div>
@@ -124,6 +125,49 @@
                 </svg>
                 标记为未付款
               </button>
+            </div>
+            <div v-if="showStripePanel" class="stripe-panel">
+              <div class="stripe-panel-title">信用卡扣款</div>
+              <div v-if="orderCardLabel" class="stripe-row">卡：{{ orderCardLabel }}</div>
+              <div class="stripe-row">状态：{{ stripeStatusLabel }}</div>
+              <div class="stripe-row">应付：${{ Number(order.amount_due || 0).toFixed(2) }}</div>
+              <div v-if="order.stripe_amount_charged != null" class="stripe-row">
+                已扣：${{ Number(order.stripe_amount_charged).toFixed(2) }}
+              </div>
+              <div v-if="order.payment_transaction_id" class="stripe-row stripe-id">
+                交易：{{ order.payment_transaction_id }}
+              </div>
+              <div v-if="order.stripe_last_error" class="stripe-error">{{ order.stripe_last_error }}</div>
+              <div class="stripe-actions">
+                <button
+                  v-if="order.payment_status !== 'paid'"
+                  type="button"
+                  class="stripe-charge-btn"
+                  :disabled="chargingStripe"
+                  @click="chargeStripe"
+                >
+                  {{ chargingStripe ? '扣款中...' : '收取信用卡' }}
+                </button>
+                <button
+                  v-if="order.payment_status !== 'paid'"
+                  type="button"
+                  class="stripe-link-btn"
+                  :disabled="copyingPaymentLink"
+                  @click="copyPaymentLink"
+                >
+                  {{ copyingPaymentLink ? '生成中...' : '复制付款链接' }}
+                </button>
+                <a
+                  v-if="order.stripe_dashboard_url"
+                  :href="order.stripe_dashboard_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="stripe-dashboard-link"
+                >
+                  在 Stripe 中打开
+                </a>
+              </div>
+              <p v-if="stripeActionError" class="stripe-error">{{ stripeActionError }}</p>
             </div>
           </div>
 
@@ -714,6 +758,9 @@ export default {
     return {
       localOrderStatus: '',
       localPaymentMethod: '',
+      chargingStripe: false,
+      copyingPaymentLink: false,
+      stripeActionError: null,
       localDeliveryMethod: '',
       localPickupLocation: '',
       localAddressId: null,
@@ -761,6 +808,31 @@ export default {
              this.newAddress.address_line1?.trim() && 
              this.newAddress.city?.trim() && 
              this.newAddress.postal_code?.trim()
+    },
+    showStripePanel() {
+      if (!this.order) return false
+      return this.order.payment_method === 'card'
+        || this.localPaymentMethod === 'card'
+        || Boolean(this.order.stripe_payment_method_id)
+        || Boolean(this.order.stripe_charge_status)
+    },
+    orderCardLabel() {
+      const brand = this.order?.stripe_card_brand
+      const last4 = this.order?.stripe_card_last4
+      if (!last4) return ''
+      const name = brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : '卡'
+      return `${name} •••• ${last4}`
+    },
+    stripeStatusLabel() {
+      const map = {
+        setup_complete: '已绑卡，待扣款',
+        succeeded: '扣款成功',
+        failed: '扣款失败'
+      }
+      if (this.order?.payment_status === 'paid' && this.order?.payment_method === 'card') {
+        return '已付款'
+      }
+      return map[this.order?.stripe_charge_status] || (this.order?.stripe_payment_method_id ? '已绑卡' : '未绑卡')
     },
     editableItemsSubtotal() {
       return this.editableItems.reduce((sum, i) => sum + resolveOrderLineTotal(i), 0)
@@ -872,9 +944,9 @@ export default {
     localDeliveryMethod(newVal, oldVal) {
       if (this.isInitializingOrder) return
       
-      // When switching to delivery, force etransfer and load addresses
+      // When switching to delivery, force card and load addresses
       if (newVal === 'delivery') {
-        this.localPaymentMethod = 'etransfer'
+        this.localPaymentMethod = 'card'
         if (this.order?.user_id && this.userAddresses.length === 0) {
           this.loadUserAddresses()
         }
@@ -1037,9 +1109,10 @@ export default {
       this.localOrderStatus = this.order.status || 'submitted'
       
       // Initialize payment method (watcher will check isInitializingOrder flag)
-      // If delivery method is delivery, ensure payment is etransfer
       if (this.order.delivery_method === 'delivery') {
-        this.localPaymentMethod = 'etransfer'
+        this.localPaymentMethod = this.order.payment_method === 'etransfer'
+          ? 'etransfer'
+          : 'card'
       } else {
         this.localPaymentMethod = this.order.payment_method || ''
       }
@@ -1503,8 +1576,7 @@ export default {
         updateData.pickup_location = 'markham'
       } else if (this.localDeliveryMethod === 'delivery') {
         updateData.address_id = this.localAddressId
-        // Force payment method to etransfer for delivery
-        updateData.payment_method = 'etransfer'
+        updateData.payment_method = this.localPaymentMethod === 'etransfer' ? 'etransfer' : 'card'
       }
       
       // Include order notes
@@ -1582,6 +1654,50 @@ export default {
           orderId: this.order.id,
           paymentMethod: this.localPaymentMethod
         })
+      }
+    },
+    async chargeStripe() {
+      if (!this.order) return
+      this.chargingStripe = true
+      this.stripeActionError = null
+      try {
+        const { data } = await apiClient.post(`/admin/orders/${this.order.id}/stripe-charge`)
+        await this.success(data.message || '扣款成功')
+        if (data.order) {
+          this.$emit('order-updated', data.order)
+        }
+      } catch (err) {
+        const payload = err.response?.data || {}
+        this.stripeActionError = payload.error || '扣款失败'
+        if (payload.order) {
+          this.$emit('order-updated', payload.order)
+        }
+        await this.error(this.stripeActionError)
+      } finally {
+        this.chargingStripe = false
+      }
+    },
+    async copyPaymentLink() {
+      if (!this.order) return
+      this.copyingPaymentLink = true
+      this.stripeActionError = null
+      try {
+        let url = this.order.stripe_payment_link_url
+        if (!url) {
+          const { data } = await apiClient.post(`/admin/orders/${this.order.id}/stripe-payment-link`)
+          url = data.url
+          if (data.order) this.$emit('order-updated', data.order)
+        }
+        if (!url) {
+          throw new Error('未生成付款链接')
+        }
+        await navigator.clipboard.writeText(url)
+        await this.success('付款链接已复制')
+      } catch (err) {
+        this.stripeActionError = err.response?.data?.error || err.message || '无法复制付款链接'
+        await this.error(this.stripeActionError)
+      } finally {
+        this.copyingPaymentLink = false
       }
     },
     handleMarkAsUnpaid() {
@@ -2719,6 +2835,73 @@ export default {
   outline: none;
   border-color: var(--md-primary);
   border-width: 2px;
+}
+
+.stripe-panel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stripe-panel-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.stripe-row {
+  font-size: 0.8125rem;
+  color: #374151;
+}
+
+.stripe-id {
+  word-break: break-all;
+  color: #6b7280;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
+.stripe-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #b71c1c;
+}
+
+.stripe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.stripe-charge-btn,
+.stripe-link-btn {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stripe-charge-btn {
+  background: #1565c0;
+  color: #fff;
+}
+
+.stripe-link-btn {
+  background: #fff;
+  border: 1px solid #1565c0;
+  color: #1565c0;
+}
+
+.stripe-dashboard-link {
+  font-size: 0.8125rem;
+  color: #1565c0;
 }
 
 .info-item-order-status {

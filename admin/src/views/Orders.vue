@@ -54,6 +54,7 @@
           <option value="">全部支付方式</option>
           <option value="cash">现金</option>
           <option value="etransfer">电子转账</option>
+          <option value="card">信用卡</option>
         </select>
         
         <select v-model="deliveryMethodFilter" class="filter-select">
@@ -644,7 +645,7 @@ export default {
         }
         
         const pointsAwarded = response.data.points_awarded || 0
-        const paymentMethodLabel = paymentMethod === 'cash' ? '现金' : '电子转账'
+        const paymentMethodLabel = paymentMethod === 'cash' ? '现金' : paymentMethod === 'card' ? '信用卡' : '电子转账'
         await this.success(`订单已标记为已付款（${paymentMethodLabel}）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'

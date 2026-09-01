@@ -1470,7 +1470,8 @@ export default {
           }
           const paymentMethodMap = {
             'cash': '现金',
-            'emt': 'EMT',
+            'etransfer': '电子转账',
+            'card': '信用卡',
             'wechat': '微信支付',
             'alipay': '支付宝'
           }

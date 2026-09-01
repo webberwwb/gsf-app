@@ -24,8 +24,8 @@
           <span class="order-status" :class="`status-${order.status}`">
             {{ getStatusText(order.status) }}
           </span>
-          <span class="payment-status" :class="`payment-${order.payment_status}`">
-            {{ getPaymentStatusText(order.payment_status) }}
+          <span class="payment-status" :class="paymentStatusClass(order)">
+            {{ getPaymentStatusText(order) }}
           </span>
         </div>
         <!-- Quick Action Button: Mark Packing Complete -->
@@ -209,7 +209,7 @@
         <div class="order-actions" @click.stop v-if="showActions">
           <!-- Payment Status Toggle -->
           <button 
-            v-if="order.status !== 'cancelled' && order.payment_status === 'unpaid'"
+            v-if="order.status !== 'cancelled' && order.payment_status === 'unpaid' && order.payment_method !== 'card'"
             @click="$emit('update-payment', order)" 
             class="action-btn payment-btn">
             标记为已付款
@@ -217,7 +217,7 @@
           
           <!-- Shipping Status Toggle for Delivery Orders -->
           <button 
-            v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'delivery' && order.status === 'preparing'"
+            v-if="order.status !== 'cancelled' && order.status !== 'completed' && order.delivery_method === 'delivery' && order.status === 'preparing' && order.payment_status === 'paid'"
             @click="$emit('mark-shipped', order)" 
             class="action-btn shipping-btn">
             标记为已发货
@@ -247,7 +247,7 @@
           </button>
           
           <button 
-            v-if="order.status === 'preparing' && order.delivery_method === 'delivery'"
+            v-if="order.status === 'preparing' && order.delivery_method === 'delivery' && order.payment_status === 'paid'"
             @click="$emit('update-status', order.id, 'out_for_delivery')" 
             class="action-btn delivery-btn">
             开始配送
@@ -339,12 +339,21 @@ export default {
       }
       return statusMap[status] || status
     },
-    getPaymentStatusText(paymentStatus) {
-      const paymentMap = {
-        'unpaid': '未付款',
-        'paid': '已付款'
+    getPaymentStatusText(orderOrStatus) {
+      if (typeof orderOrStatus === 'string') {
+        return { unpaid: '未付款', paid: '已付款' }[orderOrStatus] || orderOrStatus
       }
-      return paymentMap[paymentStatus] || paymentStatus
+      const order = orderOrStatus || {}
+      if (order.payment_status === 'paid') return '已付款'
+      if (order.payment_method === 'card' && order.stripe_charge_status === 'failed') return '扣款失败'
+      if (order.payment_method === 'card') return '已绑卡'
+      return { unpaid: '未付款', paid: '已付款' }[order.payment_status] || order.payment_status
+    },
+    paymentStatusClass(order) {
+      if (order.payment_status === 'paid') return 'payment-paid'
+      if (order.payment_method === 'card' && order.stripe_charge_status === 'failed') return 'payment-failed'
+      if (order.payment_method === 'card') return 'payment-card-on-file'
+      return `payment-${order.payment_status}`
     },
     moneyCredit(o) {
       return formatOrderMoney2(orderStoreCreditAppliedNumber(o))
@@ -641,6 +650,16 @@ export default {
 .payment-paid {
   background: #E8F5E9;
   color: #1B5E20;
+}
+
+.payment-failed {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.payment-card-on-file {
+  background: #E3F2FD;
+  color: #1565C0;
 }
 
 .order-info-row {

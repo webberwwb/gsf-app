@@ -139,6 +139,9 @@ export const useCheckoutStore = defineStore('checkout', {
         if (orderData.notes) {
           this.notes = orderData.notes
         }
+        if (this.deliveryMethod === 'delivery') {
+          this.paymentMethod = 'card'
+        }
       }
     },
     
@@ -154,9 +157,10 @@ export const useCheckoutStore = defineStore('checkout', {
      */
     setDeliveryMethod(method) {
       this.deliveryMethod = method
-      // If delivery method is set to delivery, automatically set payment to etransfer
-      if (method === 'delivery' && this.paymentMethod === 'cash') {
-        this.paymentMethod = 'etransfer'
+      if (method === 'delivery') {
+        this.paymentMethod = 'card'
+      } else if (this.paymentMethod === 'card') {
+        this.paymentMethod = 'cash'
       }
     },
     
