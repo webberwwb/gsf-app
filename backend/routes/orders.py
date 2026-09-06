@@ -295,7 +295,12 @@ def create_order():
         if not user_row:
             return jsonify({'error': 'User not found'}), 404
 
-        pay_err = payment_method_error(delivery_method, payment_method, user_row)
+        pay_err = payment_method_error(
+            delivery_method,
+            payment_method,
+            user_row,
+            online_payment_enabled=bool(group_deal.online_payment_enabled),
+        )
         if pay_err:
             db.session.rollback()
             return jsonify({'error': pay_err}), 400
@@ -651,7 +656,12 @@ def update_order(order_id):
             if not address:
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
         user_row = User.query.get(user_id)
-        pay_err = payment_method_error(delivery_method, payment_method or order.payment_method, user_row)
+        pay_err = payment_method_error(
+            delivery_method,
+            payment_method or order.payment_method,
+            user_row,
+            online_payment_enabled=bool(group_deal.online_payment_enabled),
+        )
         if pay_err:
             return jsonify({'error': pay_err}), 400
         

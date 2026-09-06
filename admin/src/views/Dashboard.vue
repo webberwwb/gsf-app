@@ -42,6 +42,12 @@
           </svg>
           <span>订单管理</span>
         </router-link>
+        <router-link to="/stripe-payments" class="nav-item" :class="{ active: $route.path === '/stripe-payments' }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+          <span>在线支付</span>
+        </router-link>
         <router-link to="/users" class="nav-item" :class="{ active: $route.path.startsWith('/users') }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -181,6 +187,7 @@ export default {
         '/products': '商品管理',
         '/group-deals': '团购管理',
         '/orders': '订单管理',
+        '/stripe-payments': '在线支付',
         '/users': '用户管理',
         '/credit-referrals': '用户推广',
         '/sales-management': '销售管理',

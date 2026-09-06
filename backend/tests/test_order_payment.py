@@ -13,37 +13,60 @@ from utils.order_payment import (
     delivery_ship_blocked,
     mark_order_paid,
     copy_user_card_to_order,
+    stripe_order_bucket,
 )
 
 
 def test_delivery_requires_card():
-    assert payment_method_error('delivery', 'etransfer') == '配送订单必须使用信用卡支付'
-    assert payment_method_error('delivery', 'cash') == '配送订单必须使用信用卡支付'
-    assert payment_method_error('delivery', 'card', require_card_on_file=False) is None
+    assert payment_method_error('delivery', 'etransfer', online_payment_enabled=True) == '配送订单必须使用信用卡支付'
+    assert payment_method_error('delivery', 'cash', online_payment_enabled=True) == '配送订单必须使用信用卡支付'
+    assert payment_method_error(
+        'delivery', 'card', require_card_on_file=False, online_payment_enabled=True
+    ) is None
 
 
 def test_delivery_requires_card_on_file():
     user = SimpleNamespace(stripe_payment_method_id=None)
-    assert payment_method_error('delivery', 'card', user) == '请先绑定银行卡后再提交配送订单'
+    assert payment_method_error(
+        'delivery', 'card', user, online_payment_enabled=True
+    ) == '请先绑定银行卡后再提交配送订单'
     user.stripe_payment_method_id = 'pm_test'
-    assert payment_method_error('delivery', 'card', user) is None
+    assert payment_method_error('delivery', 'card', user, online_payment_enabled=True) is None
 
 
 def test_pickup_rejects_card():
-    assert payment_method_error('pickup', 'card') == '自取订单请使用现金或电子转账'
+    assert payment_method_error('pickup', 'card', online_payment_enabled=True) == '自取订单请使用现金或电子转账'
+    assert payment_method_error('pickup', 'cash', online_payment_enabled=True) is None
+    assert payment_method_error('pickup', 'etransfer', online_payment_enabled=True) is None
+
+
+def test_legacy_deal_rejects_card_allows_cash_delivery():
+    assert payment_method_error('delivery', 'cash') is None
+    assert payment_method_error('delivery', 'etransfer') is None
     assert payment_method_error('pickup', 'cash') is None
-    assert payment_method_error('pickup', 'etransfer') is None
+    assert payment_method_error('delivery', 'card') == '本团购暂不支持在线支付'
+    assert payment_method_error('pickup', 'card') == '本团购暂不支持在线支付'
 
 
 def test_delivery_ship_blocked_while_unpaid():
     order = SimpleNamespace(
         delivery_method=DeliveryMethod.DELIVERY.value,
+        payment_method=PaymentMethod.CARD.value,
         payment_status=PaymentStatus.UNPAID.value,
     )
     assert delivery_ship_blocked(order, OrderStatus.OUT_FOR_DELIVERY.value) is True
     assert delivery_ship_blocked(order, 'delivering') is True
     assert delivery_ship_blocked(order, OrderStatus.PREPARING.value) is False
     order.payment_status = PaymentStatus.PAID.value
+    assert delivery_ship_blocked(order, OrderStatus.OUT_FOR_DELIVERY.value) is False
+
+
+def test_delivery_cash_not_ship_blocked():
+    order = SimpleNamespace(
+        delivery_method=DeliveryMethod.DELIVERY.value,
+        payment_method=PaymentMethod.CASH.value,
+        payment_status=PaymentStatus.UNPAID.value,
+    )
     assert delivery_ship_blocked(order, OrderStatus.OUT_FOR_DELIVERY.value) is False
 
 
@@ -75,6 +98,29 @@ def test_copy_user_card_to_order():
     assert order.stripe_card_brand == 'visa'
     assert order.stripe_card_last4 == '4242'
     assert order.stripe_charge_status == 'setup_complete'
+
+
+def test_stripe_order_bucket():
+    assert stripe_order_bucket(SimpleNamespace(
+        payment_status=PaymentStatus.PAID.value,
+        stripe_charge_status='failed',
+        stripe_payment_method_id='pm_1',
+    )) == 'paid'
+    assert stripe_order_bucket(SimpleNamespace(
+        payment_status=PaymentStatus.UNPAID.value,
+        stripe_charge_status='failed',
+        stripe_payment_method_id='pm_1',
+    )) == 'failed'
+    assert stripe_order_bucket(SimpleNamespace(
+        payment_status=PaymentStatus.UNPAID.value,
+        stripe_charge_status='setup_complete',
+        stripe_payment_method_id='pm_1',
+    )) == 'ready'
+    assert stripe_order_bucket(SimpleNamespace(
+        payment_status=PaymentStatus.UNPAID.value,
+        stripe_charge_status=None,
+        stripe_payment_method_id=None,
+    )) == 'no_card'
 
 
 def test_mark_order_paid_awards_points_and_completes(app, db_session):

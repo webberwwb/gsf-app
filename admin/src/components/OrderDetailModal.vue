@@ -2889,19 +2889,19 @@ export default {
 }
 
 .stripe-charge-btn {
-  background: #1565c0;
+  background: var(--md-primary);
   color: #fff;
 }
 
 .stripe-link-btn {
   background: #fff;
-  border: 1px solid #1565c0;
-  color: #1565c0;
+  border: 1px solid var(--md-primary);
+  color: #E65100;
 }
 
 .stripe-dashboard-link {
   font-size: 0.8125rem;
-  color: #1565c0;
+  color: #E65100;
 }
 
 .info-item-order-status {

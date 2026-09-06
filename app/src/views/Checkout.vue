@@ -394,7 +394,7 @@
       <!-- Payment Method Selection -->
       <div class="payment-section">
         <h3 class="section-title">支付方式</h3>
-        <div v-if="deliveryMethod === 'pickup'" class="payment-options">
+        <div v-if="showLegacyPaymentOptions" class="payment-options">
           <label 
             :class="['payment-option', { active: paymentMethod === 'cash' }]"
           >
@@ -447,37 +447,27 @@
         </div>
         <div v-else class="card-bind-panel">
           <div v-if="hasCardOnFile" class="card-on-file">
-            <span class="card-on-file-label">已绑卡</span>
-            <span class="card-on-file-detail">{{ savedCardLabel }}</span>
+            <div>
+              <span class="card-on-file-label">已绑卡</span>
+              <span class="card-on-file-detail">{{ savedCardLabel }}</span>
+            </div>
+            <div class="card-on-file-status">提交订单后称重再扣款</div>
           </div>
           <div v-else class="card-on-file card-on-file--empty">
             配送需先绑定银行卡（信用卡或 Visa/Mastercard 借记卡）
           </div>
-          <label class="card-email-label">
-            邮箱（用于收据，选填）
-            <input
-              v-model="setupCardEmail"
-              type="email"
-              class="card-email-input"
-              placeholder="name@example.com"
-              autocomplete="email"
-            />
-          </label>
           <button
             type="button"
             class="bind-card-btn"
             :disabled="bindingCard"
             @click="startCardSetup"
           >
-            {{ bindingCard ? '跳转中...' : (hasCardOnFile ? '更换银行卡' : '绑定银行卡') }}
+            {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
           </button>
+          <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
           <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
         </div>
-        <p class="payment-note">
-          {{ deliveryMethod === 'delivery'
-            ? '下单不扣款，称重和运费确定后一次性扣款。未扣款不发货'
-            : '取货时根据实际重量支付' }}
-        </p>
+        <p class="payment-note">{{ paymentNote }}</p>
       </div>
 
       <!-- Notes Section -->
@@ -588,12 +578,20 @@
       @close="closeAddressForm"
       @saved="handleAddressSaved"
     />
+    <CardSetupModal
+      :show="showCardSetup"
+      :customer-name="currentUser?.nickname || currentUser?.wechat || ''"
+      :customer-phone="currentUser?.phone || ''"
+      @close="showCardSetup = false"
+      @saved="onCardSaved"
+    />
   </div>
 </template>
 
 <script>
 import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
+import CardSetupModal from '../components/CardSetupModal.vue'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import { useCheckoutStore } from '../stores/checkout'
 import { toCheckoutLineDisplay } from '../utils/orderItemPricing'
@@ -606,12 +604,13 @@ import {
   invalidateReferralInviteCompletedCache
 } from '../utils/referralInviteUi'
 import { formatOrderMoney2 } from '../utils/orderPricing'
-import { cardLabel, hasSavedCard } from '../utils/stripeCard'
+import { cardLabel, hasSavedCard, CARD_PRIVACY_NOTE } from '../utils/stripeCard'
 
 export default {
   name: 'Checkout',
   components: {
     AddressForm,
+    CardSetupModal,
     OrderLineDisplay
   },
   setup() {
@@ -645,10 +644,11 @@ export default {
       applyStoreCredit: true,
       /** null: loading / unknown; true: has completed order — hide new-user referral row */
       referralUiHadCompletedOrder: null,
-      setupCardEmail: '',
       cardOnFile: null,
       bindingCard: false,
-      cardSetupError: null
+      cardSetupError: null,
+      showCardSetup: false,
+      cardPrivacyNote: CARD_PRIVACY_NOTE
     }
   },
   computed: {
@@ -725,9 +725,24 @@ export default {
       const src = this.cardOnFile || this.currentUser || {}
       return cardLabel(src.brand || src.stripe_card_brand, src.last4 || src.stripe_card_last4)
     },
+    onlinePaymentEnabled() {
+      return !!this.deal?.online_payment_enabled
+    },
+    showLegacyPaymentOptions() {
+      return !this.onlinePaymentEnabled || this.deliveryMethod === 'pickup'
+    },
+    paymentNote() {
+      if (this.onlinePaymentEnabled && this.deliveryMethod === 'delivery') {
+        return '下单不扣款，称重和运费确定后一次性扣款。未扣款不发货'
+      }
+      return '根据实际重量支付（现金或电子转账）'
+    },
     canConfirm() {
       if (this.deliveryMethod === 'delivery') {
-        return this.selectedAddressId !== null && this.hasCardOnFile
+        if (this.onlinePaymentEnabled) {
+          return this.selectedAddressId !== null && this.hasCardOnFile
+        }
+        return this.selectedAddressId !== null
       } else if (this.deliveryMethod === 'pickup') {
         return this.selectedPickupLocation !== null
       }
@@ -847,7 +862,6 @@ export default {
 
     if (this.isAuthenticated && this.currentUser?.id) {
       await this.refreshReferralInviteUiGate()
-      this.setupCardEmail = this.currentUser.email || ''
       await this.syncCardSetupReturn()
       await this.loadCardOnFile()
     }
@@ -909,7 +923,7 @@ export default {
   methods: {
     setDeliveryMethod(method) {
       this.checkoutStore.setDeliveryMethod(method)
-      if (method === 'delivery') {
+      if (method === 'delivery' && this.onlinePaymentEnabled) {
         this.loadCardOnFile()
       }
     },
@@ -929,6 +943,17 @@ export default {
       }
     },
     async syncCardSetupReturn() {
+      const setupIntentId = this.$route.query.setup_intent
+      const redirectStatus = this.$route.query.redirect_status
+      if (setupIntentId && redirectStatus === 'succeeded') {
+        try {
+          const { data } = await apiClient.post(`/payments/setup-intent/${setupIntentId}`)
+          this.cardOnFile = data
+          await this.authStore.checkAuth()
+        } catch (e) {
+          this.cardSetupError = e.response?.data?.error || '同步绑卡失败，请重试'
+        }
+      }
       const setup = this.$route.query.card_setup
       const sessionId = this.$route.query.session_id
       if (setup === 'success' && sessionId) {
@@ -942,31 +967,26 @@ export default {
       } else if (setup === 'cancel') {
         this.cardSetupError = '已取消绑卡'
       }
-      if (setup) {
+      if (setup || setupIntentId) {
         const query = { ...this.$route.query }
         delete query.card_setup
         delete query.session_id
+        delete query.setup_intent
+        delete query.setup_intent_client_secret
+        delete query.redirect_status
         this.$router.replace({ path: this.$route.path, query }).catch(() => {})
       }
     },
-    async startCardSetup() {
-      this.bindingCard = true
+    startCardSetup() {
       this.cardSetupError = null
+      this.showCardSetup = true
+    },
+    async onCardSaved(card) {
+      this.cardOnFile = card
+      this.showCardSetup = false
       try {
-        const { data } = await apiClient.post('/payments/setup-session', {
-          email: (this.setupCardEmail || '').trim() || undefined,
-          return_path: this.$route.path || '/checkout'
-        })
-        if (data?.url) {
-          window.location.href = data.url
-          return
-        }
-        this.cardSetupError = '无法打开绑卡页面'
-      } catch (e) {
-        this.cardSetupError = e.response?.data?.error || '无法创建绑卡页面'
-      } finally {
-        this.bindingCard = false
-      }
+        await this.authStore.checkAuth()
+      } catch (e) { /* card already saved */ }
     },
     toggleApplyStoreCredit() {
       if (this.maxStoreCreditApplicable <= 0) return
@@ -1951,19 +1971,10 @@ export default {
   margin-right: 8px;
 }
 
-.card-email-label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.card-on-file-status {
+  margin-top: 6px;
   font-size: 0.8125rem;
   color: var(--md-on-surface-variant);
-}
-
-.card-email-input {
-  padding: 10px 12px;
-  border: 1px solid var(--md-outline-variant, #ddd);
-  border-radius: 10px;
-  font-size: 1rem;
 }
 
 .bind-card-btn {
@@ -1978,6 +1989,13 @@ export default {
 
 .bind-card-btn:disabled {
   opacity: 0.6;
+}
+
+.card-privacy-note {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--md-on-surface-variant);
 }
 
 .card-setup-error {

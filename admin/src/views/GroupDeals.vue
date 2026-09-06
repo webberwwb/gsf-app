@@ -23,6 +23,7 @@
             <span :class="['status-badge', deal.status]">
               {{ getStatusLabel(deal.status) }}
             </span>
+            <span v-if="deal.online_payment_enabled" class="status-badge online-payment">在线支付</span>
           </div>
           <div class="deal-actions">
             <button @click.stop="editDeal(deal)" class="edit-btn">编辑</button>
@@ -316,6 +317,7 @@ export default {
   flex: 1;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--md-spacing-md);
 }
 
@@ -367,6 +369,11 @@ export default {
 .status-badge.completed {
   background: #F3E5F5;
   color: #7B1FA2;
+}
+
+.status-badge.online-payment {
+  background: rgba(255, 140, 0, 0.12);
+  color: #E65100;
 }
 
 .deal-actions {

@@ -24,8 +24,22 @@ def mark_order_paid(order, transaction_id=None, amount_charged=None):
     return order
 
 
-def payment_method_error(delivery_method, payment_method, user=None, require_card_on_file=True):
-    """Return a Chinese error string if delivery/payment combo is invalid, else None."""
+def payment_method_error(
+    delivery_method,
+    payment_method,
+    user=None,
+    require_card_on_file=True,
+    online_payment_enabled=False,
+):
+    """Return a Chinese error string if delivery/payment combo is invalid, else None.
+
+    When the deal has online payment off, cash / e-transfer work for pickup and
+    delivery (legacy). Card is rejected. When on, delivery requires a card on file.
+    """
+    if not online_payment_enabled:
+        if payment_method == PaymentMethod.CARD.value:
+            return '本团购暂不支持在线支付'
+        return None
     if delivery_method == DeliveryMethod.DELIVERY.value:
         if payment_method != PaymentMethod.CARD.value:
             return '配送订单必须使用信用卡支付'
@@ -47,6 +61,17 @@ def copy_user_card_to_order(order, user):
         order.stripe_charge_status = 'setup_complete'
 
 
+def stripe_order_bucket(order):
+    """paid | failed | ready | no_card for card / Stripe admin dashboards."""
+    if getattr(order, 'payment_status', None) == PaymentStatus.PAID.value:
+        return 'paid'
+    if getattr(order, 'stripe_charge_status', None) == 'failed':
+        return 'failed'
+    if getattr(order, 'stripe_payment_method_id', None) or getattr(order, 'stripe_charge_status', None) == 'setup_complete':
+        return 'ready'
+    return 'no_card'
+
+
 def delivery_ship_blocked(order, new_status):
     """True if this delivery order cannot move to a ship/complete status while unpaid."""
     ship_statuses = {
@@ -56,5 +81,7 @@ def delivery_ship_blocked(order, new_status):
     if new_status not in ship_statuses:
         return False
     if order.delivery_method != DeliveryMethod.DELIVERY.value:
+        return False
+    if getattr(order, 'payment_method', None) != PaymentMethod.CARD.value:
         return False
     return order.payment_status != PaymentStatus.PAID.value

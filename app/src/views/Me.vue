@@ -32,6 +32,16 @@
 
         <div class="credit-referral-panel">
           <div class="panel-block">
+            <h3 class="panel-title">绑定的银行卡</h3>
+            <p v-if="savedCardLabel" class="bound-card-value">{{ savedCardLabel }}</p>
+            <p v-else class="placeholder-msg">尚未绑定银行卡</p>
+            <p class="panel-hint">配送订单称重后从此卡扣款。卡号由 Stripe 托管，本APP只保存后四位方便核对。</p>
+            <button type="button" class="ledger-btn" @click="showCardSetup = true">
+              {{ savedCardLabel ? '更换银行卡' : '绑定银行卡' }}
+            </button>
+          </div>
+
+          <div class="panel-block">
             <h3 class="panel-title">代金券余额</h3>
             <p class="panel-emphasis">${{ storeCreditDisplay }}</p>
             <p class="panel-hint">下单支付时可抵扣订单金额（与积分不同）</p>
@@ -175,6 +185,13 @@
           </div>
         </div>
       </Teleport>
+      <CardSetupModal
+        :show="showCardSetup"
+        :customer-name="userNickname"
+        :customer-phone="userPhone"
+        @close="showCardSetup = false"
+        @saved="onCardSaved"
+      />
     </main>
   </div>
 </template>
@@ -188,9 +205,12 @@ import { useAuthStore } from '../stores/auth'
 import { REFERRAL_BIND_DEBOUNCE_MS } from '../utils/referralLiveBind'
 import { getUserHasCompletedOrderCached } from '../utils/referralInviteUi'
 import { formatOrderMoney2 } from '../utils/orderPricing'
+import { cardLabel, hasSavedCard } from '../utils/stripeCard'
+import CardSetupModal from '../components/CardSetupModal.vue'
 
 export default {
   name: 'Me',
+  components: { CardSetupModal },
   setup() {
     const { confirm, error: showError, success, alert: showAlert } = useModal()
     const authStore = useAuthStore()
@@ -210,7 +230,9 @@ export default {
       creditTxLoading: false,
       creditTxList: [],
       creditTxError: null,
-      referralUiHadCompletedOrder: null
+      referralUiHadCompletedOrder: null,
+      showCardSetup: false,
+      cardOnFile: null
     }
   },
   computed: {
@@ -261,6 +283,11 @@ export default {
       const u = this.user
       if (!u || u.referred_by_user_id) return false
       return this.referralUiHadCompletedOrder === false
+    },
+    savedCardLabel() {
+      const src = this.cardOnFile || this.user || {}
+      if (!hasSavedCard(src) && !src.stripe_card_last4) return ''
+      return cardLabel(src.brand || src.stripe_card_brand, src.last4 || src.stripe_card_last4)
     }
   },
   watch: {
@@ -289,6 +316,7 @@ export default {
       this.loadVersions()
       this.fetchInvitees()
       this.refreshReferralInviteUiGate()
+      this.fetchCardOnFile()
     }
   },
   methods: {
@@ -298,6 +326,29 @@ export default {
         // Try to fetch from API
         this.fetchUser()
       }
+    },
+    async fetchCardOnFile() {
+      try {
+        const { data } = await apiClient.get('/payments/card')
+        this.cardOnFile = data
+      } catch (e) {
+        this.cardOnFile = this.user?.has_card_on_file
+          ? { has_card: true, brand: this.user.stripe_card_brand, last4: this.user.stripe_card_last4 }
+          : { has_card: false }
+      }
+    },
+    async onCardSaved(card) {
+      this.cardOnFile = card
+      this.showCardSetup = false
+      if (this.user) {
+        this.authStore.setUser({
+          ...this.user,
+          has_card_on_file: true,
+          stripe_card_brand: card?.brand || this.user.stripe_card_brand,
+          stripe_card_last4: card?.last4 || this.user.stripe_card_last4
+        })
+      }
+      await this.success('银行卡已绑定')
     },
     async fetchUser() {
       try {
@@ -1085,6 +1136,13 @@ export default {
   font-weight: 700;
   margin: 0;
   color: var(--md-primary);
+}
+
+.bound-card-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--md-on-surface);
 }
 
 .panel-hint {

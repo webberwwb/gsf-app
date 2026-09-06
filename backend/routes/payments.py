@@ -16,10 +16,13 @@ from utils.stripe_client import (
 from utils.stripe_payments import (
     card_on_file_dict,
     create_setup_checkout_session,
+    create_setup_intent,
+    complete_setup_intent,
     sync_setup_session,
     apply_payment_method_to_user,
     charge_order_off_session,
     create_pay_again_session,
+    sync_saved_card,
 )
 
 payments_bp = Blueprint('payments', __name__)
@@ -59,7 +62,50 @@ def get_card_on_file():
     user, err = _require_user()
     if err:
         return err
-    return jsonify(card_on_file_dict(user)), 200
+    card = sync_saved_card(user)
+    db.session.commit()
+    return jsonify(card), 200
+
+
+@payments_bp.route('/payments/setup-intent', methods=['POST'])
+def create_card_setup_intent():
+    user, err = _require_user()
+    if err:
+        return err
+    if not stripe_configured():
+        return jsonify({'error': '在线支付尚未配置'}), 503
+    try:
+        intent = create_setup_intent(user)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Stripe setup intent failed: %s', e, exc_info=True)
+        return jsonify({'error': '无法创建绑卡', 'message': str(e)}), 502
+    return jsonify({
+        'client_secret': intent.client_secret,
+        'setup_intent_id': intent.id,
+        'publishable_key': (current_app.config.get('STRIPE_PUBLISHABLE_KEY') or ''),
+    }), 200
+
+
+@payments_bp.route('/payments/setup-intent/<setup_intent_id>', methods=['POST'])
+def finish_card_setup_intent(setup_intent_id):
+    user, err = _require_user()
+    if err:
+        return err
+    if not stripe_configured():
+        return jsonify({'error': '在线支付尚未配置'}), 503
+    try:
+        card = complete_setup_intent(user, setup_intent_id)
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Complete setup intent failed: %s', e, exc_info=True)
+        return jsonify({'error': '同步绑卡失败', 'message': str(e)}), 502
+    return jsonify({**card_on_file_dict(user), **card}), 200
 
 
 @payments_bp.route('/payments/setup-session', methods=['POST'])
@@ -70,7 +116,6 @@ def create_setup_session():
     if not stripe_configured():
         return jsonify({'error': '在线支付尚未配置'}), 503
     body = request.get_json(silent=True) or {}
-    email = (body.get('email') or '').strip() or None
     return_path = (body.get('return_path') or '/checkout').strip() or '/checkout'
     if not return_path.startswith('/'):
         return_path = '/checkout'
@@ -78,7 +123,7 @@ def create_setup_session():
     success_url = f'{base}{return_path}?card_setup=success&session_id={{CHECKOUT_SESSION_ID}}'
     cancel_url = f'{base}{return_path}?card_setup=cancel'
     try:
-        session = create_setup_checkout_session(user, success_url, cancel_url, email=email)
+        session = create_setup_checkout_session(user, success_url, cancel_url)
         db.session.commit()
     except ValueError as e:
         db.session.rollback()

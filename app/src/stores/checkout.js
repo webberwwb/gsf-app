@@ -139,8 +139,12 @@ export const useCheckoutStore = defineStore('checkout', {
         if (orderData.notes) {
           this.notes = orderData.notes
         }
-        if (this.deliveryMethod === 'delivery') {
+        if (this.deliveryMethod === 'delivery' && this.deal?.online_payment_enabled) {
           this.paymentMethod = 'card'
+        } else if (this.paymentMethod === 'card' && !this.deal?.online_payment_enabled) {
+          this.paymentMethod = orderData.paymentMethod && orderData.paymentMethod !== 'card'
+            ? orderData.paymentMethod
+            : 'cash'
         }
       }
     },
@@ -157,7 +161,7 @@ export const useCheckoutStore = defineStore('checkout', {
      */
     setDeliveryMethod(method) {
       this.deliveryMethod = method
-      if (method === 'delivery') {
+      if (method === 'delivery' && this.deal?.online_payment_enabled) {
         this.paymentMethod = 'card'
       } else if (this.paymentMethod === 'card') {
         this.paymentMethod = 'cash'

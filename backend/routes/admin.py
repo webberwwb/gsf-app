@@ -1286,7 +1286,8 @@ def create_group_deal():
             order_start_date=order_start_date,
             order_end_date=order_end_date,
             pickup_date=pickup_date,
-            status=validated_data.get('status', status)
+            status=validated_data.get('status', status),
+            online_payment_enabled=bool(validated_data.get('online_payment_enabled', False)),
         )
         
         db.session.add(group_deal)
@@ -1374,6 +1375,8 @@ def update_group_deal(deal_id):
         if 'pickup_date' in validated_data:
             # Normalize to 00:00:00 EST
             deal.pickup_date = normalize_date_start(validated_data['pickup_date'])
+        if 'online_payment_enabled' in validated_data:
+            deal.online_payment_enabled = bool(validated_data['online_payment_enabled'])
         
         # Store original status before any updates
         original_status = deal.status
@@ -1974,6 +1977,148 @@ def get_admin_orders():
             'error': 'Failed to fetch orders',
             'message': str(e)
         }), 500
+
+
+@admin_bp.route('/stripe-payments', methods=['GET'])
+def get_admin_stripe_payments():
+    """Card / Stripe status grouped by group deal."""
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    from utils.order_payment import stripe_order_bucket
+    from utils.order_totals import calculate_amount_due
+
+    empty_totals = {
+        'card_orders': 0,
+        'paid': 0,
+        'ready': 0,
+        'failed': 0,
+        'no_card': 0,
+        'amount_due_unpaid': 0.0,
+        'amount_charged': 0.0,
+    }
+
+    try:
+        group_deal_id = request.args.get('group_deal_id', type=int)
+        deal_status = (request.args.get('deal_status') or '').strip()
+        stripe_status = (request.args.get('stripe_status') or '').strip()
+        if stripe_status not in ('', 'paid', 'failed', 'ready', 'no_card'):
+            return jsonify({'error': 'Invalid stripe_status'}), 400
+
+        orders_query = Order.query.options(
+            joinedload(Order.user),
+        ).filter(
+            Order.deleted_at.is_(None),
+            Order.payment_method == PaymentMethod.CARD.value,
+            Order.status != OrderStatus.CANCELLED.value,
+        )
+        if group_deal_id:
+            orders_query = orders_query.filter(Order.group_deal_id == group_deal_id)
+        orders = orders_query.order_by(Order.created_at.desc()).all()
+
+        deal_ids = {order.group_deal_id for order in orders if order.group_deal_id}
+        enabled_query = GroupDeal.query.filter(
+            GroupDeal.deleted_at.is_(None),
+            GroupDeal.online_payment_enabled.is_(True),
+        )
+        if group_deal_id:
+            enabled_query = enabled_query.filter(GroupDeal.id == group_deal_id)
+        if deal_status:
+            enabled_query = enabled_query.filter(GroupDeal.status == deal_status)
+        deal_ids.update(deal.id for deal in enabled_query.all())
+
+        if not deal_ids:
+            return jsonify({'totals': empty_totals, 'deals': []}), 200
+
+        deals_query = GroupDeal.query.filter(
+            GroupDeal.id.in_(deal_ids),
+            GroupDeal.deleted_at.is_(None),
+        )
+        if deal_status:
+            deals_query = deals_query.filter(GroupDeal.status == deal_status)
+        deals = deals_query.order_by(GroupDeal.pickup_date.desc(), GroupDeal.id.desc()).all()
+        allowed_ids = {deal.id for deal in deals}
+
+        grouped = {deal.id: [] for deal in deals}
+        for order in orders:
+            if order.group_deal_id in allowed_ids:
+                grouped[order.group_deal_id].append(order)
+
+        totals = dict(empty_totals)
+        deal_payloads = []
+        for deal in deals:
+            deal_orders = grouped.get(deal.id, [])
+            counts = {'card_orders': 0, 'paid': 0, 'ready': 0, 'failed': 0, 'no_card': 0}
+            amount_due_unpaid = 0.0
+            amount_charged = 0.0
+            order_rows = []
+            for order in deal_orders:
+                bucket = stripe_order_bucket(order)
+                counts['card_orders'] += 1
+                counts[bucket] += 1
+                due = float(calculate_amount_due(order))
+                charged = float(order.stripe_amount_charged) if order.stripe_amount_charged is not None else 0.0
+                if bucket != 'paid':
+                    amount_due_unpaid += due
+                amount_charged += charged
+                if stripe_status and bucket != stripe_status:
+                    continue
+                user = order.user
+                order_rows.append({
+                    'id': order.id,
+                    'order_number': order.order_number,
+                    'status': order.status,
+                    'payment_status': order.payment_status,
+                    'stripe_status': bucket,
+                    'stripe_charge_status': order.stripe_charge_status,
+                    'stripe_card_brand': order.stripe_card_brand,
+                    'stripe_card_last4': order.stripe_card_last4,
+                    'stripe_last_error': order.stripe_last_error,
+                    'amount_due': due,
+                    'stripe_amount_charged': charged or None,
+                    'user': {
+                        'id': user.id,
+                        'nickname': user.nickname,
+                        'phone': user.phone,
+                        'wechat': user.wechat,
+                    } if user else None,
+                })
+
+            for key in ('card_orders', 'paid', 'ready', 'failed', 'no_card'):
+                totals[key] += counts[key]
+            totals['amount_due_unpaid'] += amount_due_unpaid
+            totals['amount_charged'] += amount_charged
+
+            if stripe_status and not order_rows:
+                continue
+
+            deal_payloads.append({
+                'id': deal.id,
+                'title': deal.title,
+                'status': deal.status,
+                'online_payment_enabled': bool(deal.online_payment_enabled),
+                'pickup_date': deal.pickup_date.isoformat() if deal.pickup_date else None,
+                'order_end_date': deal.order_end_date.isoformat() if deal.order_end_date else None,
+                'counts': counts,
+                'amount_due_unpaid': round(amount_due_unpaid, 2),
+                'amount_charged': round(amount_charged, 2),
+                'orders': order_rows,
+            })
+
+        totals['amount_due_unpaid'] = round(totals['amount_due_unpaid'], 2)
+        totals['amount_charged'] = round(totals['amount_charged'], 2)
+        return jsonify({
+            'totals': totals,
+            'deals': deal_payloads,
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f'Error fetching Stripe payments: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to fetch Stripe payments',
+            'message': str(e),
+        }), 500
+
 
 @admin_bp.route('/orders/<int:order_id>', methods=['GET'])
 def get_admin_order(order_id):

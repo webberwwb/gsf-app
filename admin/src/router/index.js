@@ -34,6 +34,11 @@ const router = createRouter({
           component: () => import('../views/Orders.vue')
         },
         {
+          path: 'stripe-payments',
+          name: 'StripePayments',
+          component: () => import('../views/StripePayments.vue')
+        },
+        {
           path: 'users',
           name: 'Users',
           component: () => import('../views/Users.vue')

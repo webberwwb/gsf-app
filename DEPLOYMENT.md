@@ -15,6 +15,16 @@ The following secrets are stored in Google Secret Manager:
 - `google-oauth-client-secret` - Google OAuth Client Secret
 - `cron-secret` - Cron job authentication secret
 - `google-maps-api-key` - Google Maps API Key (for frontend builds)
+- `stripe-secret-key` - Stripe secret key (`STRIPE_SECRET_KEY`)
+- `stripe-publishable-key` - Stripe publishable key (`STRIPE_PUBLISHABLE_KEY`)
+- `stripe-webhook-secret` - Stripe webhook signing secret (`STRIPE_WEBHOOK_SECRET`)
+- `stripe-dashboard-base` - Stripe Dashboard URL (`STRIPE_DASHBOARD_BASE`)
+
+To copy Stripe values from local `backend/.env` into Secret Manager (values are not printed):
+
+```bash
+./scripts/upsert-stripe-secrets.sh
+```
 
 ### Deployment Scripts
 

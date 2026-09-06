@@ -107,6 +107,7 @@ class Config:
     STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
     STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
     STRIPE_DASHBOARD_BASE = os.environ.get('STRIPE_DASHBOARD_BASE', 'https://dashboard.stripe.com/test')
+    STRIPE_SETUP_PAYMENT_METHOD_CONFIG = os.environ.get('STRIPE_SETUP_PAYMENT_METHOD_CONFIG', '')
 
 
 class TestConfig(Config):
