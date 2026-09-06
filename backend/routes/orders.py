@@ -28,6 +28,7 @@ from utils.order_audit import (
 from utils.order_totals import recalculate_order_totals, clamp_store_credit
 from services import credit_service
 from services import referral_service
+from utils.order_payment import payment_method_error, copy_user_card_to_order
 import random
 import string
 
@@ -284,9 +285,6 @@ def create_order():
             address = Address.query.filter_by(id=address_id, user_id=user_id).first()
             if not address:
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
-            # Delivery orders must use etransfer payment method
-            if payment_method == PaymentMethod.CASH.value:
-                return jsonify({'error': '配送订单必须使用电子转账支付'}), 400
         
         try:
             order_items, subtotal = priced_items_from_request(items, group_deal_id=group_deal_id)
@@ -296,6 +294,16 @@ def create_order():
         user_row = User.query.filter_by(id=user_id).with_for_update().first()
         if not user_row:
             return jsonify({'error': 'User not found'}), 404
+
+        pay_err = payment_method_error(
+            delivery_method,
+            payment_method,
+            user_row,
+            online_payment_enabled=bool(group_deal.online_payment_enabled),
+        )
+        if pay_err:
+            db.session.rollback()
+            return jsonify({'error': pay_err}), 400
 
         if referral_raw and not user_row.referred_by_user_id:
             ok, err = referral_service.try_bind_referral(user_row, referral_raw)
@@ -323,6 +331,7 @@ def create_order():
             points_earned=0,
             payment_method=payment_method,
             payment_status='unpaid',
+            stripe_charge_status='setup_complete' if payment_method == PaymentMethod.CARD.value else None,
             pickup_status='pending',
             status='submitted',
             notes=notes,
@@ -331,6 +340,8 @@ def create_order():
 
         db.session.add(order)
         db.session.flush()
+        if payment_method == PaymentMethod.CARD.value:
+            copy_user_card_to_order(order, user_row)
 
         create_order_item_rows(order.id, order_items, db.session)
 
@@ -644,9 +655,15 @@ def update_order(order_id):
             address = Address.query.filter_by(id=address_id, user_id=user_id).first()
             if not address:
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
-            # Delivery orders must use etransfer payment method
-            if payment_method == PaymentMethod.CASH.value:
-                return jsonify({'error': '配送订单必须使用电子转账支付'}), 400
+        user_row = User.query.get(user_id)
+        pay_err = payment_method_error(
+            delivery_method,
+            payment_method or order.payment_method,
+            user_row,
+            online_payment_enabled=bool(group_deal.online_payment_enabled),
+        )
+        if pay_err:
+            return jsonify({'error': pay_err}), 400
         
         unavailable_by_item_id = {item.id: item.is_unavailable for item in order.items}
         try:
@@ -671,6 +688,8 @@ def update_order(order_id):
             order.notes = notes
         if payment_method and payment_method in PaymentMethod.get_all_values():
             order.payment_method = payment_method
+        if order.payment_method == PaymentMethod.CARD.value:
+            copy_user_card_to_order(order, user_row)
         order.updated_at = utc_now()
 
         create_order_item_rows(order.id, new_order_items, db.session)

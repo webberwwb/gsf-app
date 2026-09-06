@@ -60,7 +60,7 @@ gcloud run deploy gsf-app-backend \
     --allow-unauthenticated \
     --add-cloudsql-instances $CLOUDSQL_INSTANCE \
     --env-vars-file backend-env-temp.yaml \
-    --set-secrets "MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest" \
+    --set-secrets "MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,STRIPE_DASHBOARD_BASE=stripe-dashboard-base:latest" \
     --memory 1Gi \
     --cpu 2 \
     --timeout 300 \

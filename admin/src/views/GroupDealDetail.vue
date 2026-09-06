@@ -58,6 +58,7 @@
             <span :class="['status-badge', groupDeal.status]">
               {{ getStatusLabel(groupDeal.status) }}
             </span>
+            <span v-if="groupDeal.online_payment_enabled" class="status-badge online-payment">在线支付</span>
             <select 
               v-model="groupDeal.status" 
               @change="handleGroupDealStatusChange"
@@ -1470,7 +1471,8 @@ export default {
           }
           const paymentMethodMap = {
             'cash': '现金',
-            'emt': 'EMT',
+            'etransfer': '电子转账',
+            'card': '信用卡',
             'wechat': '微信支付',
             'alipay': '支付宝'
           }
@@ -2380,6 +2382,11 @@ export default {
 .status-badge.completed {
   background: #F3E5F5;
   color: #7B1FA2;
+}
+
+.status-badge.online-payment {
+  background: rgba(255, 140, 0, 0.12);
+  color: #E65100;
 }
 
 .status-control-group {

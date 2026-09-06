@@ -221,6 +221,15 @@
                 <span :class="['payment-badge', getListPaymentStatusClass(order)]">
                   {{ getListPaymentStatusLabel(order) }}
                 </span>
+                <span v-if="boundCardLabel(order)" class="bound-card-mini">{{ boundCardLabel(order) }}</span>
+                <button
+                  v-if="canPayAgain(order)"
+                  type="button"
+                  class="pay-again-list-btn"
+                  @click.stop="goPayAgain(order)"
+                >
+                  去付款
+                </button>
               </div>
               <div class="order-actions" @click.stop>
                 <span v-if="order.status === 'completed'" class="completed-badge">订单已完成</span>
@@ -351,6 +360,7 @@ import {
 } from '../utils/orderPricing'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import { toOrderLineDisplay } from '../utils/orderItemPricing'
+import { customerPaymentDisplay, orderCardLabel } from '../utils/stripeCard'
 
 export default {
   name: 'Orders',
@@ -539,13 +549,30 @@ export default {
       if (order.payment_status === 'paid') return true
       return orderAmountDueNumber(order) <= 0 && this.orderStoreCreditApplied(order) > 0
     },
+    boundCardLabel(order) {
+      return orderCardLabel(order)
+    },
     getListPaymentStatusLabel(order) {
       if (this.isOrderPaidDisplay(order)) return '已支付'
-      return this.getPaymentStatusLabel(order.payment_status)
+      return customerPaymentDisplay(order).label
     },
     getListPaymentStatusClass(order) {
       if (this.isOrderPaidDisplay(order)) return 'paid'
-      return this.getPaymentStatusClass(order.payment_status)
+      const key = customerPaymentDisplay(order).key
+      if (key === 'ready') return 'card-on-file'
+      if (key === 'no_card' || key === 'unpaid') return 'pending'
+      return key
+    },
+    canPayAgain(order) {
+      return order
+        && order.payment_status !== 'paid'
+        && order.stripe_charge_status === 'failed'
+        && Boolean(order.stripe_payment_link_url)
+    },
+    goPayAgain(order) {
+      if (order?.stripe_payment_link_url) {
+        window.location.href = order.stripe_payment_link_url
+      }
     },
     viewOrderDetail(order) {
       // Navigate to order detail page
@@ -1183,8 +1210,9 @@ export default {
 
 .payment-status {
   display: flex;
-  align-items: center;
-  height: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
 }
 
 .order-actions {
@@ -1365,6 +1393,29 @@ export default {
 .payment-badge.failed {
   background: #FFEBEE;
   color: #C62828;
+}
+
+.payment-badge.card-on-file {
+  background: rgba(255, 140, 0, 0.12);
+  color: #E65100;
+}
+
+.bound-card-mini {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--md-on-surface-variant);
+}
+
+.pay-again-list-btn {
+  margin-left: 8px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--md-primary);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .payment-badge.refunded {

@@ -23,6 +23,9 @@ class GroupDeal(BaseModel):
     # Auto-managed: upcoming → active → closed (by cron job based on dates)
     # Manual: preparing → ready_for_pickup → completed (by admin)
     status = db.Column(db.String(50), default=GroupDealStatus.DRAFT.value, nullable=False)
+
+    # Stripe / card-on-file. Off by default so live deals keep cash / e-transfer.
+    online_payment_enabled = db.Column(db.Boolean, default=False, nullable=False)
     
     # Soft delete
     deleted_at = db.Column(db.DateTime, nullable=True, index=True)
@@ -49,7 +52,8 @@ class GroupDeal(BaseModel):
             'order_end_date': self.order_end_date.isoformat() if self.order_end_date else None,
             'pickup_date': self.pickup_date.isoformat() if self.pickup_date else None,
             'status': self.status,
-            'is_active': self.is_active
+            'is_active': self.is_active,
+            'online_payment_enabled': bool(self.online_payment_enabled),
         })
         return data
 

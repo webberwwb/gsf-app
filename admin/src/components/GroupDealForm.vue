@@ -92,6 +92,14 @@
           </select>
         </div>
 
+        <div class="form-group">
+          <label class="online-payment-label">
+            <input type="checkbox" v-model="formData.online_payment_enabled" />
+            支持在线支付（银行卡）
+          </label>
+          <small class="form-hint">Visa / Mastercard 信用卡或借记卡均可。Interac 储蓄卡不行。关闭时顾客只能使用现金或电子转账。</small>
+        </div>
+
         <!-- Products -->
         <div class="form-group">
           <label>选择商品</label>
@@ -207,7 +215,8 @@ export default {
         order_start_date: '',
         order_end_date: '',
         pickup_date: '',
-        status: 'draft'
+        status: 'draft',
+        online_payment_enabled: false
       },
       availableProducts: [],
       selectedProducts: [],
@@ -248,7 +257,8 @@ export default {
         order_start_date: '',
         order_end_date: '',
         pickup_date: '',
-        status: 'draft'
+        status: 'draft',
+        online_payment_enabled: false
       }
       this.selectedProducts = []
       this.error = null
@@ -269,7 +279,8 @@ export default {
           order_start_date: this.formatDateTimeLocal(this.deal.order_start_date),
           order_end_date: this.formatDateTimeLocal(this.deal.order_end_date),
           pickup_date: this.formatDateOnly(this.deal.pickup_date),
-          status: this.deal.status || 'draft'
+          status: this.deal.status || 'draft',
+          online_payment_enabled: !!this.deal.online_payment_enabled
         }
         
         // Load selected products
@@ -288,6 +299,7 @@ export default {
       if (!this.copyFrom) return
 
       this.formData.description = this.copyFrom.description || ''
+      this.formData.online_payment_enabled = !!this.copyFrom.online_payment_enabled
 
       if (this.copyFrom.products && this.copyFrom.products.length > 0) {
         this.selectedProducts = this.copyFrom.products.map(product => ({
@@ -386,6 +398,7 @@ export default {
           order_end_date: this.formData.order_end_date ? this.formData.order_end_date + ':00' : null,
           pickup_date: this.formData.pickup_date || null,
           status: this.formData.status,
+          online_payment_enabled: !!this.formData.online_payment_enabled,
           products: this.selectedProducts.map(p => {
             // Convert empty string, NaN, undefined, or null to null (unlimited)
             const stockLimit = p.deal_stock_limit
@@ -745,7 +758,8 @@ select.form-input:focus {
   margin-bottom: 0;
 }
 
-.deal-discount-label {
+.deal-discount-label,
+.online-payment-label {
   display: flex;
   align-items: center;
   gap: 0.4rem;

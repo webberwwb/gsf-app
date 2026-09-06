@@ -9,6 +9,7 @@
     "deploy": "sh update-version.sh"
   },
   "dependencies": {
+    "@stripe/stripe-js": "^9.15.0",
     "axios": "^1.6.7",
     "pinia": "^3.0.4",
     "qrcode": "^1.5.4",

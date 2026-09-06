@@ -51,6 +51,7 @@ class CreateGroupDealSchema(Schema):
     order_end_date = DateOrDateTimeField(required=True)
     pickup_date = DateOrDateTimeField(required=True)
     status = fields.String(allow_none=True, validate=validate.OneOf(GroupDealStatus.get_all_values()))
+    online_payment_enabled = fields.Boolean(missing=False)
     products = fields.List(fields.Nested(GroupDealProductSchema), allow_none=True)
     
     @validates_schema
@@ -75,6 +76,7 @@ class UpdateGroupDealSchema(Schema):
     order_end_date = DateOrDateTimeField(allow_none=True)
     pickup_date = DateOrDateTimeField(allow_none=True)
     status = fields.String(allow_none=True, validate=validate.OneOf(GroupDealStatus.get_all_values()))
+    online_payment_enabled = fields.Boolean()
     products = fields.List(fields.Nested(GroupDealProductSchema), allow_none=True)
     
     @validates_schema

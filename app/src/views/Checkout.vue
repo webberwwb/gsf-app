@@ -394,16 +394,15 @@
       <!-- Payment Method Selection -->
       <div class="payment-section">
         <h3 class="section-title">支付方式</h3>
-        <div class="payment-options">
+        <div v-if="showLegacyPaymentOptions" class="payment-options">
           <label 
-            :class="['payment-option', { active: paymentMethod === 'cash', disabled: deliveryMethod === 'delivery' }]"
+            :class="['payment-option', { active: paymentMethod === 'cash' }]"
           >
             <input 
               type="radio" 
               name="paymentMethod" 
               value="cash" 
               v-model="paymentMethod"
-              :disabled="deliveryMethod === 'delivery'"
               class="payment-radio"
             />
             <div class="option-icon">
@@ -446,7 +445,29 @@
             </div>
           </label>
         </div>
-        <p class="payment-note">取货时根据实际重量支付</p>
+        <div v-else class="card-bind-panel">
+          <div v-if="hasCardOnFile" class="card-on-file">
+            <div>
+              <span class="card-on-file-label">已绑卡</span>
+              <span class="card-on-file-detail">{{ savedCardLabel }}</span>
+            </div>
+            <div class="card-on-file-status">提交订单后称重再扣款</div>
+          </div>
+          <div v-else class="card-on-file card-on-file--empty">
+            配送需先绑定银行卡（信用卡或 Visa/Mastercard 借记卡）
+          </div>
+          <button
+            type="button"
+            class="bind-card-btn"
+            :disabled="bindingCard"
+            @click="startCardSetup"
+          >
+            {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
+          </button>
+          <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
+          <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
+        </div>
+        <p class="payment-note">{{ paymentNote }}</p>
       </div>
 
       <!-- Notes Section -->
@@ -557,12 +578,20 @@
       @close="closeAddressForm"
       @saved="handleAddressSaved"
     />
+    <CardSetupModal
+      :show="showCardSetup"
+      :customer-name="currentUser?.nickname || currentUser?.wechat || ''"
+      :customer-phone="currentUser?.phone || ''"
+      @close="showCardSetup = false"
+      @saved="onCardSaved"
+    />
   </div>
 </template>
 
 <script>
 import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
+import CardSetupModal from '../components/CardSetupModal.vue'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import { useCheckoutStore } from '../stores/checkout'
 import { toCheckoutLineDisplay } from '../utils/orderItemPricing'
@@ -575,11 +604,13 @@ import {
   invalidateReferralInviteCompletedCache
 } from '../utils/referralInviteUi'
 import { formatOrderMoney2 } from '../utils/orderPricing'
+import { cardLabel, hasSavedCard, CARD_PRIVACY_NOTE } from '../utils/stripeCard'
 
 export default {
   name: 'Checkout',
   components: {
     AddressForm,
+    CardSetupModal,
     OrderLineDisplay
   },
   setup() {
@@ -612,7 +643,12 @@ export default {
       /** User can opt out of applying store credit (when balance allows). */
       applyStoreCredit: true,
       /** null: loading / unknown; true: has completed order — hide new-user referral row */
-      referralUiHadCompletedOrder: null
+      referralUiHadCompletedOrder: null,
+      cardOnFile: null,
+      bindingCard: false,
+      cardSetupError: null,
+      showCardSetup: false,
+      cardPrivacyNote: CARD_PRIVACY_NOTE
     }
   },
   computed: {
@@ -682,8 +718,30 @@ export default {
     existingOrderId() {
       return this.checkoutStore.existingOrderId
     },
+    hasCardOnFile() {
+      return hasSavedCard(this.cardOnFile) || hasSavedCard(this.currentUser)
+    },
+    savedCardLabel() {
+      const src = this.cardOnFile || this.currentUser || {}
+      return cardLabel(src.brand || src.stripe_card_brand, src.last4 || src.stripe_card_last4)
+    },
+    onlinePaymentEnabled() {
+      return !!this.deal?.online_payment_enabled
+    },
+    showLegacyPaymentOptions() {
+      return !this.onlinePaymentEnabled || this.deliveryMethod === 'pickup'
+    },
+    paymentNote() {
+      if (this.onlinePaymentEnabled && this.deliveryMethod === 'delivery') {
+        return '下单不扣款，称重和运费确定后一次性扣款。未扣款不发货'
+      }
+      return '根据实际重量支付（现金或电子转账）'
+    },
     canConfirm() {
       if (this.deliveryMethod === 'delivery') {
+        if (this.onlinePaymentEnabled) {
+          return this.selectedAddressId !== null && this.hasCardOnFile
+        }
         return this.selectedAddressId !== null
       } else if (this.deliveryMethod === 'pickup') {
         return this.selectedPickupLocation !== null
@@ -804,6 +862,8 @@ export default {
 
     if (this.isAuthenticated && this.currentUser?.id) {
       await this.refreshReferralInviteUiGate()
+      await this.syncCardSetupReturn()
+      await this.loadCardOnFile()
     }
 
     // If authenticated, check if we need wechat/nickname
@@ -863,6 +923,70 @@ export default {
   methods: {
     setDeliveryMethod(method) {
       this.checkoutStore.setDeliveryMethod(method)
+      if (method === 'delivery' && this.onlinePaymentEnabled) {
+        this.loadCardOnFile()
+      }
+    },
+    async loadCardOnFile() {
+      if (!this.isAuthenticated) return
+      try {
+        const { data } = await apiClient.get('/payments/card')
+        this.cardOnFile = data
+      } catch (e) {
+        this.cardOnFile = this.currentUser?.has_card_on_file
+          ? {
+              has_card: true,
+              brand: this.currentUser.stripe_card_brand,
+              last4: this.currentUser.stripe_card_last4
+            }
+          : { has_card: false }
+      }
+    },
+    async syncCardSetupReturn() {
+      const setupIntentId = this.$route.query.setup_intent
+      const redirectStatus = this.$route.query.redirect_status
+      if (setupIntentId && redirectStatus === 'succeeded') {
+        try {
+          const { data } = await apiClient.post(`/payments/setup-intent/${setupIntentId}`)
+          this.cardOnFile = data
+          await this.authStore.checkAuth()
+        } catch (e) {
+          this.cardSetupError = e.response?.data?.error || '同步绑卡失败，请重试'
+        }
+      }
+      const setup = this.$route.query.card_setup
+      const sessionId = this.$route.query.session_id
+      if (setup === 'success' && sessionId) {
+        try {
+          const { data } = await apiClient.get(`/payments/setup-session/${sessionId}`)
+          this.cardOnFile = data
+          await this.authStore.checkAuth()
+        } catch (e) {
+          this.cardSetupError = e.response?.data?.error || '同步绑卡失败，请重试'
+        }
+      } else if (setup === 'cancel') {
+        this.cardSetupError = '已取消绑卡'
+      }
+      if (setup || setupIntentId) {
+        const query = { ...this.$route.query }
+        delete query.card_setup
+        delete query.session_id
+        delete query.setup_intent
+        delete query.setup_intent_client_secret
+        delete query.redirect_status
+        this.$router.replace({ path: this.$route.path, query }).catch(() => {})
+      }
+    },
+    startCardSetup() {
+      this.cardSetupError = null
+      this.showCardSetup = true
+    },
+    async onCardSaved(card) {
+      this.cardOnFile = card
+      this.showCardSetup = false
+      try {
+        await this.authStore.checkAuth()
+      } catch (e) { /* card already saved */ }
     },
     toggleApplyStoreCredit() {
       if (this.maxStoreCreditApplicable <= 0) return
@@ -1820,6 +1944,64 @@ export default {
   color: var(--md-on-surface-variant);
   text-align: center;
   font-style: italic;
+}
+
+.card-bind-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-on-file {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 140, 0, 0.08);
+  border: 1px solid rgba(255, 140, 0, 0.25);
+  font-size: 0.9375rem;
+}
+
+.card-on-file--empty {
+  background: var(--md-surface-variant);
+  border-color: transparent;
+  color: var(--md-on-surface-variant);
+}
+
+.card-on-file-label {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.card-on-file-status {
+  margin-top: 6px;
+  font-size: 0.8125rem;
+  color: var(--md-on-surface-variant);
+}
+
+.bind-card-btn {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--md-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.bind-card-btn:disabled {
+  opacity: 0.6;
+}
+
+.card-privacy-note {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--md-on-surface-variant);
+}
+
+.card-setup-error {
+  margin: 0;
+  color: #c62828;
+  font-size: 0.8125rem;
 }
 
 .delivery-options {
