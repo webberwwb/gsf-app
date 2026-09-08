@@ -22,7 +22,10 @@
           <div class="profile-card">
             <div class="avatar">{{ userInitial }}</div>
             <div class="profile-info">
-              <h2>{{ userNickname || '用户' }}</h2>
+              <h2>
+                {{ userNickname || '用户' }}
+                <span v-if="authStore.isInfluencer" class="influencer-badge-on-card">推荐官</span>
+              </h2>
               <p class="phone">{{ userPhone || '未设置手机号' }}</p>
               <p v-if="userWechat" class="wechat">微信号: {{ userWechat }}</p>
               <p class="points">积分: {{ userPoints || 0 }}</p>
@@ -45,7 +48,10 @@
             <h3 class="panel-title">代金券余额</h3>
             <p class="panel-emphasis">${{ storeCreditDisplay }}</p>
             <p class="panel-hint">下单支付时可抵扣订单金额（与积分不同）</p>
-            <p v-if="user?.referrer_display_name" class="referrer-line">
+            <p v-if="user?.referrer_is_influencer" class="referrer-line">
+              已使用推荐官邀请码{{ user.referrer_display_name ? `（${user.referrer_display_name}）` : '' }}
+            </p>
+            <p v-else-if="user?.referrer_display_name" class="referrer-line">
               我的邀请人：{{ user.referrer_display_name }}
             </p>
             <button type="button" class="ledger-btn" @click="openCreditLedger">
@@ -66,6 +72,14 @@
             <p v-else class="placeholder-msg">
               完成任意一笔订单后，即可获得专属推荐码。邀请好友加入，双方均可获得代金券。
             </p>
+          </div>
+
+          <div v-if="authStore.isInfluencer" class="panel-block">
+            <h3 class="panel-title">推广收益</h3>
+            <p class="panel-hint">查看客户、收益与专属费率</p>
+            <button type="button" class="ledger-btn" @click="$router.push('/influencer')">
+              进入推广收益
+            </button>
           </div>
 
           <div v-if="user && user.referral_unlocked && invitees.length" class="panel-block">
@@ -101,6 +115,13 @@
         </div>
 
         <div class="menu-section">
+        <div class="menu-item" @click="$router.push('/orders')">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <span class="menu-label">我的订单</span>
+          <span class="menu-arrow">›</span>
+        </div>
         <div class="menu-item" @click="$router.push('/addresses')">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -843,6 +864,22 @@ export default {
   color: white;
   margin-bottom: 0.5rem;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.influencer-badge-on-card {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  text-shadow: none;
+  letter-spacing: 0;
 }
 
 .profile-info .phone {

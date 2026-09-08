@@ -78,6 +78,15 @@ class User(BaseModel):
     def is_admin(self):
         """Check if user has admin role"""
         return any(role.role == 'admin' for role in self.roles)
+
+    @property
+    def is_influencer(self):
+        """Check if user has an active 推荐官 role."""
+        if not any(role.role == 'influencer' for role in self.roles):
+            return False
+        from models.influencer import InfluencerProfile
+        profile = InfluencerProfile.query.filter_by(user_id=self.id, is_active=True).first()
+        return bool(profile)
     
     def has_role(self, role_name):
         """Check if user has a specific role"""
@@ -113,6 +122,7 @@ class User(BaseModel):
             'user_source': self.user_source or 'default',
             'is_active': self.is_active,
             'is_admin': self.is_admin,
+            'is_influencer': self.is_influencer,
             'roles': self.get_roles()
         })
 
@@ -120,10 +130,13 @@ class User(BaseModel):
             inv = self.referrer
             if inv:
                 data['referrer_display_name'] = inv.nickname or inv.phone or f'用户{inv.id}'
+                data['referrer_is_influencer'] = inv.is_influencer
             else:
                 data['referrer_display_name'] = None
+                data['referrer_is_influencer'] = False
         elif include_referrer:
             data['referrer_display_name'] = None
+            data['referrer_is_influencer'] = False
         
         if include_order_count:
             data['order_count'] = self.order_count

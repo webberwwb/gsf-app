@@ -20,6 +20,9 @@ export const useAuthStore = defineStore('auth', {
     },
     isAdmin: (state) => {
       return !!(state.user && state.user.is_admin)
+    },
+    isInfluencer: (state) => {
+      return !!(state.user && state.user.is_influencer)
     }
   },
   

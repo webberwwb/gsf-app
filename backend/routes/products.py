@@ -217,7 +217,9 @@ def get_group_deals():
             for dp in deal_products:
                 product = products_map.get(dp.product_id)
                 if product:
-                    product_dict = deal_product_to_dict(dp, product=product)
+                    product_dict = _apply_buyer_product_pricing(
+                        deal_product_to_dict(dp, product=product), current_user
+                    )
                     products_data.append(product_dict)
             
             # Sort products: out of stock last, discount first, then sort_order
@@ -267,15 +269,25 @@ def _query_open_group_deals(is_admin: bool):
     ).order_by(GroupDeal.order_start_date.desc())
 
 
-def _serialize_group_deal_with_products(deal):
+def _apply_buyer_product_pricing(product_dict, buyer):
+    if product_dict and buyer and getattr(buyer, 'is_influencer', False):
+        from utils.influencer_pricing import apply_influencer_discount_to_product_payload
+        return apply_influencer_discount_to_product_payload(product_dict, buyer.id)
+    return product_dict
+
+
+def _serialize_group_deal_with_products(deal, buyer=None):
     """Build deal dict with nested products (same shape as list/detail endpoints)."""
+    buyer = buyer if buyer is not None else get_current_user_optional()
     deal_dict = deal.to_dict()
     deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
     products_data = []
     for dp in deal_products:
         product = Product.query.get(dp.product_id)
         if product:
-            products_data.append(deal_product_to_dict(dp, product=product))
+            products_data.append(_apply_buyer_product_pricing(
+                deal_product_to_dict(dp, product=product), buyer
+            ))
     _sort_deal_products(products_data)
     deal_dict['products'] = products_data
     return deal_dict

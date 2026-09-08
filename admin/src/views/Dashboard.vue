@@ -54,6 +54,12 @@
           </svg>
           <span>用户管理</span>
         </router-link>
+        <router-link to="/influencers" class="nav-item" :class="{ active: $route.path.startsWith('/influencers') }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l2.4 6.9H22l-6 4.4 2.3 7.2L12 17.4 5.7 21.5 8 14.3 2 9.9h7.6L12 3z" />
+          </svg>
+          <span>推荐官</span>
+        </router-link>
         <router-link to="/credit-referrals" class="nav-item" :class="{ active: $route.path === '/credit-referrals' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v13m0-13V6a2 2 0 112-2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
@@ -190,6 +196,7 @@ export default {
         '/stripe-payments': '在线支付',
         '/users': '用户管理',
         '/credit-referrals': '用户推广',
+        '/influencers': '推荐官',
         '/sales-management': '销售管理',
         '/suppliers': '供应商管理',
         '/shipping-fee': '运费管理',

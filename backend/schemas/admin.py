@@ -33,7 +33,7 @@ class UpdateSupplierSchema(Schema):
 
 class AssignRoleSchema(Schema):
     """Schema for assigning a role to a user"""
-    role = fields.String(required=True, validate=validate.OneOf(['admin', 'user']))
+    role = fields.String(required=True, validate=validate.OneOf(['admin', 'user', 'influencer']))
     
     class Meta:
         unknown = EXCLUDE
@@ -120,6 +120,7 @@ class UpdateUserSchema(Schema):
     points = fields.Integer(allow_none=True, validate=validate.Range(min=0))
     user_source = fields.String(allow_none=True, validate=validate.Length(max=50))
     status = fields.String(allow_none=True, validate=validate.OneOf(['active', 'banned', 'inactive']))
+    referred_by_user_id = fields.Integer(allow_none=True)
     
     class Meta:
         unknown = EXCLUDE

@@ -189,7 +189,10 @@
 
       <div v-if="!isOrderCompleted" class="credit-referral-section">
         <h3 class="section-title">优惠与推荐</h3>
-        <p v-if="currentUser?.referrer_display_name" class="referrer-bound-note">
+        <p v-if="currentUser?.referrer_is_influencer" class="referrer-bound-note">
+          已使用推荐官邀请码{{ currentUser.referrer_display_name ? `（${currentUser.referrer_display_name}）` : '' }}
+        </p>
+        <p v-else-if="currentUser?.referrer_display_name" class="referrer-bound-note">
           已绑定邀请人：{{ currentUser.referrer_display_name }}
         </p>
         <div class="credit-referral-stack">

@@ -74,7 +74,8 @@
           <div class="product-info-section">
             <h2 class="product-name">
               {{ product.name }}
-              <span v-if="product.is_discount" class="discount-product-badge">折扣</span>
+              <span v-if="product.influencer_discount" class="discount-product-badge influencer-rate">推荐官折扣</span>
+              <span v-else-if="product.is_discount" class="discount-product-badge">折扣</span>
             </h2>
             
             <!-- Price Display -->
@@ -746,6 +747,10 @@ export default {
   background: #FEF3C7;
   color: #B45309;
   vertical-align: middle;
+}
+.discount-product-badge.influencer-rate {
+  background: #FFF3E0;
+  color: #E65100;
 }
 
 .qty-break-hint {

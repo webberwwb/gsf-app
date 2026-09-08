@@ -49,9 +49,9 @@ export function productSharesVariantPrice(product) {
   return product.variants_share_price !== false
 }
 
-/** Deal product APIs set is_discount per deal; catalog products are never on sale. */
+/** Deal product APIs set is_discount per deal; 推荐官 payloads also mark influencer_discount. */
 export function productOnSale(product) {
-  return !!product?.is_discount
+  return !!(product?.is_discount || product?.influencer_discount)
 }
 
 function optionalNumber(value) {

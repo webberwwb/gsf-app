@@ -110,6 +110,19 @@ def sync_order_pricing(order, *, reprice_lines=True):
     recalculate_order_totals(order)
     clamp_store_credit(order)
     recalculate_order_totals(order)
+    _sync_influencer_commission(order)
+
+
+def _sync_influencer_commission(order):
+    from constants.status_enums import OrderStatus
+    from services import influencer_service
+
+    if getattr(order, 'deleted_at', None):
+        return
+    if order.status == OrderStatus.CANCELLED.value:
+        influencer_service.reverse_for_order(order, reason='订单已取消')
+        return
+    influencer_service.accrue_for_order(order)
 
 
 __doc__ = (recalculate_order_totals.__doc__ or '') + '\n\n' + ORDER_PRICING_AND_POINTS_RULES

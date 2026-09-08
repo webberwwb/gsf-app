@@ -110,10 +110,19 @@ def try_bind_referral(invitee: User, raw_code: str):
         return False, err
 
     inviter = meta['inviter']
-    cfg = get_active_referral_config()
-    bonus = Decimal(str(cfg.invitee_bonus_amount or 0))
-    if bonus < 0:
-        bonus = Decimal('0')
+    from services import influencer_service
+    influencer_bonus = influencer_service.lead_bonus_for_inviter(inviter)
+    if influencer_bonus is not None:
+        bonus = influencer_bonus
+        tx_type = credit_service.TX_INFLUENCER_LEAD_BONUS
+        reason = '推荐官邀请奖励'
+    else:
+        cfg = get_active_referral_config()
+        bonus = Decimal(str(cfg.invitee_bonus_amount or 0))
+        if bonus < 0:
+            bonus = Decimal('0')
+        tx_type = credit_service.TX_REFERRAL_INVITEE
+        reason = '好友推荐奖励'
 
     invitee.referred_by_user_id = inviter.id
     rec = ReferralRecord(
@@ -128,8 +137,8 @@ def try_bind_referral(invitee: User, raw_code: str):
         tx = credit_service.apply_credit_change(
             invitee,
             bonus,
-            credit_service.TX_REFERRAL_INVITEE,
-            reason='好友推荐奖励',
+            tx_type,
+            reason=reason,
             related_referral_id=rec.id,
             metadata={'inviter_id': inviter.id},
         )
@@ -159,10 +168,18 @@ def on_order_first_completed(order: Order, old_status: str):
     if not rec:
         return
 
+    from services import influencer_service
+    inviter = User.query.get(rec.inviter_user_id)
+    if influencer_service.is_active_influencer(inviter):
+        rec.status = ReferralRecord.STATUS_REWARDED
+        rec.first_completed_order_id = order.id
+        rec.rewarded_at = utc_now()
+        db.session.flush()
+        return
+
     cfg = get_active_referral_config()
     reward = Decimal(str(cfg.inviter_reward_amount or 0))
     if reward > 0:
-        inviter = User.query.get(rec.inviter_user_id)
         if inviter:
             tx = credit_service.apply_credit_change(
                 inviter,

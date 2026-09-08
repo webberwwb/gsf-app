@@ -100,6 +100,30 @@ const router = createRouter({
       meta: { requiresAuth: true, showBottomNav: false }
     },
     {
+      path: '/influencer',
+      name: 'InfluencerHome',
+      component: () => import('../views/InfluencerHome.vue'),
+      meta: { requiresAuth: true, requiresInfluencer: true, showBottomNav: true }
+    },
+    {
+      path: '/influencer/customers',
+      name: 'InfluencerCustomers',
+      component: () => import('../views/InfluencerCustomers.vue'),
+      meta: { requiresAuth: true, requiresInfluencer: true, showBottomNav: true }
+    },
+    {
+      path: '/influencer/customers/:id',
+      name: 'InfluencerCustomerDetail',
+      component: () => import('../views/InfluencerCustomerDetail.vue'),
+      meta: { requiresAuth: true, requiresInfluencer: true, showBottomNav: true }
+    },
+    {
+      path: '/influencer/rates',
+      name: 'InfluencerRates',
+      component: () => import('../views/InfluencerRates.vue'),
+      meta: { requiresAuth: true, requiresInfluencer: true, showBottomNav: true }
+    },
+    {
       path: '/invite/:code',
       redirect: to => ({ path: '/login', query: { ref: to.params.code } })
     },
@@ -128,6 +152,10 @@ router.beforeEach(async (to, from, next) => {
   // Guest browsing is allowed for most routes
   if (to.meta.requiresAuth && !authStore.token) {
     next('/login')
+    return
+  }
+  if (to.meta.requiresInfluencer && !authStore.isInfluencer) {
+    next('/me')
     return
   }
   

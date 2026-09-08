@@ -3,6 +3,7 @@
     <header class="page-header">
       <div class="header-center">
         <h1>团购下单</h1>
+        <span v-if="authStore.isInfluencer" class="influencer-header-chip">推荐官</span>
       </div>
     </header>
 
@@ -157,6 +158,17 @@ export default {
   text-align: center;
   letter-spacing: -0.5px;
   margin: 0;
+}
+
+.influencer-header-chip {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  white-space: nowrap;
 }
 
 .loading, .error {

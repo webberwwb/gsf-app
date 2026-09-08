@@ -287,7 +287,9 @@ def create_order():
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
         
         try:
-            order_items, subtotal = priced_items_from_request(items, group_deal_id=group_deal_id)
+            order_items, subtotal = priced_items_from_request(
+                items, group_deal_id=group_deal_id, buyer_user_id=user_id
+            )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
 
@@ -436,6 +438,8 @@ def cancel_order(order_id):
             credit_service.refund_order_store_credit(order, user_row)
         order.status = OrderStatus.CANCELLED.value
         order.updated_at = utc_now()
+        from services import influencer_service
+        influencer_service.reverse_for_order(order, reason='订单已取消')
         
         db.session.commit()
         
@@ -668,7 +672,7 @@ def update_order(order_id):
         unavailable_by_item_id = {item.id: item.is_unavailable for item in order.items}
         try:
             new_order_items, subtotal = priced_items_from_request(
-                items, unavailable_by_item_id, group_deal_id=order.group_deal_id
+                items, unavailable_by_item_id, group_deal_id=order.group_deal_id, buyer_user_id=user_id
             )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400

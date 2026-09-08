@@ -20,4 +20,11 @@ from models.customer_feedback import CustomerFeedback, FeedbackContext, Feedback
 from models.work_document import WorkDocument, ActionItem
 from models.credit_transaction import CreditTransaction
 from models.referral_program import ReferralProgramConfig, ReferralRecord
+from models.influencer import (
+    InfluencerProfile,
+    InfluencerProgramConfig,
+    InfluencerProductRate,
+    InfluencerRateOverride,
+    InfluencerCommissionEntry,
+)
 

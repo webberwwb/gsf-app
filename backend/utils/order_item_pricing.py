@@ -70,17 +70,21 @@ def attach_deal_sale(product, group_deal_id=None, deal_product=None):
 def paid_pricing_data(product, pricing_data=None):
     """Copy of pricing_data with sale fields applied when the product is on sale."""
     pd = dict(pricing_data if pricing_data is not None else (getattr(product, 'pricing_data', None) or {}))
-    if not product_on_sale(product):
-        return pd
     pricing_type = getattr(product, 'pricing_type', None)
-    if pricing_type == 'per_item':
-        sale = _optional_float(pd.get('sale_price'))
-        if sale is not None:
-            pd['price'] = sale
-    elif pricing_type in ('unit_weight', 'bundled_weight'):
-        sale = _optional_float(pd.get('sale_price_per_unit'))
-        if sale is not None:
-            pd['price_per_unit'] = sale
+    if product_on_sale(product):
+        if pricing_type == 'per_item':
+            sale = _optional_float(pd.get('sale_price'))
+            if sale is not None:
+                pd['price'] = sale
+        elif pricing_type in ('unit_weight', 'bundled_weight'):
+            sale = _optional_float(pd.get('sale_price_per_unit'))
+            if sale is not None:
+                pd['price_per_unit'] = sale
+    disc = getattr(product, '_influencer_discount', None)
+    if disc:
+        from utils.influencer_pricing import apply_rate_to_pricing_data
+        commission_type, amount = disc
+        pd = apply_rate_to_pricing_data(pricing_type, pd, commission_type, amount)
     return pd
 
 
@@ -218,6 +222,8 @@ def resolve_per_item_unit(product, variant, product_qty, snapshot_delta=None):
         breaks = getattr(variant, 'quantity_breaks', None)
         unit = lookup_break_price(base, breaks, qty)
         delta = round_money_float(base - list_price)
+        from utils.influencer_pricing import apply_influencer_unit_discount
+        unit = apply_influencer_unit_discount(product, unit, 'per_item')
         return round_money_float(unit), delta
 
     unit = lookup_break_price(product_base, pd.get('quantity_breaks'), qty)
@@ -227,7 +233,9 @@ def resolve_per_item_unit(product, variant, product_qty, snapshot_delta=None):
         delta = _safe_float(snapshot_delta, 0)
     else:
         delta = 0.0
-    return round_money_float(unit + delta), round_money_float(delta)
+    from utils.influencer_pricing import apply_influencer_unit_discount
+    unit = apply_influencer_unit_discount(product, unit + delta, 'per_item')
+    return round_money_float(unit), round_money_float(delta)
 
 
 def expand_request_items(items):
@@ -461,6 +469,10 @@ def build_priced_order_item(
         pricing_type=pricing_type,
         cannot_fulfill=cannot_fulfill,
     )
+    from utils.influencer_pricing import apply_influencer_line_discount
+    unit_price, total_price = apply_influencer_line_discount(
+        product, unit_price, total_price, quantity
+    )
 
     return {
         'product_id': product.id,
@@ -490,6 +502,8 @@ def recalculate_existing_item(item, product=None, product_qty=None):
         from models.order import Order
         order = Order.query.get(item.order_id)
     attach_deal_sale(product, group_deal_id=getattr(order, 'group_deal_id', None))
+    from utils.influencer_pricing import attach_influencer_buyer_discount
+    attach_influencer_buyer_discount(product, getattr(order, 'user_id', None))
 
     pricing_type = product.pricing_type
     pooled_qty = pooled_product_qty_for_item(item, product_qty)
@@ -527,6 +541,10 @@ def recalculate_existing_item(item, product=None, product_qty=None):
         final_weight=item.final_weight,
         pricing_type=pricing_type,
         cannot_fulfill=bool(getattr(item, 'cannot_fulfill', False)),
+    )
+    from utils.influencer_pricing import apply_influencer_line_discount
+    unit_price, total_price = apply_influencer_line_discount(
+        product, unit_price, total_price, item.quantity
     )
     item.unit_price = round_money(unit_price)
     item.total_price = round_money(total_price)
@@ -697,7 +715,7 @@ def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
     return stats
 
 
-def priced_items_from_request(items, unavailable_by_item_id=None, *, require_variant=True, group_deal_id=None):
+def priced_items_from_request(items, unavailable_by_item_id=None, *, require_variant=True, group_deal_id=None, buyer_user_id=None):
     """Build priced order line dicts from request items. Raises ValueError on error."""
     unavailable_by_item_id = unavailable_by_item_id or {}
     order_items = []
@@ -714,6 +732,8 @@ def priced_items_from_request(items, unavailable_by_item_id=None, *, require_var
         if not product:
             raise ValueError(f'Product {item_data["product_id"]} not found')
         attach_deal_sale(product, group_deal_id=group_deal_id)
+        from utils.influencer_pricing import attach_influencer_buyer_discount
+        attach_influencer_buyer_discount(product, buyer_user_id)
 
         item_id = item_data.get('id')
         is_unavailable = item_data.get('is_unavailable')

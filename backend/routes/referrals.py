@@ -14,6 +14,9 @@ _TX_TYPE_LABELS = {
     'referral_inviter_reward': '邀请好友成功下单',
     'order_spend': '订单使用',
     'order_credit_refund': '订单退回代金券',
+    'influencer_lead_bonus': '推荐官邀请奖励',
+    'influencer_commission': '推荐官收益',
+    'influencer_commission_reversal': '推荐官收益冲回',
 }
 
 

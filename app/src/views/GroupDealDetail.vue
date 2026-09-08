@@ -184,7 +184,8 @@
             <div class="product-details">
               <div class="product-name-row">
                 <h4 class="product-name" @click="openProductModal(product)">{{ product.name }}</h4>
-                <span v-if="product.is_discount" class="discount-product-badge">折扣</span>
+                <span v-if="product.influencer_discount" class="discount-product-badge influencer-rate">推荐官折扣</span>
+                <span v-else-if="product.is_discount" class="discount-product-badge">折扣</span>
                 <span v-if="product.counts_toward_free_shipping === false" class="shipping-excluded-badge">
                   不计入免运
                 </span>
@@ -1940,6 +1941,10 @@ export default {
   background: #FFEBEE;
   color: #E53935;
   flex-shrink: 0;
+}
+.discount-product-badge.influencer-rate {
+  background: #FFF3E0;
+  color: #E65100;
 }
 
 .qty-break-hint {

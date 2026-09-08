@@ -158,6 +158,16 @@ def create_app(config_class=Config):
         app.register_blueprint(payments_bp, url_prefix='/api')
     except ImportError:
         pass
+    try:
+        from routes.influencer import influencer_bp
+        app.register_blueprint(influencer_bp, url_prefix='/api/influencer')
+    except ImportError:
+        pass
+    try:
+        from routes.admin_influencers import admin_influencers_bp
+        app.register_blueprint(admin_influencers_bp, url_prefix='/api/admin')
+    except ImportError:
+        pass
     app.register_blueprint(api_bp, url_prefix='/api')
 
     @app.route('/invite/<code>')

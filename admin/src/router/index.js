@@ -49,6 +49,11 @@ const router = createRouter({
           component: () => import('../views/CreditAndReferrals.vue')
         },
         {
+          path: 'influencers',
+          name: 'Influencers',
+          component: () => import('../views/Influencers.vue')
+        },
+        {
           path: 'sales-management',
           name: 'SalesManagement',
           component: () => import('../views/SalesManagement.vue')

@@ -4,7 +4,7 @@ from models.base import utc_now
 from models.user import User
 from constants.status_enums import PaymentStatus, OrderStatus, DeliveryMethod, PaymentMethod
 from utils.order_points import award_order_points
-from services import referral_service
+from services import referral_service, influencer_service
 
 
 def mark_order_paid(order, transaction_id=None, amount_charged=None):
@@ -21,6 +21,7 @@ def mark_order_paid(order, transaction_id=None, amount_charged=None):
     if amount_charged is not None:
         order.stripe_amount_charged = amount_charged
     referral_service.on_order_first_completed(order, old_status)
+    influencer_service.accrue_for_order(order)
     return order
 
 

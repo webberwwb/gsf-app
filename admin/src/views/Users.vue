@@ -62,6 +62,7 @@
               <div class="user-name-row">
                 <span class="user-name">{{ user.nickname || user.phone || '未设置' }}</span>
                 <span v-if="user.is_admin" class="admin-badge">管理员</span>
+                <span v-else-if="user.is_influencer" class="influencer-badge">推荐官</span>
                 <span v-else class="normal-user-badge">普通用户</span>
                 <span v-if="user.user_source" class="source-badge" :class="user.user_source === '花泽' ? 'source-huaze' : 'source-default'">
                   {{ user.user_source }}
@@ -69,6 +70,10 @@
               </div>
               <div class="user-phone">{{ user.phone || user.email || 'N/A' }}</div>
               <div v-if="user.wechat" class="user-wechat">微信号: {{ user.wechat }}</div>
+              <div v-if="user.referrer_display_name" class="user-wechat">
+                推荐人: {{ user.referrer_display_name }}
+                <span v-if="user.referrer_is_influencer" class="influencer-badge inline">推荐官</span>
+              </div>
               <div class="user-meta">
                 <span v-if="!user.is_admin" class="meta-item">积分: {{ user.points || 0 }}</span>
                 <span class="meta-item">注册时间: {{ formatDate(user.creation_date) }}</span>
@@ -163,6 +168,7 @@
               <option value="">请选择角色</option>
               <option value="admin">管理员</option>
               <option value="user">普通用户</option>
+              <option value="influencer">推荐官</option>
             </select>
           </div>
         </div>
@@ -208,6 +214,10 @@
                 <option value="default">默认</option>
                 <option value="花泽">花泽</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label>推荐人用户 ID:</label>
+              <input v-model="editForm.referred_by_user_id" type="text" class="form-input" placeholder="留空则清除" />
             </div>
             <div class="form-group">
               <label>状态:</label>
@@ -267,7 +277,8 @@ export default {
         wechat: '',
         points: 0,
         user_source: 'default',
-        status: 'active'
+        status: 'active',
+        referred_by_user_id: ''
       },
       editingUser: null,
       // Pagination state
@@ -425,7 +436,8 @@ export default {
     getRoleLabel(role) {
       const labels = {
         'admin': '管理员',
-        'user': '普通用户'
+        'user': '普通用户',
+        'influencer': '推荐官'
       }
       return labels[role] || role
     },
@@ -542,7 +554,8 @@ export default {
         wechat: user.wechat || '',
         points: user.points || 0,
         user_source: user.user_source || 'default',
-        status: user.status || 'active'
+        status: user.status || 'active',
+        referred_by_user_id: user.referred_by_user_id || ''
       }
       this.showEditModal = true
     },
@@ -556,7 +569,8 @@ export default {
         wechat: '',
         points: 0,
         user_source: 'default',
-        status: 'active'
+        status: 'active',
+        referred_by_user_id: ''
       }
     },
     async saveUserEdit() {
@@ -593,6 +607,13 @@ export default {
         }
         if (this.editForm.status !== this.editingUser.status) {
           updateData.status = this.editForm.status
+        }
+        const newRef = this.editForm.referred_by_user_id === '' || this.editForm.referred_by_user_id == null
+          ? null
+          : parseInt(this.editForm.referred_by_user_id, 10)
+        const oldRef = this.editingUser.referred_by_user_id || null
+        if (newRef !== oldRef && (newRef === null || !Number.isNaN(newRef))) {
+          updateData.referred_by_user_id = newRef
         }
         
         // If no changes, just close modal
@@ -848,6 +869,20 @@ export default {
   font-weight: 500;
 }
 
+.influencer-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  background: rgba(255, 140, 0, 0.2);
+  color: var(--md-primary);
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+}
+
+.influencer-badge.inline {
+  margin-left: 0.35rem;
+}
+
 .normal-user-badge {
   display: inline-block;
   padding: 0.125rem 0.5rem;
@@ -899,6 +934,11 @@ export default {
 .role-badge.user {
   background: var(--md-surface-variant);
   color: var(--md-on-surface-variant);
+}
+
+.role-badge.influencer {
+  background: rgba(255, 140, 0, 0.2);
+  color: var(--md-primary);
 }
 
 .user-phone {

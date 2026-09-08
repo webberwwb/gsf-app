@@ -11,6 +11,9 @@ TX_REFERRAL_INVITEE = 'referral_invitee_bonus'
 TX_REFERRAL_INVITER = 'referral_inviter_reward'
 TX_ORDER_SPEND = 'order_spend'
 TX_ORDER_CREDIT_REFUND = 'order_credit_refund'
+TX_INFLUENCER_LEAD_BONUS = 'influencer_lead_bonus'
+TX_INFLUENCER_COMMISSION = 'influencer_commission'
+TX_INFLUENCER_COMMISSION_REVERSAL = 'influencer_commission_reversal'
 
 
 def apply_credit_change(

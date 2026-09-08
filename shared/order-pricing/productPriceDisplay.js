@@ -63,7 +63,7 @@ export function formatUnitPriceDisplay(pricePerUnit, unit = 'lb') {
 }
 
 export function isProductOnSale(product) {
-  if (!product?.is_discount) return false
+  if (!product?.is_discount && !product?.influencer_discount) return false
   const original = getProductOriginalAmount(product)
   const paid = getProductPaidAmount(product)
   return original != null && paid != null && roundMoney(original) > roundMoney(paid)
@@ -93,14 +93,14 @@ export function getProductPaidAmount(product) {
   const pd = product.pricing_data || {}
   const pt = product.pricing_type
   if (pt === 'unit_weight' || pt === 'bundled_weight') {
-    if (product.is_discount && pd.sale_price_per_unit != null && pd.sale_price_per_unit !== '') {
+    if ((product.is_discount || product.influencer_discount) && pd.sale_price_per_unit != null && pd.sale_price_per_unit !== '') {
       const sale = parseFloat(pd.sale_price_per_unit)
       if (Number.isFinite(sale)) return sale
     }
     const n = parseFloat(pd.price_per_unit)
     return Number.isFinite(n) ? n : null
   }
-  if (product.is_discount && pd.sale_price != null && pd.sale_price !== '') {
+  if ((product.is_discount || product.influencer_discount) && pd.sale_price != null && pd.sale_price !== '') {
     const sale = parseFloat(pd.sale_price)
     if (Number.isFinite(sale)) return sale
   }

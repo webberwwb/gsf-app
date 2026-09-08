@@ -267,15 +267,22 @@ def calculate_commission_for_group_deal(group_deal_id: int, recalculate: bool = 
     if not group_deal:
         return {'success': False, 'error': 'Group deal not found'}
     
-    # Delete existing records if recalculate is True
-    if recalculate:
-        CommissionRecord.query.filter_by(group_deal_id=group_deal_id).delete()
-        db.session.commit()
-    
-    # Get all active SDRs
+    # Recalculate only refreshes active SDRs. Inactive SDR history is left as-is.
     sdrs = SDR.query.filter_by(is_active=True).all()
+    if recalculate and sdrs:
+        CommissionRecord.query.filter(
+            CommissionRecord.group_deal_id == group_deal_id,
+            CommissionRecord.sdr_id.in_([sdr.id for sdr in sdrs]),
+        ).delete(synchronize_session=False)
+        db.session.commit()
+
     if not sdrs:
-        return {'success': False, 'error': 'No active SDRs found'}
+        return {
+            'success': True,
+            'records': [],
+            'total_commission': 0,
+            'message': 'No active SDRs',
+        }
     
     # Only paid, completed orders count toward commission
     orders = Order.query.filter(

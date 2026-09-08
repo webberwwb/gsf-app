@@ -693,7 +693,7 @@ def get_users():
         users = pagination.items
         
         return jsonify({
-            'users': [user.to_dict(include_order_count=True) for user in users],
+            'users': [user.to_dict(include_order_count=True, include_referrer=True) for user in users],
             'pagination': {
                 'page': pagination.page,
                 'per_page': pagination.per_page,
@@ -739,11 +739,10 @@ def update_user(user_id):
         user = User.query.get_or_404(user_id)
         
         # Validate request data
-        errors = validate_request(UpdateUserSchema, request.json)
-        if errors:
-            return jsonify({'error': 'Validation failed', 'details': errors}), 400
-        
-        data = request.json
+        data, error_response, status_code = validate_request(UpdateUserSchema, request.json)
+        if error_response:
+            return error_response, status_code
+        data = data or {}
         
         # Update fields if provided
         if 'phone' in data:
@@ -773,6 +772,18 @@ def update_user(user_id):
         
         if 'user_source' in data:
             user.user_source = data['user_source']
+
+        if 'referred_by_user_id' in data:
+            new_ref = data['referred_by_user_id']
+            if new_ref is None:
+                user.referred_by_user_id = None
+            else:
+                if int(new_ref) == user.id:
+                    return jsonify({'error': 'Cannot set user as their own referrer'}), 400
+                referrer = User.query.get(int(new_ref))
+                if not referrer:
+                    return jsonify({'error': 'Referrer user not found'}), 400
+                user.referred_by_user_id = referrer.id
         
         if 'status' in data:
             user.status = data['status']
@@ -1085,6 +1096,9 @@ def assign_user_role(user_id):
         # Create new role
         user_role = UserRole(user_id=user.id, role=role_name)
         db.session.add(user_role)
+        if role_name == 'influencer':
+            from services import influencer_service
+            influencer_service.activate_profile_for_user(user.id)
         db.session.commit()
         
         current_app.logger.info(f'Assigned role {role_name} to user {user.id}')
@@ -1123,6 +1137,9 @@ def remove_user_role(user_id, role_name):
             return jsonify({'error': 'Role not found'}), 404
         
         db.session.delete(user_role)
+        if role_name == 'influencer':
+            from services import influencer_service
+            influencer_service.deactivate_profile_for_user(user.id)
         db.session.commit()
         
         current_app.logger.info(f'Removed role {role_name} from user {user.id}')
@@ -2211,6 +2228,14 @@ def update_order_status(order_id):
                 current_app.logger.info(f'Awarded {points_awarded} points to user {user.id} for order {order_id}')
 
             current_app.logger.info(f'Auto-marked pickup cash order {order_id} as paid when completing')
+
+        if status == OrderStatus.COMPLETED.value and order.payment_status == PaymentStatus.PAID.value:
+            from services import influencer_service
+            influencer_service.accrue_for_order(order)
+
+        if status == OrderStatus.CANCELLED.value and old_status != OrderStatus.CANCELLED.value:
+            from services import influencer_service
+            influencer_service.reverse_for_order(order, reason='订单已取消')
         
         points_awarded = 0
         points_notice = None
@@ -2326,6 +2351,12 @@ def bulk_update_order_status():
             order.status = new_status
             order.updated_at = utc_now()
             referral_service.on_order_first_completed(order, old_status)
+            if new_status == OrderStatus.COMPLETED.value and order.payment_status == PaymentStatus.PAID.value:
+                from services import influencer_service
+                influencer_service.accrue_for_order(order)
+            elif new_status == OrderStatus.CANCELLED.value and old_status != OrderStatus.CANCELLED.value:
+                from services import influencer_service
+                influencer_service.reverse_for_order(order, reason='订单已取消')
             updated_count += 1
             current_app.logger.info(f'Bulk updated order {order.id} status from {old_status} to {new_status}')
         
@@ -2378,6 +2409,8 @@ def admin_cancel_order(order_id):
         if user_row:
             credit_service.refund_order_store_credit(order, user_row)
         order.status = OrderStatus.CANCELLED.value
+        from services import influencer_service
+        influencer_service.reverse_for_order(order, reason='订单已取消')
         db.session.commit()
 
         current_app.logger.info(f'Admin cancelled order {order_id} (was {old_status})')
@@ -2441,11 +2474,15 @@ def update_order_payment(order_id):
                 # For other orders, also auto-complete (existing behavior)
                 order.status = OrderStatus.COMPLETED.value
                 current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {points_awarded}')
+            from services import influencer_service
+            influencer_service.accrue_for_order(order)
         elif old_payment_status == PaymentStatus.PAID.value and payment_status == PaymentStatus.UNPAID.value:
             user = User.query.get(order.user_id)
             revoked = revoke_order_points(order, user)
             if user and revoked:
                 current_app.logger.info(f'Revoked {revoked} points from user {user.id} for order {order_id}')
+            from services import influencer_service
+            influencer_service.reverse_for_order(order, reason='订单改为未付款')
         
         referral_service.on_order_first_completed(order, old_order_status)
         
@@ -2728,7 +2765,10 @@ def update_admin_order(order_id):
         ]
         try:
             priced_items, subtotal = priced_items_from_request(
-                filtered_items, require_variant=False, group_deal_id=order.group_deal_id
+                filtered_items,
+                require_variant=False,
+                group_deal_id=order.group_deal_id,
+                buyer_user_id=order.user_id,
             )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
