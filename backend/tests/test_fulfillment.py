@@ -1,5 +1,5 @@
 """Fulfillment role: RBAC, PII lock, delivery assignment, timesheets, login."""
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from constants.status_enums import DeliveryHandler, DeliveryMethod, OrderStatus, PaymentStatus, UserStatus
@@ -81,7 +81,7 @@ def _product():
     return p
 
 
-def _order(user, deal, product, delivery=False, status=OrderStatus.PREPARING.value, postal_code='M1M1M1'):
+def _order(user, deal, product, delivery=False, status=OrderStatus.PREPARING.value, city='Toronto', postal_code='M1M1M1'):
     address = None
     if delivery:
         address = Address(
@@ -89,7 +89,7 @@ def _order(user, deal, product, delivery=False, status=OrderStatus.PREPARING.val
             recipient_name='收件人',
             phone='+14165550100',
             address_line1='1 Main St',
-            city='Toronto',
+            city=city,
             postal_code=postal_code,
         )
         db.session.add(address)
@@ -254,14 +254,34 @@ def test_save_delivery_photo_persists_and_can_retake(app):
     assert order.delivery_photo_url is None
 
 
+def test_delivery_fee_for_address(app):
+    assert fulfillment_service.delivery_fee_for_address(None) == Decimal('7.00')
+    assert fulfillment_service.delivery_fee_for_address(Address(city='Toronto')) == Decimal('7.00')
+    assert fulfillment_service.delivery_fee_for_address(Address(city='Markham')) == Decimal('6.00')
+    assert fulfillment_service.delivery_fee_for_address(Address(city='richmond hill')) == Decimal('6.00')
+    assert fulfillment_service.delivery_fee_rates() == {
+        'nearby_cities': ['Markham', 'Richmond Hill'],
+        'nearby_fee': 6.0,
+        'other_fee': 7.0,
+    }
+
+
 def test_self_delivery_earns_fee_third_party_does_not(app):
     staff = _fulfillment()
-    profile = fulfillment_service.get_or_create_profile(staff.id)
-    profile.delivery_fee_per_order = Decimal('8.00')
     customer = _user('+10000000113', 'Cust3')
     deal = _deal('preparing')
     product = _product()
-    self_order = _order(customer, deal, product, delivery=True, status=OrderStatus.OUT_FOR_DELIVERY.value)
+    toronto = _order(
+        customer, deal, product, delivery=True, status=OrderStatus.OUT_FOR_DELIVERY.value, city='Toronto'
+    )
+    markham = _order(
+        _user('+10000000115', 'Cust5'),
+        deal,
+        product,
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+        city='Markham',
+    )
     other = _order(
         _user('+10000000114', 'Cust4'),
         deal,
@@ -270,18 +290,23 @@ def test_self_delivery_earns_fee_third_party_does_not(app):
         status=OrderStatus.OUT_FOR_DELIVERY.value,
     )
     other.order_number = 'TEST-FUL-OTHER'
-    fulfillment_service.assign_delivery(self_order, DeliveryHandler.SELF.value, staff)
+    fulfillment_service.assign_delivery(toronto, DeliveryHandler.SELF.value, staff)
+    fulfillment_service.assign_delivery(markham, DeliveryHandler.SELF.value, staff)
     fulfillment_service.assign_delivery(other, DeliveryHandler.THIRD_PARTY.value, staff, 'FlashBox')
     db.session.commit()
 
     client = app.test_client()
     headers = _headers(staff)
-    done = client.post(
-        f'/api/admin/fulfillment/orders/{self_order.id}/mark-delivered',
+    assert client.post(
+        f'/api/admin/fulfillment/orders/{toronto.id}/mark-delivered',
         json={'photo_url': 'https://example.com/p.jpg'},
         headers=headers,
-    )
-    assert done.status_code == 200
+    ).status_code == 200
+    assert client.post(
+        f'/api/admin/fulfillment/orders/{markham.id}/mark-delivered',
+        json={},
+        headers=headers,
+    ).status_code == 200
     third = client.post(
         f'/api/admin/fulfillment/orders/{other.id}/mark-delivered',
         json={},
@@ -290,12 +315,63 @@ def test_self_delivery_earns_fee_third_party_does_not(app):
     assert third.status_code == 200
 
     earnings = fulfillment_service.earnings_for_user(staff.id)
-    assert earnings['totals']['delivery_count'] == 1
-    assert earnings['totals']['delivery'] == 8.0
+    assert earnings['totals']['delivery_count'] == 2
+    assert earnings['totals']['delivery'] == 13.0
+    fees = {row['city']: row['fee'] for row in earnings['deliveries']}
+    assert fees['Toronto'] == 7.0
+    assert fees['Markham'] == 6.0
+    toronto_line = next(row for row in earnings['deliveries'] if row['city'] == 'Toronto')
+    assert toronto_line['suggested_fee'] == 7.0
+    assert toronto_line['fee_overridden'] is False
+
+
+def test_admin_can_override_driver_delivery_fee(app):
+    staff = _fulfillment()
+    admin = _admin()
+    deal = _deal('preparing')
+    product = _product()
+    order = _order(
+        _user('+10000000116', 'Cust6'),
+        deal,
+        product,
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+        city='Toronto',
+    )
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+
+    client = app.test_client()
+    assert client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-delivered',
+        json={},
+        headers=_headers(staff),
+    ).status_code == 200
+
+    denied = client.put(
+        f'/api/admin/fulfillment/orders/{order.id}/driver-fee',
+        json={'amount': 6},
+        headers=_headers(staff),
+    )
+    assert denied.status_code == 403
+
+    fixed = client.put(
+        f'/api/admin/fulfillment/orders/{order.id}/driver-fee',
+        json={'amount': 6},
+        headers=_headers(admin),
+    )
+    assert fixed.status_code == 200
+    assert fixed.get_json()['delivery_fee_earned'] == 6.0
+    assert fixed.get_json()['delivery']['fee_overridden'] is True
+
+    earnings = fulfillment_service.earnings_for_user(staff.id)
+    assert earnings['totals']['delivery'] == 6.0
+    assert earnings['deliveries'][0]['fee'] == 6.0
+    assert earnings['deliveries'][0]['suggested_fee'] == 7.0
+    assert earnings['deliveries'][0]['fee_overridden'] is True
 
 
 def test_biweekly_billing_next_pay_date(app):
-    from datetime import date
     sep9 = fulfillment_service.biweekly_billing(date(2026, 9, 9))
     assert sep9['cycle'] == 'biweekly'
     assert sep9['next_pay_date'] == '2026-09-11'
@@ -309,6 +385,36 @@ def test_biweekly_billing_next_pay_date(app):
 
     after = fulfillment_service.biweekly_billing(date(2026, 9, 12))
     assert after['next_pay_date'] == '2026-09-25'
+
+    before_anchor = fulfillment_service.biweekly_billing(date(2026, 8, 20))
+    assert before_anchor['next_pay_date'] == '2026-08-28'
+    assert before_anchor['period_start'] == '2026-08-15'
+    assert before_anchor['period_end'] == '2026-08-28'
+
+
+def test_earnings_cycles_group_by_pay_period(app):
+    staff = _fulfillment()
+    fulfillment_service.create_session(staff.id, staff.id, {
+        'work_date': '2026-08-20',
+        'start_time': '16:00',
+        'end_time': '18:00',
+    })
+    fulfillment_service.create_session(staff.id, staff.id, {
+        'work_date': '2026-09-06',
+        'start_time': '16:00',
+        'end_time': '19:00',
+    })
+    db.session.commit()
+
+    cycles = fulfillment_service.earnings_for_user(staff.id)['cycles']
+    by_end = {row['period_end']: row for row in cycles}
+    assert '2026-08-28' in by_end
+    assert '2026-09-11' in by_end
+    assert by_end['2026-08-28']['pay_date'] == '2026-08-28'
+    assert by_end['2026-08-28']['totals']['hours'] == 2.0
+    assert by_end['2026-09-11']['totals']['hours'] == 3.0
+    current_end = fulfillment_service.biweekly_billing()['period_end']
+    assert by_end[current_end]['is_current'] is True
 
 
 def test_timesheet_hours_and_ownership(app):

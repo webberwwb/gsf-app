@@ -491,6 +491,7 @@
               :show-delete="true"
               :show-actions="false"
               :items-expanded-by-default="true"
+              :show-group-deal="false"
               @click="viewOrderDetail(order)"
               @delete="deleteOrder"
               @mark-packing-complete="handleMarkPackingComplete"

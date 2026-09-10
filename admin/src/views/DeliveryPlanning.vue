@@ -639,7 +639,8 @@ export default {
   color: var(--md-on-surface-variant);
   font-size: var(--md-label-size);
   line-height: 1.45;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .address {
   color: var(--md-on-surface);

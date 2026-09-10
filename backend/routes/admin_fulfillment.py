@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from flask import Blueprint, jsonify, request
 
@@ -300,6 +301,30 @@ def delete_session(session_id):
     db.session.delete(session)
     db.session.commit()
     return jsonify({'message': '已删除'}), 200
+
+
+@admin_fulfillment_bp.route('/fulfillment/orders/<int:order_id>/driver-fee', methods=['PUT'])
+def override_driver_fee(order_id):
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first()
+    if not order:
+        return jsonify({'error': '订单不存在'}), 404
+    data = request.get_json() or {}
+    if 'amount' not in data or data.get('amount') is None:
+        return jsonify({'error': 'amount 必填'}), 400
+    try:
+        fulfillment_service.override_driver_delivery_fee(order, data.get('amount'))
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    return jsonify({
+        'order_id': order.id,
+        'delivery_fee_earned': float(order.delivery_fee_earned),
+        'delivery': fulfillment_service._driver_fee_line(order, Decimal(str(order.delivery_fee_earned))),
+    }), 200
 
 
 @admin_fulfillment_bp.route('/fulfillment/earnings', methods=['GET'])

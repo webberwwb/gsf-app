@@ -1,84 +1,84 @@
 <template>
   <div class="earnings-page">
-    <div class="page-header-actions">
-      <select v-if="isAdmin" v-model="selectedUserId" class="deal-select" @change="loadEarnings">
+    <div v-if="isAdmin" class="page-header-actions">
+      <select v-model="selectedUserId" class="deal-select" @change="loadEarnings">
         <option v-for="person in staff" :key="person.user_id" :value="String(person.user_id)">
           {{ person.user?.nickname || person.user?.email }}
         </option>
       </select>
-      <div class="date-range">
-        <label class="date-field">
-          <span>开始</span>
-          <input v-model="fromDate" type="date" class="date-input" @change="loadEarnings" />
-        </label>
-        <span class="date-sep">至</span>
-        <label class="date-field">
-          <span>结束</span>
-          <input v-model="toDate" type="date" class="date-input" @change="loadEarnings" />
-        </label>
-      </div>
     </div>
 
     <div v-if="loading" class="loading">加载中...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else-if="earnings">
-      <section class="billing-card">
-        <div class="billing-row">
+      <section class="billing-card overview-card">
+        <div class="overview-grid">
           <div>
-            <div class="label">结算周期</div>
-            <div class="value">{{ earnings.billing?.cycle_label || '双周' }}</div>
+            <div class="label">时薪</div>
+            <div class="value">${{ rateDisplay(earnings.profile?.hourly_rate) }}</div>
           </div>
           <div>
-            <div class="label">下次发薪</div>
-            <div class="value highlight-text">
-              {{ earnings.billing?.next_pay_date }}
-              <span v-if="earnings.billing?.next_pay_weekday">（{{ earnings.billing.next_pay_weekday }}）</span>
-            </div>
+            <div class="label">万锦 / 列治文山</div>
+            <div class="value">${{ rateDisplay(earnings.delivery_fees?.nearby_fee) }}</div>
+          </div>
+          <div>
+            <div class="label">其他地区</div>
+            <div class="value">${{ rateDisplay(earnings.delivery_fees?.other_fee) }}</div>
+          </div>
+          <div>
+            <div class="label">累计配货时间</div>
+            <div class="value">{{ hoursDisplay(earnings.totals?.hours) }}<span class="unit">小时</span></div>
+          </div>
+          <div>
+            <div class="label">累计配送订单</div>
+            <div class="value">{{ earnings.totals?.delivery_count || 0 }}<span class="unit">单</span></div>
+          </div>
+          <div>
+            <div class="label">累计收入</div>
+            <div class="value highlight-text">${{ rateDisplay(totalEarned) }}</div>
           </div>
         </div>
-        <p class="billing-period">
-          本期 {{ earnings.billing?.period_start }} 至 {{ earnings.billing?.period_end }}
-        </p>
-        <div class="rate-row">
-          <div class="rate-chip">
-            <span class="label">时薪</span>
-            <strong>${{ rateDisplay(earnings.profile?.hourly_rate) }} / 小时</strong>
-          </div>
-          <div class="rate-chip">
-            <span class="label">每单配送费</span>
-            <strong>${{ rateDisplay(earnings.profile?.delivery_fee_per_order) }} / 单</strong>
-          </div>
+        <div v-if="isAdmin" class="session-form rate-edit">
+          <label>时薪
+            <input v-model="rateForm.hourly_rate" type="number" min="0" step="0.01" class="date-input" />
+          </label>
+          <button class="add-btn compact" @click="saveRates">保存费率</button>
         </div>
       </section>
 
-      <div class="summary-grid">
-        <div class="summary-card">
-          <div class="label">配货时间</div>
-          <div class="value">{{ earnings.totals.hours }} 小时</div>
-          <div class="sub">${{ earnings.totals.labor.toFixed(2) }}</div>
-        </div>
-        <div class="summary-card">
-          <div class="label">配送费</div>
-          <div class="value">{{ earnings.totals.delivery_count }} 单</div>
-          <div class="sub">${{ earnings.totals.delivery.toFixed(2) }}</div>
-        </div>
-        <div class="summary-card">
-          <div class="label">已付</div>
-          <div class="value">${{ earnings.totals.paid.toFixed(2) }}</div>
-        </div>
-        <div class="summary-card highlight">
-          <div class="label">待付</div>
-          <div class="value">${{ earnings.totals.outstanding.toFixed(2) }}</div>
-        </div>
+      <div class="lane-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          class="lane-tab"
+          :class="{ active: activeTab === 'packing' }"
+          :aria-selected="activeTab === 'packing'"
+          @click="activeTab = 'packing'"
+        >配货记录</button>
+        <button
+          type="button"
+          role="tab"
+          class="lane-tab"
+          :class="{ active: activeTab === 'delivery' }"
+          :aria-selected="activeTab === 'delivery'"
+          @click="activeTab = 'delivery'"
+        >配送记录</button>
+        <button
+          type="button"
+          role="tab"
+          class="lane-tab"
+          :class="{ active: activeTab === 'settlement' }"
+          :aria-selected="activeTab === 'settlement'"
+          @click="activeTab = 'settlement'"
+        >结算记录</button>
       </div>
 
-      <section class="panel">
+      <section v-if="activeTab === 'packing'" class="panel">
         <div class="panel-header">
-          <h3>打卡 / 配货时间</h3>
           <div class="panel-actions">
             <button v-if="!earnings.open_session" class="add-btn" @click="clockIn">上班打卡</button>
             <button v-else class="add-btn" @click="clockOut">下班打卡</button>
-            <button class="ghost-btn" @click="showSessionForm = true">手动添加配货时间</button>
+            <button class="ghost-btn" @click="startAddSession">手动添加配货时间</button>
           </div>
         </div>
         <p v-if="earnings.open_session" class="open-session">
@@ -90,59 +90,127 @@
           <input v-model="sessionForm.end_time" type="time" class="date-input" />
           <input v-model="sessionForm.notes" type="text" class="text-input" placeholder="备注，如周六配货" />
           <button class="add-btn compact" @click="saveSession">保存</button>
-          <button class="ghost-btn" @click="showSessionForm = false">取消</button>
+          <button class="ghost-btn" @click="cancelSessionForm">取消</button>
         </div>
         <div v-if="!earnings.sessions.length" class="empty-inline">暂无配货时间记录</div>
-        <div v-for="session in earnings.sessions" :key="session.id" class="row-card">
-          <div>
+        <div v-for="session in earnings.sessions" :key="session.id" class="session-card">
+          <div class="session-row">
             <strong>{{ session.work_date }}</strong>
-            <span class="muted"> {{ session.start_time }} – {{ session.end_time || '进行中' }}</span>
-            <div class="muted">{{ session.minutes ?? Math.round((session.hours || 0) * 60) }} 分钟 × ${{ (session.hourly_rate_snapshot || 0).toFixed(2) }} ÷ 60 = ${{ session.labor_amount.toFixed(2) }}</div>
-            <div v-if="session.notes" class="muted">{{ session.notes }}</div>
+            <strong>${{ rateDisplay(session.labor_amount) }}</strong>
           </div>
-          <button class="ghost-btn" @click="removeSession(session)">删除</button>
+          <div class="session-row">
+            <span class="muted">{{ session.start_time }} – {{ session.end_time || '进行中' }}</span>
+            <div class="session-actions">
+              <button
+                type="button"
+                class="session-icon-btn"
+                title="编辑"
+                aria-label="编辑配货时间"
+                @click="startEditSession(session)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="session-icon-btn session-icon-btn--danger"
+                title="删除"
+                aria-label="删除配货时间"
+                @click="removeSession(session)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div v-if="session.notes" class="muted">{{ session.notes }}</div>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h3>配送费</h3>
-        </div>
+      <section v-else-if="activeTab === 'delivery'" class="panel">
         <div v-if="!earnings.deliveries.length" class="empty-inline">暂无已完成的自己配送订单</div>
         <div v-for="row in earnings.deliveries" :key="row.order_id" class="row-card">
           <div>
             <strong>{{ row.order_number }}</strong>
-            <div class="muted">{{ row.group_deal_title || '团购' }} · {{ row.delivered_at || '' }}</div>
+            <div class="muted">{{ row.group_deal_title || '团购' }}<span v-if="row.city"> · {{ row.city }}</span> · {{ row.delivered_at || '' }}</div>
+            <div v-if="row.fee_overridden" class="muted">已更正（系统建议 ${{ rateDisplay(row.suggested_fee) }}）</div>
           </div>
-          <strong>${{ row.fee.toFixed(2) }}</strong>
+          <div class="fee-cell">
+            <template v-if="isAdmin && editingFeeId === row.order_id">
+              <input
+                v-model="editingFeeAmount"
+                type="number"
+                min="0"
+                step="0.01"
+                class="date-input fee-input"
+              />
+              <button type="button" class="add-btn compact" :disabled="savingFee" @click="saveFee(row)">保存</button>
+              <button type="button" class="ghost-btn" :disabled="savingFee" @click="cancelFeeEdit">取消</button>
+            </template>
+            <template v-else>
+              <strong>${{ row.fee.toFixed(2) }}</strong>
+              <button v-if="isAdmin" type="button" class="ghost-btn" @click="startFeeEdit(row)">更正</button>
+            </template>
+          </div>
         </div>
       </section>
 
-      <section v-if="isAdmin" class="panel">
-        <div class="panel-header">
-          <h3>费率与付款</h3>
-        </div>
-        <div class="session-form">
-          <label>时薪
-            <input v-model="rateForm.hourly_rate" type="number" min="0" step="0.01" class="date-input" />
-          </label>
-          <label>每单配送费
-            <input v-model="rateForm.delivery_fee_per_order" type="number" min="0" step="0.01" class="date-input" />
-          </label>
-          <button class="add-btn compact" @click="saveRates">保存费率</button>
-        </div>
-        <div class="session-form">
-          <input v-model="payoutForm.amount" type="number" min="0" step="0.01" class="date-input" placeholder="付款金额" />
-          <input v-model="payoutForm.notes" type="text" class="text-input" placeholder="备注" />
-          <button class="add-btn compact" @click="savePayout">记录付款</button>
-        </div>
-        <div v-for="payout in earnings.payouts" :key="payout.id" class="row-card">
-          <div>
-            <strong>${{ payout.amount.toFixed(2) }}</strong>
-            <div class="muted">{{ payout.paid_at }} {{ payout.notes || '' }}</div>
+      <div v-else class="settlement-tab">
+        <section
+          v-for="cycle in (earnings.cycles || [])"
+          :key="cycle.period_end"
+          class="billing-card"
+        >
+          <div class="billing-row">
+            <div>
+              <div class="label">结算周期</div>
+              <div class="value">{{ cycle.period_start }} 至 {{ cycle.period_end }}</div>
+            </div>
+            <div>
+              <div class="label">结算日期</div>
+              <div class="value highlight-text">
+                {{ cycle.pay_date }}
+                <span v-if="cycle.pay_weekday">（{{ cycle.pay_weekday }}）</span>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+          <div class="billing-row billing-row--stats">
+            <div>
+              <div class="label">配货时间</div>
+              <div class="value">{{ cycle.totals.hours }} 小时</div>
+              <div class="muted">${{ cycle.totals.labor.toFixed(2) }}</div>
+            </div>
+            <div>
+              <div class="label">配送费</div>
+              <div class="value">{{ cycle.totals.delivery_count }} 单</div>
+              <div class="muted">${{ cycle.totals.delivery.toFixed(2) }}</div>
+            </div>
+            <div>
+              <div class="label">已付</div>
+              <div class="value">${{ cycle.totals.paid.toFixed(2) }}</div>
+            </div>
+            <div>
+              <div class="label">待付</div>
+              <div class="value highlight-text">${{ cycle.totals.outstanding.toFixed(2) }}</div>
+            </div>
+          </div>
+        </section>
+        <section v-if="isAdmin" class="panel">
+          <div class="session-form">
+            <input v-model="payoutForm.amount" type="number" min="0" step="0.01" class="date-input" placeholder="付款金额" />
+            <input v-model="payoutForm.notes" type="text" class="text-input" placeholder="备注" />
+            <button class="add-btn compact" @click="savePayout">记录付款</button>
+          </div>
+          <div v-for="payout in earnings.payouts" :key="payout.id" class="row-card">
+            <div>
+              <strong>${{ payout.amount.toFixed(2) }}</strong>
+              <div class="muted">{{ payout.paid_at }} {{ payout.notes || '' }}</div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </template>
@@ -164,20 +232,30 @@ export default {
       isAdmin: isAdmin(user),
       staff: [],
       selectedUserId: user?.id ? String(user.id) : '',
-      fromDate: '',
-      toDate: '',
       earnings: null,
+      activeTab: 'packing',
       loading: false,
       error: null,
       showSessionForm: false,
+      editingSessionId: null,
       sessionForm: {
         work_date: new Date().toISOString().slice(0, 10),
         start_time: '16:00',
         end_time: '19:00',
         notes: ''
       },
-      rateForm: { hourly_rate: 0, delivery_fee_per_order: 0 },
-      payoutForm: { amount: '', notes: '' }
+      rateForm: { hourly_rate: 0 },
+      payoutForm: { amount: '', notes: '' },
+      editingFeeId: null,
+      editingFeeAmount: '',
+      savingFee: false
+    }
+  },
+  computed: {
+    totalEarned() {
+      const totals = this.earnings?.totals || {}
+      if (totals.earned != null) return totals.earned
+      return Number(totals.labor || 0) + Number(totals.delivery || 0)
     }
   },
   mounted() {
@@ -192,31 +270,26 @@ export default {
           this.selectedUserId = String(this.staff[0].user_id)
         }
       }
-      await this.loadEarnings({ applyPeriod: true })
+      await this.loadEarnings()
     },
     rateDisplay(value) {
       return Number(value || 0).toFixed(2)
     },
-    async loadEarnings(options = {}) {
-      const applyPeriod = options && options.applyPeriod === true
+    hoursDisplay(value) {
+      const hours = Number(value || 0)
+      if (Number.isInteger(hours)) return String(hours)
+      return hours.toFixed(1)
+    },
+    async loadEarnings() {
       this.loading = true
       this.error = null
       try {
         const params = {}
         if (this.selectedUserId) params.user_id = this.selectedUserId
-        if (this.fromDate) params.from = this.fromDate
-        if (this.toDate) params.to = this.toDate
         const res = await apiClient.get('/admin/fulfillment/earnings', { params })
         this.earnings = res.data
         if (res.data.profile) {
           this.rateForm.hourly_rate = res.data.profile.hourly_rate
-          this.rateForm.delivery_fee_per_order = res.data.profile.delivery_fee_per_order
-        }
-        if (applyPeriod && res.data.billing && !this.fromDate && !this.toDate) {
-          this.fromDate = res.data.billing.period_start
-          this.toDate = res.data.billing.period_end
-          await this.loadEarnings()
-          return
         }
       } catch (e) {
         this.error = e.response?.data?.error || '加载收入失败'
@@ -246,13 +319,45 @@ export default {
         await this.showError(e.response?.data?.error || '打卡失败')
       }
     },
+    blankSessionForm() {
+      return {
+        work_date: new Date().toISOString().slice(0, 10),
+        start_time: '16:00',
+        end_time: '19:00',
+        notes: ''
+      }
+    },
+    startAddSession() {
+      this.editingSessionId = null
+      this.sessionForm = this.blankSessionForm()
+      this.showSessionForm = true
+    },
+    startEditSession(session) {
+      this.editingSessionId = session.id
+      this.sessionForm = {
+        work_date: session.work_date,
+        start_time: session.start_time || '',
+        end_time: session.end_time || '',
+        notes: session.notes || ''
+      }
+      this.showSessionForm = true
+    },
+    cancelSessionForm() {
+      this.showSessionForm = false
+      this.editingSessionId = null
+      this.sessionForm = this.blankSessionForm()
+    },
     async saveSession() {
       try {
-        await apiClient.post('/admin/fulfillment/work-sessions', {
-          user_id: this.selectedUserId,
-          ...this.sessionForm
-        })
-        this.showSessionForm = false
+        if (this.editingSessionId) {
+          await apiClient.patch(`/admin/fulfillment/work-sessions/${this.editingSessionId}`, this.sessionForm)
+        } else {
+          await apiClient.post('/admin/fulfillment/work-sessions', {
+            user_id: this.selectedUserId,
+            ...this.sessionForm
+          })
+        }
+        this.cancelSessionForm()
         await this.success('配货时间已保存')
         await this.loadEarnings()
       } catch (e) {
@@ -267,6 +372,30 @@ export default {
         await this.loadEarnings()
       } catch (e) {
         await this.showError(e.response?.data?.error || '删除失败')
+      }
+    },
+    startFeeEdit(row) {
+      this.editingFeeId = row.order_id
+      this.editingFeeAmount = Number(row.fee).toFixed(2)
+    },
+    cancelFeeEdit() {
+      this.editingFeeId = null
+      this.editingFeeAmount = ''
+      this.savingFee = false
+    },
+    async saveFee(row) {
+      this.savingFee = true
+      try {
+        await apiClient.put(`/admin/fulfillment/orders/${row.order_id}/driver-fee`, {
+          amount: this.editingFeeAmount
+        })
+        this.cancelFeeEdit()
+        await this.success('配送费已更正')
+        await this.loadEarnings()
+      } catch (e) {
+        await this.showError(e.response?.data?.error || '更正失败')
+      } finally {
+        this.savingFee = false
       }
     },
     async saveRates() {
@@ -373,31 +502,86 @@ export default {
   font-weight: 600;
   margin-top: 0.2rem;
 }
+.overview-card {
+  padding: 0.7rem var(--md-spacing-md);
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  align-items: center;
+}
+.overview-grid > * {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 2.6rem;
+}
+.overview-card .label {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+.overview-card .value {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 0.1rem;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.overview-card .unit {
+  margin-left: 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--md-on-surface-variant);
+}
+.overview-grid > :nth-child(n + 4) {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.rate-edit {
+  margin-top: var(--md-spacing-md);
+  margin-bottom: 0;
+}
+.lane-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0 0 var(--md-spacing-md);
+  padding: 0.35rem 0 0.55rem;
+}
+.lane-tab {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--md-radius-md);
+  background: #fff;
+  color: var(--md-on-surface-variant);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.lane-tab.active {
+  background: var(--md-primary);
+  border-color: var(--md-primary);
+  color: #fff;
+}
 .highlight-text {
   color: #E65100;
 }
-.billing-period {
-  margin: 0.65rem 0 0;
-  color: var(--md-on-surface-variant);
-  font-size: var(--md-label-size);
-}
-.rate-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
+.billing-row--stats {
   margin-top: var(--md-spacing-md);
 }
-.rate-chip {
-  background: #FFF8F0;
-  border-radius: var(--md-radius-md);
-  padding: 0.7rem 0.8rem;
-}
-.rate-chip .label {
-  display: block;
-  margin-bottom: 0.2rem;
-}
-.rate-chip strong {
-  font-size: 1rem;
+@media (min-width: 800px) {
+  .billing-row--rates {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .billing-row--stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 .summary-grid {
   display: grid;
@@ -443,7 +627,7 @@ export default {
 }
 .panel-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--md-spacing-md);
   flex-wrap: wrap;
@@ -484,6 +668,53 @@ export default {
 .row-card > div {
   min-width: 0;
 }
+.session-card {
+  padding: 1rem 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.session-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--md-spacing-md);
+}
+.session-row + .session-row {
+  margin-top: 0.12rem;
+}
+.session-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 0;
+}
+.session-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 33px;
+  height: 33px;
+  min-width: 33px;
+  min-height: 33px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #8a8a8a;
+  border-radius: var(--md-radius-sm);
+  cursor: pointer;
+}
+.session-icon-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+.session-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--md-primary);
+}
+.session-icon-btn--danger:hover {
+  color: #c62828;
+  background: rgba(198, 40, 40, 0.08);
+}
 .muted {
   color: var(--md-on-surface-variant);
   font-size: var(--md-label-size);
@@ -512,8 +743,26 @@ export default {
 .empty-inline {
   color: var(--md-on-surface-variant);
 }
+.fee-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.fee-input {
+  width: 96px;
+  min-width: 96px;
+}
 
 @media (max-width: 767px) {
+  .overview-card .label {
+    font-size: 0.72rem;
+  }
+  .overview-card .value {
+    font-size: 0.92rem;
+  }
   .page-header-actions {
     flex-direction: column;
     align-items: stretch;
@@ -536,8 +785,11 @@ export default {
     margin-bottom: var(--md-spacing-md);
   }
   .billing-row,
-  .rate-row {
+  .billing-row--rates {
     grid-template-columns: 1fr;
+  }
+  .billing-row--stats {
+    grid-template-columns: 1fr 1fr;
   }
   .summary-grid {
     gap: 0.6rem;
@@ -578,9 +830,17 @@ export default {
   .row-card {
     flex-wrap: wrap;
   }
-  .row-card .ghost-btn {
+  .row-card .ghost-btn,
+  .fee-cell .add-btn,
+  .fee-cell .ghost-btn {
     width: auto;
     min-width: 72px;
+  }
+  .session-icon-btn {
+    width: 33px;
+    height: 33px;
+    min-width: 33px;
+    min-height: 33px;
   }
 }
 </style>

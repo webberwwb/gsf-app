@@ -205,7 +205,7 @@ export default {
       return !isFulfillmentOnly(this.user)
     },
     showClockBar() {
-      return isFulfillmentOnly(this.user)
+      return isFulfillmentOnly(this.user) && this.$route.name !== 'DeliveryPlanning'
     },
     pageTitle() {
       if (this.isGroupDealDetail) {

@@ -63,7 +63,7 @@
       </div>
     </div>
     
-    <div class="order-info-row" v-if="order.group_deal">
+    <div class="order-info-row" v-if="showGroupDeal && order.group_deal">
       <div class="order-info-group">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -73,7 +73,7 @@
     </div>
     
     <!-- Address/Location Info -->
-    <div class="order-info-row" v-if="order.delivery_method === 'delivery' && order.address">
+    <div class="order-info-row order-address-row" v-if="order.delivery_method === 'delivery' && order.address">
       <div class="order-info-address">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -83,7 +83,7 @@
       </div>
     </div>
     
-    <div class="order-info-row" v-if="order.delivery_method === 'pickup'">
+    <div class="order-info-row order-address-row" v-if="order.delivery_method === 'pickup'">
       <div class="order-info-address">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -94,12 +94,12 @@
     </div>
     
     <!-- Order Notes -->
-    <div class="order-info-row" v-if="order.notes">
+    <div class="order-info-row order-notes-row" v-if="order.notes">
       <div class="order-notes">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
         </svg>
-        <span class="value notes-text">备注: {{ order.notes }}</span>
+        <span class="value">{{ order.notes }}</span>
       </div>
     </div>
     
@@ -302,6 +302,10 @@ export default {
     itemsExpandedByDefault: {
       type: Boolean,
       default: false
+    },
+    showGroupDeal: {
+      type: Boolean,
+      default: true
     }
   },
   emits: ['click', 'delete', 'update-payment', 'mark-shipped', 'update-status', 'cancel', 'mark-packing-complete'],
@@ -686,6 +690,13 @@ export default {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.order-info-row.order-address-row {
+  display: block;
+  width: 100%;
 }
 
 .order-info-user svg,
@@ -706,15 +717,22 @@ export default {
 
 .order-info-address :deep(.address-details) {
   flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.order-info-address :deep(.civic-row),
+.order-info-address :deep(.address-contact) {
+  width: 100%;
 }
 
 .order-notes {
   align-items: flex-start;
 }
 
-.order-notes .notes-text {
-  font-style: italic;
-  line-height: 1.4;
+.order-address-row,
+.order-notes-row {
+  padding-top: 6px;
 }
 
 .order-info-row .value {

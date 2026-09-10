@@ -98,7 +98,7 @@
         </div>
       </div>
 
-      <div class="list-item-row">
+      <div class="list-item-row order-address-row">
         <div class="delivery-info">
           <svg v-if="order.delivery_method === 'pickup'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -150,7 +150,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
         </svg>
-        <span class="notes-text">备注: {{ order.notes }}</span>
+        <span class="notes-text">{{ order.notes }}</span>
       </div>
     </div>
   </div>
@@ -319,6 +319,11 @@ export default {
   margin-bottom: 0;
 }
 
+.order-address-row,
+.order-notes-row {
+  padding-top: 6px;
+}
+
 .order-number {
   font-size: 0.875rem;
   font-weight: 600;
@@ -441,7 +446,14 @@ export default {
 
 .delivery-info :deep(.address-details) {
   flex: 1 1 100%;
+  min-width: 0;
+  width: 100%;
   margin-left: 22px;
+}
+
+.delivery-info :deep(.civic-row),
+.delivery-info :deep(.address-contact) {
+  width: 100%;
 }
 
 .user-info svg,
@@ -590,10 +602,12 @@ export default {
 }
 
 .notes-text {
-  font-size: 0.75rem;
-  color: rgba(0, 0, 0, 0.7);
-  font-style: italic;
+  font-size: var(--md-label-size);
+  line-height: 1.45;
+  color: rgba(0, 0, 0, 0.8);
   flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
   word-break: break-word;
 }
 
@@ -762,11 +776,6 @@ export default {
   .item-compact {
     font-size: 0.6875rem;
     padding: 1px 4px;
-  }
-  
-  .notes-text {
-    font-size: 0.6875rem;
-    padding: 3px 6px;
   }
   
   .quick-action-btn {

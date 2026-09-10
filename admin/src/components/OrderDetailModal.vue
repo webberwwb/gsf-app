@@ -206,7 +206,7 @@
             </div>
             
             <!-- Delivery Address Selection -->
-            <div v-if="localDeliveryMethod === 'delivery'" class="info-row">
+            <div v-if="localDeliveryMethod === 'delivery'" class="info-row address-info-row">
               <div class="address-management">
                 <div class="address-header">
                   <label class="field-label">配送地址:</label>
@@ -3651,8 +3651,20 @@ export default {
   border: 1px solid rgba(255, 140, 0, 0.2);
 }
 
+.address-info-row {
+  display: block;
+  width: 100%;
+}
+
 /* Address Management */
 .address-management {
+  width: 100%;
+  min-width: 0;
+}
+
+.address-management :deep(.address-details),
+.address-management :deep(.civic-row),
+.address-management :deep(.address-contact) {
   width: 100%;
 }
 
@@ -3762,6 +3774,8 @@ export default {
   border-radius: var(--md-radius-md);
   cursor: pointer;
   transition: all 0.2s;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .address-item:hover {
@@ -3790,20 +3804,14 @@ export default {
 
 .address-content {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  min-width: 0;
+  width: 100%;
 }
 
-.address-line {
-  font-size: 0.875rem;
-  color: rgba(0, 0, 0, 0.87);
-  line-height: 1.4;
-}
-
-.address-city {
-  font-size: 0.8125rem;
-  color: rgba(0, 0, 0, 0.6);
+.address-content :deep(.address-details),
+.address-content :deep(.civic-row),
+.address-content :deep(.address-contact) {
+  width: 100%;
 }
 
 /* Add Address Form */

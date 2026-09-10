@@ -1,6 +1,7 @@
 """Fulfillment (配货员) access, delivery assignment, timesheets, and earnings."""
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from math import ceil
 
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -48,15 +49,16 @@ PAY_CYCLE_DAYS = 14
 PAYDAY_ANCHOR = date(2026, 9, 11)
 WEEKDAY_LABELS = ('周一', '周二', '周三', '周四', '周五', '周六', '周日')
 
+NEARBY_DELIVERY_CITIES = ('markham', 'richmondhill')
+NEARBY_DELIVERY_FEE = Decimal('6.00')
+DEFAULT_DELIVERY_FEE = Decimal('7.00')
+
 
 def biweekly_billing(today=None):
     today = today or est_now().date()
     days = (today - PAYDAY_ANCHOR).days
-    if days >= 0:
-        remainder = days % PAY_CYCLE_DAYS
-        next_pay = today if remainder == 0 else today + timedelta(days=PAY_CYCLE_DAYS - remainder)
-    else:
-        next_pay = PAYDAY_ANCHOR
+    cycles = ceil(days / PAY_CYCLE_DAYS) if days else 0
+    next_pay = PAYDAY_ANCHOR + timedelta(days=cycles * PAY_CYCLE_DAYS)
     period_end = next_pay
     period_start = next_pay - timedelta(days=PAY_CYCLE_DAYS - 1)
     return {
@@ -70,8 +72,94 @@ def biweekly_billing(today=None):
     }
 
 
+def _as_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    return value
+
+
+def build_earnings_cycles(sessions, deliveries, payouts, today=None):
+    today = today or est_now().date()
+    current = biweekly_billing(today)
+    buckets = {}
+
+    def bucket_for(day):
+        info = biweekly_billing(day)
+        key = info['period_end']
+        if key not in buckets:
+            buckets[key] = {
+                'period_start': info['period_start'],
+                'period_end': info['period_end'],
+                'pay_date': info['next_pay_date'],
+                'pay_weekday': info['next_pay_weekday'],
+                'labor': Decimal('0'),
+                'delivery': Decimal('0'),
+                'paid': Decimal('0'),
+                'hours': Decimal('0'),
+                'delivery_count': 0,
+            }
+        return buckets[key]
+
+    bucket_for(today)
+    for session in sessions:
+        row = bucket_for(session.work_date)
+        row['labor'] += session.labor_amount or Decimal('0')
+        row['hours'] += Decimal(str(session.hours or 0))
+    for order in deliveries:
+        row = bucket_for(_as_date(order.delivered_at) or today)
+        row['delivery'] += Decimal(str(order.delivery_fee_earned or 0))
+        row['delivery_count'] += 1
+    for payout in payouts:
+        row = bucket_for(_as_date(payout.paid_at) or today)
+        row['paid'] += Decimal(str(payout.amount or 0))
+
+    cycles = []
+    for key in sorted(buckets, reverse=True):
+        row = buckets[key]
+        labor = row['labor']
+        delivery = row['delivery']
+        paid = row['paid']
+        cycles.append({
+            'period_start': row['period_start'],
+            'period_end': row['period_end'],
+            'pay_date': row['pay_date'],
+            'pay_weekday': row['pay_weekday'],
+            'is_current': key == current['period_end'],
+            'totals': {
+                'labor': float(labor),
+                'delivery': float(delivery),
+                'paid': float(paid),
+                'outstanding': float((labor + delivery - paid).quantize(Decimal('0.01'))),
+                'hours': float(row['hours']),
+                'delivery_count': row['delivery_count'],
+            },
+        })
+    return cycles
+
+
 def is_fulfillment_only(user):
     return bool(user and user.is_fulfillment and not user.is_admin)
+
+
+def _city_key(city):
+    return ''.join(ch for ch in (city or '').lower() if ch.isalnum())
+
+
+def delivery_fee_for_address(address):
+    city_key = _city_key(getattr(address, 'city', None))
+    if city_key in NEARBY_DELIVERY_CITIES:
+        return NEARBY_DELIVERY_FEE
+    return DEFAULT_DELIVERY_FEE
+
+
+def delivery_fee_rates():
+    return {
+        'nearby_cities': ['Markham', 'Richmond Hill'],
+        'nearby_fee': float(NEARBY_DELIVERY_FEE),
+        'other_fee': float(DEFAULT_DELIVERY_FEE),
+    }
 
 
 def deal_is_fulfillable(deal):
@@ -328,7 +416,7 @@ def list_fulfillment_staff():
 def earnings_for_user(user_id, date_from=None, date_to=None):
     sessions_q = FulfillmentWorkSession.query.filter_by(user_id=user_id)
     payouts_q = FulfillmentPayout.query.filter_by(user_id=user_id)
-    deliveries_q = Order.query.filter(
+    deliveries_q = Order.query.options(joinedload(Order.address)).filter(
         Order.deleted_at.is_(None),
         Order.delivery_method == DeliveryMethod.DELIVERY.value,
         Order.delivery_handler == DeliveryHandler.SELF.value,
@@ -365,14 +453,7 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
         fee = Decimal(str(order.delivery_fee_earned or 0))
         delivery_total += fee
         deal = order.group_deal
-        delivery_lines.append({
-            'order_id': order.id,
-            'order_number': order.order_number,
-            'group_deal_id': order.group_deal_id,
-            'group_deal_title': deal.title if deal else None,
-            'delivered_at': order.delivered_at.isoformat() if order.delivered_at else None,
-            'fee': float(fee),
-        })
+        delivery_lines.append(_driver_fee_line(order, fee, deal))
 
     paid_total = Decimal('0')
     for payout in payouts:
@@ -390,7 +471,9 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
             'email': user.email,
         } if user else None,
         'profile': profile.to_dict(),
+        'delivery_fees': delivery_fee_rates(),
         'billing': biweekly_billing(),
+        'cycles': build_earnings_cycles(sessions, deliveries, payouts),
         'open_session': open_session.to_dict() if open_session else None,
         'sessions': [s.to_dict() for s in sessions],
         'deliveries': delivery_lines,
@@ -398,6 +481,7 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
         'totals': {
             'labor': float(labor_total),
             'delivery': float(delivery_total),
+            'earned': float(labor_total + delivery_total),
             'paid': float(paid_total),
             'outstanding': float(outstanding),
             'hours': float(sum((s.hours or 0) for s in sessions)),
@@ -481,12 +565,42 @@ def mark_delivered(order, actor, photo_url=None):
         if not order.delivery_assignee_id:
             order.delivery_assignee_id = actor.id
         if order.delivery_fee_earned is None:
-            profile = get_or_create_profile(order.delivery_assignee_id)
-            order.delivery_fee_earned = Decimal(str(profile.delivery_fee_per_order or 0))
+            order.delivery_fee_earned = delivery_fee_for_address(order.address)
     if photo_url:
         order.delivery_photo_url = photo_url
     order.delivered_at = est_now()
     return order
+
+
+def override_driver_delivery_fee(order, amount):
+    if order.delivery_method != DeliveryMethod.DELIVERY.value:
+        raise ValueError('仅配送订单可以更正司机配送费')
+    if (order.delivery_handler or DeliveryHandler.UNASSIGNED.value) != DeliveryHandler.SELF.value:
+        raise ValueError('仅自己配送的订单可以更正司机配送费')
+    try:
+        fee = Decimal(str(amount)).quantize(Decimal('0.01'))
+    except Exception:
+        raise ValueError('请输入有效金额')
+    if fee < 0:
+        raise ValueError('司机配送费不能为负数')
+    order.delivery_fee_earned = fee
+    return order
+
+
+def _driver_fee_line(order, fee, deal=None):
+    deal = deal if deal is not None else order.group_deal
+    suggested = delivery_fee_for_address(order.address)
+    return {
+        'order_id': order.id,
+        'order_number': order.order_number,
+        'group_deal_id': order.group_deal_id,
+        'group_deal_title': deal.title if deal else None,
+        'city': order.address.city if order.address else None,
+        'delivered_at': order.delivered_at.isoformat() if order.delivered_at else None,
+        'fee': float(fee),
+        'suggested_fee': float(suggested),
+        'fee_overridden': fee != suggested,
+    }
 
 
 def deal_delivery_plan(deal, viewer):
