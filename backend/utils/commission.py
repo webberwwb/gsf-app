@@ -12,6 +12,29 @@ from models.product import Product
 from models.user import User
 from constants.status_enums import OrderStatus, PaymentStatus
 from utils.money import round_money
+from sqlalchemy.orm import selectinload, joinedload
+from utils.query_batch import products_by_ids, users_by_ids, rows_by_id
+
+
+def _commission_order_eager_options():
+    return (
+        selectinload(Order.items),
+        joinedload(Order.user),
+    )
+
+
+def _prefetch_orders_products_and_users(orders):
+    products_cache = {}
+    products = products_by_ids(
+        item.product_id for order in orders for item in (order.items or [])
+    )
+    for pid, product in products.items():
+        products_cache[pid] = product.name
+    users_cache = users_by_ids(order.user_id for order in orders)
+    for order in orders:
+        if order.user:
+            users_cache[order.user_id] = order.user
+    return products_cache, users_cache
 
 
 def is_order_eligible_for_commission(order: Order) -> bool:
@@ -119,11 +142,12 @@ def _build_order_summary(
     order: Order,
     products_cache: Dict[int, str],
     exclusion_note: Optional[str] = None,
+    users_cache: Optional[Dict[int, User]] = None,
 ) -> Dict:
     order_items_summary = []
     for item in order.items:
         if item.product_id not in products_cache:
-            product = Product.query.get(item.product_id)
+            product = item.product if getattr(item, 'product', None) else None
             products_cache[item.product_id] = product.name if product else f"Product {item.product_id}"
 
         order_items_summary.append({
@@ -135,7 +159,7 @@ def _build_order_summary(
             'subtotal': float(item.total_price) if item.total_price else None,
         })
 
-    user = User.query.get(order.user_id)
+    user = (users_cache or {}).get(order.user_id) or order.user
     user_name = None
     user_wechat = None
     if user:
@@ -203,28 +227,39 @@ def get_excluded_orders_for_quarter(year: int, quarter: int) -> Dict:
         GroupDeal.deleted_at.is_(None),
     ).order_by(GroupDeal.created_at.desc()).all()
 
-    products_cache: Dict[int, str] = {}
     group_deals_data = []
     total_excluded_orders = 0
     total_excluded_order_value = Decimal('0')
 
-    for group_deal in group_deals:
-        orders = Order.query.filter(
-            Order.group_deal_id == group_deal.id,
+    deal_ids = [group_deal.id for group_deal in group_deals]
+    orders = (
+        Order.query.options(*_commission_order_eager_options())
+        .filter(
+            Order.group_deal_id.in_(deal_ids),
             Order.deleted_at.is_(None),
             Order.status == OrderStatus.COMPLETED.value,
             Order.payment_status == PaymentStatus.PAID.value,
             Order.user_id.in_(excluded_user_ids),
-        ).all()
+        )
+        .all()
+    ) if deal_ids else []
+    products_cache, users_cache = _prefetch_orders_products_and_users(orders)
+    orders_by_deal = {}
+    for order in orders:
+        orders_by_deal.setdefault(order.group_deal_id, []).append(order)
 
-        if not orders:
+    for group_deal in group_deals:
+        deal_orders = orders_by_deal.get(group_deal.id, [])
+        if not deal_orders:
             continue
 
         order_summaries = []
         deal_order_value = Decimal('0')
-        for order in orders:
+        for order in deal_orders:
             exclusion_note = exclusion_notes_by_user.get(order.user_id)
-            order_summaries.append(_build_order_summary(order, products_cache, exclusion_note))
+            order_summaries.append(
+                _build_order_summary(order, products_cache, exclusion_note, users_cache)
+            )
             deal_order_value += get_commission_net_product_amount(order)
 
         total_excluded_orders += len(order_summaries)
@@ -285,7 +320,7 @@ def calculate_commission_for_group_deal(group_deal_id: int, recalculate: bool = 
         }
     
     # Only paid, completed orders count toward commission
-    orders = Order.query.filter(
+    orders = Order.query.options(*_commission_order_eager_options()).filter(
         Order.group_deal_id == group_deal_id,
         Order.deleted_at.is_(None),
         Order.status == OrderStatus.COMPLETED.value,
@@ -371,11 +406,13 @@ def calculate_sdr_commission(sdr: SDR, orders: List[Order]) -> Dict:
     own_customer_commission = Decimal('0')
     general_customer_commission = Decimal('0')
     excluded_user_ids = get_commission_excluded_user_ids()
+    products = products_by_ids(
+        item.product_id for order in orders for item in (order.items or [])
+    )
     
     # Process each order
     for order in orders:
-        # Get user to check source
-        user = User.query.get(order.user_id)
+        user = order.user
         if not user:
             continue
         
@@ -389,7 +426,7 @@ def calculate_sdr_commission(sdr: SDR, orders: List[Order]) -> Dict:
 
         # Process each order item
         for item in order.items:
-            product = Product.query.get(item.product_id)
+            product = products.get(item.product_id)
             if not product or item.product_id not in commission_rules:
                 continue
             
@@ -527,16 +564,15 @@ def build_order_grouping_for_sdr(sdr: SDR, orders: List[Order]) -> Dict:
     no_commission_orders = []
     ineligible_orders = []
 
-    # Get all products for product name lookup
-    products_cache = {}
+    products_cache, users_cache = _prefetch_orders_products_and_users(orders)
     excluded_user_ids = get_commission_excluded_user_ids()
 
     for order in orders:
-        user = User.query.get(order.user_id)
+        user = users_cache.get(order.user_id) or order.user
         if not user:
             continue
 
-        order_summary = _build_order_summary(order, products_cache)
+        order_summary = _build_order_summary(order, products_cache, users_cache=users_cache)
 
         if not is_order_eligible_for_commission(order):
             ineligible_orders.append(order_summary)
@@ -573,25 +609,21 @@ def get_commission_summary_for_group_deal(group_deal_id: int) -> Optional[Dict]:
     if not records:
         return None
     
-    orders = Order.query.filter(
+    orders = Order.query.options(*_commission_order_eager_options()).filter(
         Order.group_deal_id == group_deal_id,
         Order.deleted_at.is_(None),
         Order.status == OrderStatus.COMPLETED.value,
         Order.payment_status == PaymentStatus.PAID.value,
     ).all()
     
-    # Build enhanced records with order grouping
+    sdrs = rows_by_id(SDR, (record.sdr_id for record in records))
     enhanced_records = []
     for record in records:
         record_dict = record.to_dict(include_relations=True)
-        
-        # Get SDR for this record
-        sdr = SDR.query.get(record.sdr_id)
+        sdr = sdrs.get(record.sdr_id)
         if sdr:
-            # Build order grouping for this SDR
             order_grouping = build_order_grouping_for_sdr(sdr, orders)
             record_dict['order_grouping'] = order_grouping
-        
         enhanced_records.append(record_dict)
     
     return {

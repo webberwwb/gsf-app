@@ -3,6 +3,8 @@ from decimal import Decimal
 
 from utils.money import round_money
 
+_RATE_UNSET = object()
+
 
 def _as_decimal(value):
     if value is None:
@@ -14,21 +16,23 @@ def _floor_money(value, amount):
     return float(round_money(max(Decimal('0'), _as_decimal(value) - _as_decimal(amount))))
 
 
-def attach_influencer_buyer_discount(product, user_id=None):
+def attach_influencer_buyer_discount(product, user_id=None, user=None, resolved=_RATE_UNSET):
     """Mark a product so paid pricing subtracts this buyer's 推荐官 rate."""
     if product is None:
         return product
     if hasattr(product, '_influencer_discount'):
         delattr(product, '_influencer_discount')
-    if not user_id:
+    if not user_id and not user:
         return product
-    from models.user import User
     from services.influencer_service import resolve_rate
 
-    user = User.query.get(user_id)
+    if user is None:
+        from models.user import User
+        user = User.query.get(user_id)
     if not user or not user.is_influencer:
         return product
-    resolved = resolve_rate(user.id, product.id)
+    if resolved is _RATE_UNSET:
+        resolved = resolve_rate(user.id, product.id)
     if resolved:
         product._influencer_discount = resolved
     return product
@@ -109,18 +113,19 @@ def apply_rate_to_pricing_data(pricing_type, pricing_data, commission_type, amou
     return pd
 
 
-def apply_influencer_discount_to_product_payload(data, influencer_user_id):
+def apply_influencer_discount_to_product_payload(data, influencer_user_id, resolved=_RATE_UNSET):
     """Adjust a serialized product so the app shows 推荐官价 and compare-at."""
     if not data or not influencer_user_id:
         return data
-    from models.user import User
-    from services.influencer_service import resolve_rate
     from models.influencer import COMMISSION_PER_WEIGHT
 
-    user = User.query.get(influencer_user_id)
-    if not user or not user.is_influencer:
-        return data
-    resolved = resolve_rate(influencer_user_id, data.get('id'))
+    if resolved is _RATE_UNSET:
+        from models.user import User
+        from services.influencer_service import resolve_rate
+        user = User.query.get(influencer_user_id)
+        if not user or not user.is_influencer:
+            return data
+        resolved = resolve_rate(influencer_user_id, data.get('id'))
     if not resolved:
         return data
     commission_type, amount = resolved

@@ -14,10 +14,11 @@ from decimal import Decimal
 from utils.stock_management import check_and_reserve_stock, restore_stock, update_stock_after_order_modification
 from utils.sales_stats import update_product_sales_stats
 from utils.order_item_pricing import (
-    enrich_order_item_dict,
+    enrich_order_items,
     priced_items_from_request,
     create_order_item_rows,
 )
+from utils.query_batch import order_storefront_eager_options
 from utils.order_audit import (
     EVENT_CUSTOMER_ITEMS_REPLACE,
     active_items_for_order,
@@ -88,6 +89,26 @@ def can_access_order(user_id, order):
     return False
 
 
+def _serialize_customer_order(order):
+    order_dict = order.to_dict()
+    group_deal = order.group_deal
+    if group_deal and group_deal.deleted_at is None:
+        order_dict['group_deal'] = {
+            'id': group_deal.id,
+            'title': group_deal.title,
+            'description': group_deal.description,
+            'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
+            'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
+            'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
+            'status': group_deal.status
+        }
+        order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
+    order_dict['items'] = enrich_order_items(order.items)
+    if order.address:
+        order_dict['address'] = order.address.to_dict()
+    return order_dict
+
+
 @orders_bp.route('/orders', methods=['GET'])
 def get_user_orders():
     """Get all orders for the current authenticated user"""
@@ -115,51 +136,26 @@ def get_user_orders():
             query = query.filter(Order.group_deal_id == int(group_deal_id))
         
         # Order by creation date (newest first)
-        query = query.order_by(Order.created_at.desc())
-        
-        orders = query.all()
-        
-        # Build response with order details
-        orders_data = []
+        orders = query.options(*order_storefront_eager_options()).order_by(Order.created_at.desc()).all()
+
+        now = utc_now()
+        auto_confirmed = False
         for order in orders:
-            order_dict = order.to_dict()
-            
-            # Get group deal info (excluding soft-deleted)
-            group_deal = GroupDeal.query.filter(
-                GroupDeal.id == order.group_deal_id,
-                GroupDeal.deleted_at.is_(None)
-            ).first()
-            if group_deal:
-                # Auto-confirm order if past order_end_date but still submitted
-                now = utc_now()
-                if order.status == OrderStatus.SUBMITTED.value and group_deal.order_end_date < now:
-                    order.status = OrderStatus.CONFIRMED.value
-                    db.session.commit()
-                    current_app.logger.info(f'Auto-confirmed order {order.id} after order_end_date')
-                
-                order_dict['group_deal'] = {
-                    'id': group_deal.id,
-                    'title': group_deal.title,
-                    'description': group_deal.description,
-                    'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
-                    'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
-                    'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
-                    'status': group_deal.status
-                }
-                # User can only edit/cancel when order status is 'submitted'
-                order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
-            
-            order_dict['items'] = [
-                enrich_order_item_dict(item) for item in order.items
-            ]
-            
-            # Get address info if delivery order
-            if order.address_id:
-                address = Address.query.get(order.address_id)
-                if address:
-                    order_dict['address'] = address.to_dict()
-            
-            orders_data.append(order_dict)
+            group_deal = order.group_deal
+            if (
+                group_deal
+                and group_deal.deleted_at is None
+                and order.status == OrderStatus.SUBMITTED.value
+                and group_deal.order_end_date
+                and group_deal.order_end_date < now
+            ):
+                order.status = OrderStatus.CONFIRMED.value
+                auto_confirmed = True
+                current_app.logger.info(f'Auto-confirmed order {order.id} after order_end_date')
+        if auto_confirmed:
+            db.session.commit()
+
+        orders_data = [_serialize_customer_order(order) for order in orders]
         
         return jsonify({
             'orders': orders_data
@@ -180,7 +176,9 @@ def get_order(order_id):
         return error_response, status_code
     
     try:
-        order = Order.query.filter(Order.id == order_id).filter(Order.deleted_at.is_(None)).first()
+        order = Order.query.options(*order_storefront_eager_options()).filter(
+            Order.id == order_id
+        ).filter(Order.deleted_at.is_(None)).first()
         
         if not order:
             return jsonify({
@@ -191,38 +189,20 @@ def get_order(order_id):
         if not can_access_order(user_id, order):
             return jsonify({'error': 'Access denied'}), 403
         
-        order_dict = order.to_dict()
-        
-        # Get group deal info (excluding soft-deleted)
-        group_deal = GroupDeal.query.filter(
-            GroupDeal.id == order.group_deal_id,
-            GroupDeal.deleted_at.is_(None)
-        ).first()
-        if group_deal:
-            # Auto-confirm order if past order_end_date but still submitted
-            now = utc_now()
-            if order.status == OrderStatus.SUBMITTED.value and group_deal.order_end_date < now:
-                order.status = OrderStatus.CONFIRMED.value
-                db.session.commit()
-                current_app.logger.info(f'Auto-confirmed order {order.id} after order_end_date')
-            
-            order_dict['group_deal'] = {
-                'id': group_deal.id,
-                'title': group_deal.title,
-                'description': group_deal.description,
-                'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
-                'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
-                'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
-                'status': group_deal.status
-            }
-            # User can only edit/cancel when order status is 'submitted'
-            order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
-        
-        # Get order items with product details
-        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
-        
+        group_deal = order.group_deal
+        if (
+            group_deal
+            and group_deal.deleted_at is None
+            and order.status == OrderStatus.SUBMITTED.value
+            and group_deal.order_end_date
+            and group_deal.order_end_date < utc_now()
+        ):
+            order.status = OrderStatus.CONFIRMED.value
+            db.session.commit()
+            current_app.logger.info(f'Auto-confirmed order {order.id} after order_end_date')
+
         return jsonify({
-            'order': order_dict
+            'order': _serialize_customer_order(order)
         }), 200
         
     except Exception as e:
@@ -342,7 +322,7 @@ def create_order():
 
         db.session.add(order)
         db.session.flush()
-        if payment_method == PaymentMethod.CARD.value:
+        if delivery_method == DeliveryMethod.DELIVERY.value:
             copy_user_card_to_order(order, user_row)
 
         create_order_item_rows(order.id, order_items, db.session)
@@ -374,7 +354,7 @@ def create_order():
         }
         
         # Get order items with product details
-        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
+        order_dict['items'] = enrich_order_items(order.items)
         
         return jsonify({
             'order': order_dict,
@@ -460,7 +440,7 @@ def cancel_order(order_id):
         order_dict['is_editable'] = False  # Cancelled orders are not editable
         
         # Get order items with product details
-        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
+        order_dict['items'] = enrich_order_items(order.items)
         
         return jsonify({
             'order': order_dict,
@@ -543,7 +523,7 @@ def reactivate_order(order_id):
         order_dict['is_editable'] = True  # Reactivated orders are editable
         
         # Get order items with product details
-        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
+        order_dict['items'] = enrich_order_items(order.items)
         
         return jsonify({
             'order': order_dict,
@@ -692,7 +672,7 @@ def update_order(order_id):
             order.notes = notes
         if payment_method and payment_method in PaymentMethod.get_all_values():
             order.payment_method = payment_method
-        if order.payment_method == PaymentMethod.CARD.value:
+        if delivery_method == DeliveryMethod.DELIVERY.value:
             copy_user_card_to_order(order, user_row)
         order.updated_at = utc_now()
 
@@ -748,7 +728,7 @@ def update_order(order_id):
         order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
         
         # Get order items with product details
-        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
+        order_dict['items'] = enrich_order_items(order.items)
         
         return jsonify({
             'order': order_dict,

@@ -79,7 +79,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-        <span class="value">{{ formatAddress(order.address) }}</span>
+        <AddressDetails :address="order.address" compact />
       </div>
     </div>
     
@@ -276,11 +276,12 @@ import {
   formatOrderMoney2
 } from '../utils/orderPricing'
 import OrderLineDisplay from './OrderLineDisplay.vue'
+import AddressDetails from './AddressDetails.vue'
 import { toOrderLineDisplay } from '../utils/orderItemPricing'
 
 export default {
   name: 'OrderCard',
-  components: { OrderLineDisplay },
+  components: { OrderLineDisplay, AddressDetails },
   setup() {
     const { confirm, success, error } = useModal()
     return { confirm, success, error }
@@ -378,15 +379,6 @@ export default {
       const n = parseFloat(o.shipping_fee)
       if (!Number.isFinite(n) || n <= 0) return '免运费'
       return `$${formatOrderMoney2(n)}`
-    },
-    formatAddress(address) {
-      if (!address) return 'N/A'
-      const parts = []
-      if (address.address_line1) parts.push(address.address_line1)
-      if (address.address_line2) parts.push(address.address_line2)
-      if (address.city) parts.push(address.city)
-      if (address.postal_code) parts.push(address.postal_code)
-      return parts.join(', ') || 'N/A'
     },
     calculateSubtotal() {
       if (!this.order.items || !Array.isArray(this.order.items) || this.order.items.length === 0) {
@@ -692,7 +684,7 @@ export default {
 .order-info-address,
 .order-notes {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 
@@ -712,16 +704,16 @@ export default {
   word-break: break-word;
 }
 
+.order-info-address :deep(.address-details) {
+  flex: 1;
+}
+
 .order-notes {
   align-items: flex-start;
 }
 
 .order-notes .notes-text {
   font-style: italic;
-  background: #FFF9C4;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border-left: 3px solid #FFC107;
   line-height: 1.4;
 }
 

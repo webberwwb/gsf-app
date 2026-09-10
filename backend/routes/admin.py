@@ -3,7 +3,7 @@ from models import db
 from models.product import Product
 from models.product_category import ProductCategory
 from models.user import User, AuthToken, UserRole
-from models.groupdeal import GroupDeal, GroupDealProduct, deal_product_to_dict
+from models.groupdeal import GroupDeal, GroupDealProduct
 from models.otp_attempt import OTPAttempt
 from models.supplier import Supplier
 from models.order import Order, OrderItem
@@ -14,7 +14,18 @@ from models.sdr import SDR, CommissionRule, CommissionRecord, CommissionExcluded
 from models.customer_feedback import CustomerFeedback, FeedbackContext, FeedbackOutcome
 from models.work_document import WorkDocument, ActionItem
 from models.base import utc_now, est_now
-from utils.sales_stats import update_product_sales_stats, get_product_sales_by_date_range, get_popular_products
+from utils.sales_stats import (
+    update_product_sales_stats,
+    get_product_sales_by_date_range,
+    get_popular_products,
+    sales_stats_totals_by_product,
+)
+from utils.deal_products import (
+    group_deal_products_by_deal,
+    load_group_deal_products,
+    product_eager_options,
+    serialize_loaded_deal_products,
+)
 from utils.product_repurchase import compute_product_repurchase_rates
 from utils.date_helpers import normalize_date_start, normalize_date_end
 from utils.image_urls import proxy_image_url, public_image_url
@@ -43,12 +54,19 @@ from utils.order_item_pricing import (
     priced_items_from_request,
     create_order_item_rows,
     enrich_order_item_dict,
+    enrich_order_items,
     combine_order_notes,
     order_item_fields_for_merge,
     recalculate_existing_item,
     bulk_set_product_fulfillment,
     apply_product_substitute_fields,
     sync_product_variants,
+)
+from utils.query_batch import (
+    order_admin_eager_options,
+    products_by_ids,
+    rows_by_id,
+    users_by_ids,
 )
 from utils.order_audit import (
     EVENT_ADMIN_ITEMS_REPLACE,
@@ -432,9 +450,11 @@ def update_product_sort_orders():
         data = schema.load(request.json)
         
         # Update each product's sort_order
+        ids = [item['product_id'] for item in data['products']]
+        products = products_by_ids(ids)
         updated_count = 0
         for item in data['products']:
-            product = Product.query.get(item['product_id'])
+            product = products.get(item['product_id'])
             if product:
                 product.sort_order = item['sort_order']
                 updated_count += 1
@@ -614,9 +634,11 @@ def update_category_sort_orders():
         data = schema.load(request.json)
         
         # Update each category's sort_order
+        ids = [item['category_id'] for item in data['categories']]
+        categories = rows_by_id(ProductCategory, ids)
         updated_count = 0
         for item in data['categories']:
-            category = ProductCategory.query.get(item['category_id'])
+            category = categories.get(item['category_id'])
             if category:
                 category.sort_order = item['sort_order']
                 updated_count += 1
@@ -659,7 +681,12 @@ def get_users():
         role_filter = request.args.get('role', '').strip()
         
         # Build query
-        query = User.query
+        query = User.query.options(
+            selectinload(User.roles),
+            selectinload(User.influencer_profile),
+            joinedload(User.referrer).selectinload(User.roles),
+            joinedload(User.referrer).selectinload(User.influencer_profile),
+        )
         
         # Apply role filter (e.g., 'admin')
         if role_filter:
@@ -695,9 +722,24 @@ def get_users():
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         
         users = pagination.items
+        order_counts = {}
+        if users:
+            order_counts = dict(
+                db.session.query(Order.user_id, func.count(Order.id))
+                .filter(Order.user_id.in_([u.id for u in users]))
+                .group_by(Order.user_id)
+                .all()
+            )
         
         return jsonify({
-            'users': [user.to_dict(include_order_count=True, include_referrer=True) for user in users],
+            'users': [
+                user.to_dict(
+                    include_order_count=True,
+                    include_referrer=True,
+                    order_count=order_counts.get(user.id, 0),
+                )
+                for user in users
+            ],
             'pagination': {
                 'page': pagination.page,
                 'per_page': pagination.per_page,
@@ -1243,17 +1285,11 @@ def get_group_deals():
 
         products_by_deal = {}
         if include_products:
-            deal_ids = [deal.id for deal in deals]
-            deal_products_all = GroupDealProduct.query.options(
-                joinedload(GroupDealProduct.product).joinedload(Product.category),
-                joinedload(GroupDealProduct.product).joinedload(Product.supplier)
-            ).filter(GroupDealProduct.group_deal_id.in_(deal_ids)).all()
-
-            for dp in deal_products_all:
-                if dp.group_deal_id not in products_by_deal:
-                    products_by_deal[dp.group_deal_id] = []
-                if dp.product:
-                    products_by_deal[dp.group_deal_id].append(deal_product_to_dict(dp))
+            grouped = group_deal_products_by_deal(load_group_deal_products([deal.id for deal in deals]))
+            products_by_deal = {
+                deal_id: serialize_loaded_deal_products(rows)
+                for deal_id, rows in grouped.items()
+            }
 
         deals_data = []
         for deal in deals:
@@ -1295,17 +1331,7 @@ def get_group_deal(deal_id):
         if fulfillment_service.is_fulfillment_only(actor) and deal.status == GroupDealStatus.DRAFT.value:
             return jsonify({'error': '团购不存在'}), 404
         deal_dict = deal.to_dict()
-        
-        # Products for this deal (single query + joinedload — avoid N+1 Product.query.get per row)
-        deal_products = GroupDealProduct.query.options(
-            joinedload(GroupDealProduct.product).joinedload(Product.category),
-            joinedload(GroupDealProduct.product).joinedload(Product.supplier)
-        ).filter(GroupDealProduct.group_deal_id == deal.id).all()
-        products_data = []
-        for dp in deal_products:
-            if dp.product:
-                products_data.append(deal_product_to_dict(dp))
-        deal_dict['products'] = products_data
+        deal_dict['products'] = serialize_loaded_deal_products(load_group_deal_products(deal.id))
         
         return jsonify({
             'group_deal': deal_dict
@@ -1383,13 +1409,7 @@ def create_group_deal():
         
         # Return full deal with products
         deal_dict = group_deal.to_dict()
-        deal_products = GroupDealProduct.query.filter_by(group_deal_id=group_deal.id).all()
-        products_data = []
-        for dp in deal_products:
-            product = Product.query.get(dp.product_id)
-            if product:
-                products_data.append(deal_product_to_dict(dp, product=product))
-        deal_dict['products'] = products_data
+        deal_dict['products'] = serialize_loaded_deal_products(load_group_deal_products(group_deal.id))
         
         return jsonify({
             'group_deal': deal_dict
@@ -1583,13 +1603,7 @@ def update_group_deal(deal_id):
         
         # Return full deal with products
         deal_dict = deal.to_dict()
-        deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
-        products_data = []
-        for dp in deal_products:
-            product = Product.query.get(dp.product_id)
-            if product:
-                products_data.append(deal_product_to_dict(dp, product=product))
-        deal_dict['products'] = products_data
+        deal_dict['products'] = serialize_loaded_deal_products(load_group_deal_products(deal.id))
         
         return jsonify({
             'group_deal': deal_dict
@@ -1704,29 +1718,19 @@ def get_admin_products():
         else:
             query = query.order_by(Product.created_at.desc())
         
-        products = query.all()
+        products = query.options(*product_eager_options()).all()
         
-        # Get sales stats for each product
         start_date = date.today() - timedelta(days=days)
+        stats_map = sales_stats_totals_by_product([p.id for p in products], start_date)
         products_data = []
         for product in products:
             product_dict = product.to_dict()
-            
-            # Get sales stats for date range
-            stats_query = db.session.query(
-                func.sum(ProductSalesStats.quantity_sold).label('total_sold'),
-                func.sum(ProductSalesStats.order_count).label('total_orders')
-            ).filter(
-                ProductSalesStats.product_id == product.id,
-                ProductSalesStats.sale_date >= start_date
-            ).first()
-            
+            stats = stats_map.get(product.id, {})
             product_dict['sales_stats'] = {
-                'total_sold': int(stats_query.total_sold) if stats_query.total_sold else 0,
-                'total_orders': int(stats_query.total_orders) if stats_query.total_orders else 0,
+                'total_sold': stats.get('total_sold', 0),
+                'total_orders': stats.get('total_orders', 0),
                 'period_days': days
             }
-            
             products_data.append(product_dict)
         
         return jsonify({
@@ -1802,13 +1806,14 @@ def get_dashboard_stats():
         
         # Get recent orders (last 10, excluding soft-deleted)
         recent_orders = Order.query.filter(Order.deleted_at.is_(None)).order_by(Order.created_at.desc()).limit(10).all()
+        users = users_by_ids(order.user_id for order in recent_orders)
         recent_orders_data = []
         for order in recent_orders:
-            user = User.query.get(order.user_id)
+            user = users.get(order.user_id)
             recent_orders_data.append({
                 'id': order.id,
                 'order_number': order.order_number,
-                'user_name': user.nickname if user else user.phone if user else 'N/A',
+                'user_name': (user.nickname or user.phone) if user else 'N/A',
                 'total_amount': float(order.total) if order.total else 0.0,
                 'payment_status': order.payment_status,
                 'status': order.status,
@@ -1910,20 +1915,25 @@ def get_otp_stats():
 def _build_admin_order_dict(order):
     """Full order payload for admin modal refresh after partial line updates."""
     order_dict = order.to_dict()
-    user = User.query.get(order.user_id)
+    user = order.user if getattr(order, 'user_id', None) else None
+    if user is None and order.user_id:
+        user = User.query.get(order.user_id)
     if user:
         order_dict['user'] = user.to_dict()
-    group_deal = GroupDeal.query.filter(
-        GroupDeal.id == order.group_deal_id,
-        GroupDeal.deleted_at.is_(None),
-    ).first()
-    if group_deal:
+    group_deal = order.group_deal
+    if group_deal is None and order.group_deal_id:
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None),
+        ).first()
+    if group_deal and group_deal.deleted_at is None:
         order_dict['group_deal'] = group_deal.to_dict()
-    if order.address_id:
+    address = order.address
+    if address is None and order.address_id:
         address = Address.query.get(order.address_id)
-        if address:
-            order_dict['address'] = address.to_dict()
-    order_dict['items'] = [enrich_order_item_dict(i) for i in order.items]
+    if address:
+        order_dict['address'] = address.to_dict()
+    order_dict['items'] = enrich_order_items(order.items)
     return order_dict
 
 
@@ -1951,12 +1961,9 @@ def get_admin_orders():
         # Build query - join with User for phone search and eager load relationships
         # Filter out soft-deleted orders (deleted_at IS NULL)
         # Use eager loading to prevent N+1 queries
-        query = Order.query.options(
-            joinedload(Order.user),  # Eager load user (already joined)
-            selectinload(Order.items).selectinload(OrderItem.product),  # Eager load items and their products
-            selectinload(Order.address),  # Eager load address if exists
-            joinedload(Order.group_deal)  # Eager load group deal (many-to-one via backref)
-        ).join(User, Order.user_id == User.id).filter(Order.deleted_at.is_(None))
+        query = Order.query.options(*order_admin_eager_options()).join(
+            User, Order.user_id == User.id
+        ).filter(Order.deleted_at.is_(None))
         
         # Apply search filter (order number or phone)
         if search:
@@ -2024,7 +2031,8 @@ def get_admin_orders():
                 order_dict['address'] = order.address.to_dict()
             
             items_data = [
-                enrich_order_item_dict(item, item.product) for item in order.items
+                enrich_order_item_dict(item, item.product, source_order=item.source_order)
+                for item in order.items
             ]
             order_dict['items'] = items_data
             order_dict['items_count'] = len(items_data)
@@ -2200,30 +2208,11 @@ def get_admin_order(order_id):
     acting_user = User.query.get(user_id)
     
     try:
-        order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
-        order_dict = order.to_dict()
-        
-        # Get user info
-        user = User.query.get(order.user_id)
-        if user:
-            order_dict['user'] = user.to_dict()
-        
-        # Get group deal info (excluding soft-deleted)
-        group_deal = GroupDeal.query.filter(
-            GroupDeal.id == order.group_deal_id,
-            GroupDeal.deleted_at.is_(None)
-        ).first()
-        if group_deal:
-            order_dict['group_deal'] = group_deal.to_dict()
-        
-        # Get address info if delivery order
-        if order.address_id:
-            from models.address import Address
-            address = Address.query.get(order.address_id)
-            if address:
-                order_dict['address'] = address.to_dict()
-        
-        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
+        order = Order.query.options(*order_admin_eager_options()).filter(
+            Order.id == order_id, Order.deleted_at.is_(None)
+        ).first_or_404()
+        order_dict = _build_admin_order_dict(order)
+        group_deal = order.group_deal if order.group_deal and order.group_deal.deleted_at is None else None
         fulfillment_service.apply_order_pii_lock(order_dict, group_deal, acting_user)
         
         return jsonify({
@@ -2635,7 +2624,7 @@ def get_order_by_pickup_code(pickup_code):
         # pickup_code is the last part of order_number (e.g., "CGN7O7" from "GSF-20231225123456-CGN7O7")
         # Search for orders where order_number ends with the pickup code
         # Format: GSF-{timestamp}-{pickup_code}
-        order = Order.query.filter(
+        order = Order.query.options(*order_admin_eager_options()).filter(
             Order.order_number.like(f'%-{pickup_code}'),
             Order.deleted_at.is_(None)
         ).first()
@@ -2646,34 +2635,8 @@ def get_order_by_pickup_code(pickup_code):
                 'message': 'Invalid pickup code'
             }), 404
         
-        order_dict = order.to_dict()
-        
-        # Get user info
-        user = User.query.get(order.user_id)
-        if user:
-            order_dict['user'] = user.to_dict()
-        
-        # Get group deal info (excluding soft-deleted)
-        group_deal = GroupDeal.query.filter(
-            GroupDeal.id == order.group_deal_id,
-            GroupDeal.deleted_at.is_(None)
-        ).first()
-        if group_deal:
-            order_dict['group_deal'] = group_deal.to_dict()
-        
-        # Get order items with product details
-        items_data = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = product.to_dict()
-            items_data.append(item_dict)
-        
-        order_dict['items'] = items_data
-        
         return jsonify({
-            'order': order_dict
+            'order': _build_admin_order_dict(order)
         }), 200
         
     except Exception as e:
@@ -2704,30 +2667,31 @@ def update_order_weights(order_id):
         if order.status != OrderStatus.READY_FOR_PICKUP.value:
             return jsonify({'error': 'Order must be in ready_for_pickup status to update weights'}), 400
         
-        # Create a map of item_id to final_weight for quick lookup
-        weight_updates = {item.get('item_id'): item.get('final_weight') for item in items_data if item.get('item_id')}
-        
-        # Update items with final weights and recalculate prices
+        item_ids = [item_update.get('item_id') for item_update in items_data if item_update.get('item_id')]
+        items_by_id = {
+            item.id: item
+            for item in OrderItem.query.filter(
+                OrderItem.id.in_(item_ids),
+                OrderItem.order_id == order_id,
+                OrderItem.active(),
+            ).all()
+        } if item_ids else {}
+        products = products_by_ids(item.product_id for item in items_by_id.values())
+
         for item_update in items_data:
             item_id = item_update.get('item_id')
             final_weight = item_update.get('final_weight')
-            
             if not item_id:
                 continue
-            
-            order_item = OrderItem.get_active(item_id, order_id)
+            order_item = items_by_id.get(item_id)
             if not order_item:
                 continue
-            
-            product = Product.query.get(order_item.product_id)
+            product = products.get(order_item.product_id)
             if not product:
                 continue
-            
-            # Update final weight
             if final_weight is not None:
                 order_item.final_weight = float(final_weight)
-
-            recalculate_existing_item(order_item)
+            recalculate_existing_item(order_item, product)
 
         sync_order_pricing(order, reprice_lines=False)
 
@@ -2735,36 +2699,9 @@ def update_order_weights(order_id):
 
         current_app.logger.info(f'Updated weights and prices for order {order_id}')
         
-        # Return updated order
-        order_dict = order.to_dict()
-        
-        # Get user info
-        user = User.query.get(order.user_id)
-        if user:
-            order_dict['user'] = user.to_dict()
-        
-        # Get group deal info (excluding soft-deleted)
-        group_deal = GroupDeal.query.filter(
-            GroupDeal.id == order.group_deal_id,
-            GroupDeal.deleted_at.is_(None)
-        ).first()
-        if group_deal:
-            order_dict['group_deal'] = group_deal.to_dict()
-        
-        # Get order items with product details
-        items_data_response = []
-        for item in order.items:
-            item_dict = item.to_dict()
-            product = Product.query.get(item.product_id)
-            if product:
-                item_dict['product'] = product.to_dict()
-            items_data_response.append(item_dict)
-        
-        order_dict['items'] = items_data_response
-        
         return jsonify({
             'message': 'Order weights and prices updated successfully',
-            'order': order_dict
+            'order': _build_admin_order_dict(order)
         }), 200
         
     except Exception as e:
@@ -2909,29 +2846,9 @@ def update_admin_order(order_id):
 
         current_app.logger.info(f'Admin updated order {order_id} items')
         
-        # Return updated order
-        order_dict = order.to_dict()
-        
-        # Get user info
-        user = User.query.get(order.user_id)
-        if user:
-            order_dict['user'] = user.to_dict()
-        
-        # Get group deal info
-        order_dict['group_deal'] = group_deal.to_dict()
-        
-        # Get address info if delivery order
-        if order.address_id:
-            from models.address import Address
-            address = Address.query.get(order.address_id)
-            if address:
-                order_dict['address'] = address.to_dict()
-        
-        order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
-        
         return jsonify({
             'message': 'Order updated successfully',
-            'order': order_dict
+            'order': _build_admin_order_dict(order)
         }), 200
         
     except Exception as e:
@@ -3122,33 +3039,41 @@ def find_duplicate_orders():
             query = query.filter(Order.group_deal_id == group_deal_id)
         
         duplicates = query.all()
-        
-        # Get full order details for each duplicate set
+        if not duplicates:
+            return jsonify({'duplicate_sets': [], 'total_sets': 0}), 200
+
+        user_ids = [dup.user_id for dup in duplicates]
+        deal_ids = [dup.group_deal_id for dup in duplicates]
+        all_orders = Order.query.options(
+            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.address),
+        ).filter(
+            Order.user_id.in_(user_ids),
+            Order.group_deal_id.in_(deal_ids),
+            Order.deleted_at.is_(None),
+            Order.status != OrderStatus.CANCELLED.value
+        ).order_by(Order.created_at.asc()).all()
+        orders_by_key = {}
+        for order in all_orders:
+            orders_by_key.setdefault((order.user_id, order.group_deal_id), []).append(order)
+        users = users_by_ids(user_ids)
+        deals = rows_by_id(GroupDeal, deal_ids)
+
         duplicate_sets = []
         for dup in duplicates:
-            orders = Order.query.filter(
-                Order.user_id == dup.user_id,
-                Order.group_deal_id == dup.group_deal_id,
-                Order.deleted_at.is_(None),
-                Order.status != OrderStatus.CANCELLED.value
-            ).order_by(Order.created_at.asc()).all()
-            
-            # Get user info
-            user = User.query.get(dup.user_id)
-            group_deal = GroupDeal.query.filter(
-                GroupDeal.id == dup.group_deal_id,
-                GroupDeal.deleted_at.is_(None)
-            ).first()
+            orders = orders_by_key.get((dup.user_id, dup.group_deal_id), [])
+            user = users.get(dup.user_id)
+            group_deal = deals.get(dup.group_deal_id)
+            if group_deal and group_deal.deleted_at is not None:
+                group_deal = None
             
             orders_data = []
             for order in orders:
                 order_dict = order.to_dict()
-                
-                # Get items with product details
                 items_data = []
                 for item in order.items:
                     item_dict = item.to_dict()
-                    product = Product.query.get(item.product_id)
+                    product = item.product
                     if product:
                         item_dict['product'] = {
                             'id': product.id,
@@ -3159,13 +3084,8 @@ def find_duplicate_orders():
                         }
                     items_data.append(item_dict)
                 order_dict['items'] = items_data
-                
-                # Get address info if delivery order
-                if order.address_id:
-                    address = Address.query.get(order.address_id)
-                    if address:
-                        order_dict['address'] = address.to_dict()
-                
+                if order.address:
+                    order_dict['address'] = order.address.to_dict()
                 orders_data.append(order_dict)
             
             duplicate_sets.append({
@@ -3333,28 +3253,9 @@ def merge_orders():
         )
         
         # Return the merged order with full details
-        order_dict = main_order.to_dict()
-        
-        # Get user info
-        user = User.query.get(main_order.user_id)
-        if user:
-            order_dict['user'] = user.to_dict()
-        
-        # Get group deal info
-        group_deal = GroupDeal.query.filter(
-            GroupDeal.id == main_order.group_deal_id,
-            GroupDeal.deleted_at.is_(None)
-        ).first()
-        if group_deal:
-            order_dict['group_deal'] = group_deal.to_dict()
-        
-        order_dict['items'] = [
-            enrich_order_item_dict(item) for item in main_order.items
-        ]
-        
         return jsonify({
             'message': 'Orders merged successfully',
-            'merged_order': order_dict,
+            'merged_order': _build_admin_order_dict(main_order),
             'deleted_order_ids': merged_order_ids,
             'audit_trail': build_order_audit_trail(main_order.id),
         }), 200
@@ -3657,7 +3558,9 @@ def export_group_deal_orders_csv(deal_id):
         ).first_or_404()
         
         # Get all orders for this group deal (excluding soft-deleted and cancelled)
-        orders = Order.query.filter(
+        orders = Order.query.options(
+            selectinload(Order.items).joinedload(OrderItem.product).joinedload(Product.supplier)
+        ).filter(
             Order.group_deal_id == deal_id,
             Order.deleted_at.is_(None),
             Order.status != OrderStatus.CANCELLED.value
@@ -3669,7 +3572,7 @@ def export_group_deal_orders_csv(deal_id):
         
         for order in orders:
             for item in order.items:
-                product = Product.query.get(item.product_id)
+                product = item.product
                 if not product:
                     continue
                 
@@ -3754,7 +3657,11 @@ def export_group_deal_delivery_csv(deal_id):
         ).first_or_404()
         
         # Get all delivery orders for this group deal (excluding soft-deleted and cancelled)
-        orders = Order.query.filter(
+        orders = Order.query.options(
+            joinedload(Order.user),
+            selectinload(Order.address),
+            selectinload(Order.items),
+        ).filter(
             Order.group_deal_id == deal_id,
             Order.delivery_method == 'delivery',
             Order.deleted_at.is_(None),
@@ -3785,13 +3692,8 @@ def export_group_deal_delivery_csv(deal_id):
         
         # Write order data
         for order in orders:
-            # Get user info
-            user = User.query.get(order.user_id)
-            
-            # Get address info
-            address = None
-            if order.address_id:
-                address = Address.query.get(order.address_id)
+            user = order.user
+            address = order.address
             
             # Build address fields
             recipient_name = address.recipient_name if address else (user.nickname if user else 'N/A')
@@ -5725,19 +5627,32 @@ def admin_list_referral_records():
         q = q.filter(ReferralRecord.inviter_user_id == inviter_q)
     total = q.count()
     rows = q.offset(offset).limit(limit).all()
+    users = users_by_ids(
+        [r.inviter_user_id for r in rows] + [r.invitee_user_id for r in rows]
+    )
+    pending_invitees = [
+        r.invitee_user_id for r in rows if r.invitee_user_id and not r.first_completed_order_id
+    ]
+    completed_invitees = set()
+    if pending_invitees:
+        completed_invitees = {
+            uid for (uid,) in db.session.query(Order.user_id).filter(
+                Order.user_id.in_(pending_invitees),
+                Order.status == OrderStatus.COMPLETED.value,
+                Order.deleted_at.is_(None),
+            ).distinct().all()
+        }
     payload = []
     for r in rows:
-        inviter = User.query.get(r.inviter_user_id)
-        invitee = User.query.get(r.invitee_user_id)
-        completed = bool(r.first_completed_order_id)
+        inviter = users.get(r.inviter_user_id)
+        invitee = users.get(r.invitee_user_id)
+        completed = bool(r.first_completed_order_id) or r.invitee_user_id in completed_invitees
         payload.append({
             **r.to_dict(),
             'status_label': _referral_record_status_label_zh(r.status),
             'inviter': _referral_record_user_summary(inviter),
             'invitee': _referral_record_user_summary(invitee),
-            'invitee_has_completed_order': completed or (
-                referral_service.user_has_completed_order(r.invitee_user_id) if not completed else True
-            ),
+            'invitee_has_completed_order': completed,
         })
     return jsonify({'referrals': payload, 'total': total, 'limit': limit, 'offset': offset}), 200
 

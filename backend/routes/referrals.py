@@ -83,17 +83,27 @@ def list_invitees():
     rows = ReferralRecord.query.filter_by(inviter_user_id=user.id).order_by(
         ReferralRecord.created_at.desc()
     ).all()
+    from utils.query_batch import users_by_ids
+    invitees = users_by_ids(r.invitee_user_id for r in rows)
+    pending_ids = [
+        r.invitee_user_id
+        for r in rows
+        if r.status != ReferralRecord.STATUS_REWARDED and r.invitee_user_id
+    ]
+    ordered_user_ids = set()
+    if pending_ids:
+        ordered_user_ids = {
+            uid for (uid,) in db.session.query(Order.user_id).filter(
+                Order.user_id.in_(pending_ids),
+                Order.deleted_at.is_(None),
+            ).distinct().all()
+        }
     out = []
     for r in rows:
-        inv = User.query.get(r.invitee_user_id)
+        inv = invitees.get(r.invitee_user_id)
         label = '已发放奖励' if r.status == ReferralRecord.STATUS_REWARDED else '已绑定，未下单'
-        if r.status != ReferralRecord.STATUS_REWARDED:
-            has_order = Order.query.filter(
-                Order.user_id == r.invitee_user_id,
-                Order.deleted_at.is_(None),
-            ).first() is not None
-            if has_order:
-                label = '已下单，待完成'
+        if r.status != ReferralRecord.STATUS_REWARDED and r.invitee_user_id in ordered_user_ids:
+            label = '已下单，待完成'
         out.append({
             'referral_id': r.id,
             'invitee_user_id': r.invitee_user_id,

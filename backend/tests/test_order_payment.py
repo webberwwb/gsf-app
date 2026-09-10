@@ -4,7 +4,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from constants.status_enums import DeliveryMethod, PaymentMethod, PaymentStatus, OrderStatus, UserStatus
-from models import db
+from constants.delivery_consent import DELIVERY_CONSENT_VERSION
 from models.groupdeal import GroupDeal
 from models.order import Order
 from models.user import User
@@ -17,21 +17,37 @@ from utils.order_payment import (
 )
 
 
-def test_delivery_requires_card():
-    assert payment_method_error('delivery', 'etransfer', online_payment_enabled=True) == '配送订单必须使用信用卡支付'
-    assert payment_method_error('delivery', 'cash', online_payment_enabled=True) == '配送订单必须使用信用卡支付'
-    assert payment_method_error(
-        'delivery', 'card', require_card_on_file=False, online_payment_enabled=True
-    ) is None
+def _ready_user(**kwargs):
+    data = {
+        'stripe_payment_method_id': 'pm_test',
+        'delivery_consent_version': DELIVERY_CONSENT_VERSION,
+    }
+    data.update(kwargs)
+    return SimpleNamespace(**data)
 
 
-def test_delivery_requires_card_on_file():
-    user = SimpleNamespace(stripe_payment_method_id=None)
-    assert payment_method_error(
-        'delivery', 'card', user, online_payment_enabled=True
-    ) == '请先绑定银行卡后再提交配送订单'
-    user.stripe_payment_method_id = 'pm_test'
-    assert payment_method_error('delivery', 'card', user, online_payment_enabled=True) is None
+def test_delivery_rejected_without_consent():
+    user = _ready_user(delivery_consent_version=None)
+    assert payment_method_error('delivery', 'cash', user) == '请先阅读并同意《配送订单须知》'
+    assert payment_method_error('delivery', 'card', user) == '请先阅读并同意《配送订单须知》'
+
+
+def test_delivery_rejected_without_card():
+    user = _ready_user(stripe_payment_method_id=None)
+    assert payment_method_error('delivery', 'cash', user) == '请先绑定银行卡后再提交配送订单'
+    assert payment_method_error('delivery', 'card', user) == '请先绑定银行卡后再提交配送订单'
+
+
+def test_delivery_allows_cash_or_card_when_ready():
+    user = _ready_user()
+    assert payment_method_error('delivery', 'cash', user) is None
+    assert payment_method_error('delivery', 'card', user) is None
+    assert payment_method_error('delivery', 'etransfer', user) == '配送订单请使用现金或在线支付'
+
+
+def test_delivery_skips_card_check_when_not_required():
+    user = _ready_user(stripe_payment_method_id=None)
+    assert payment_method_error('delivery', 'cash', user, require_card_on_file=False) is None
 
 
 def test_pickup_rejects_card():
@@ -40,11 +56,8 @@ def test_pickup_rejects_card():
     assert payment_method_error('pickup', 'etransfer', online_payment_enabled=True) is None
 
 
-def test_legacy_deal_rejects_card_allows_cash_delivery():
-    assert payment_method_error('delivery', 'cash') is None
-    assert payment_method_error('delivery', 'etransfer') is None
+def test_legacy_deal_pickup_rejects_card():
     assert payment_method_error('pickup', 'cash') is None
-    assert payment_method_error('delivery', 'card') == '本团购暂不支持在线支付'
     assert payment_method_error('pickup', 'card') == '本团购暂不支持在线支付'
 
 

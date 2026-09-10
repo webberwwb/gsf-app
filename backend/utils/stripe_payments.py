@@ -59,6 +59,9 @@ def _clear_saved_card(user):
     user.stripe_payment_method_id = None
     user.stripe_card_brand = None
     user.stripe_card_last4 = None
+    # No card → delivery is off until they sign the 须知 and bind again
+    user.delivery_consent_accepted_at = None
+    user.delivery_consent_version = None
 
 
 def ensure_stripe_customer(user):
@@ -120,6 +123,27 @@ def sync_saved_card(user):
             _clear_saved_card(user)
         else:
             current_app.logger.warning('Could not verify saved payment method', exc_info=True)
+    return card_on_file_dict(user)
+
+
+def unbind_saved_card(user):
+    """Detach the saved payment method and revoke delivery consent."""
+    if not user:
+        return card_on_file_dict(user)
+    client = get_stripe_client()
+    pm_id = user.stripe_payment_method_id
+    if client and pm_id:
+        try:
+            client.v1.payment_methods.detach(pm_id)
+        except Exception as exc:
+            if not _is_missing_stripe_object(exc):
+                current_app.logger.warning(
+                    'Could not detach payment method %s for user %s',
+                    pm_id,
+                    user.id,
+                    exc_info=True,
+                )
+    _clear_saved_card(user)
     return card_on_file_dict(user)
 
 

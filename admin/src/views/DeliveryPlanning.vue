@@ -67,9 +67,9 @@
               <h4 class="customer-name">{{ displayName(order) }}</h4>
               <span class="payment-badge" :class="paymentClass(order)">{{ paymentLabel(order) }}</span>
             </div>
-            <p class="address">{{ displayAddress(order) }}</p>
+            <AddressDetails class="address" :address="order.address" />
             <p v-if="displayContact(order)" class="contact">
-              <a v-if="contactPhone(order)" class="tel-link" :href="`tel:${contactPhone(order)}`">{{ contactPhone(order) }}</a>
+              <a v-if="accountPhone(order)" class="tel-link" :href="`tel:${accountPhone(order)}`">账号 {{ accountPhone(order) }}</a>
               <span v-if="order.user?.wechat">微信 {{ order.user.wechat }}</span>
             </p>
             <p class="total">${{ formatMoney(order.final_total) }}</p>
@@ -93,9 +93,9 @@
               <h4 class="customer-name">{{ displayName(order) }}</h4>
               <span class="payment-badge" :class="paymentClass(order)">{{ paymentLabel(order) }}</span>
             </div>
-            <p class="address">{{ displayAddress(order) }}</p>
+            <AddressDetails class="address" :address="order.address" />
             <p v-if="displayContact(order)" class="contact">
-              <a v-if="contactPhone(order)" class="tel-link" :href="`tel:${contactPhone(order)}`">{{ contactPhone(order) }}</a>
+              <a v-if="accountPhone(order)" class="tel-link" :href="`tel:${accountPhone(order)}`">账号 {{ accountPhone(order) }}</a>
               <span v-if="order.user?.wechat">微信 {{ order.user.wechat }}</span>
             </p>
             <p class="total">${{ formatMoney(order.final_total) }}</p>
@@ -151,9 +151,9 @@
               <h4 class="customer-name">{{ displayName(order) }}</h4>
               <span class="payment-badge" :class="paymentClass(order)">{{ paymentLabel(order) }}</span>
             </div>
-            <p class="address">{{ displayAddress(order) }}</p>
+            <AddressDetails class="address" :address="order.address" />
             <p v-if="displayContact(order)" class="contact">
-              <a v-if="contactPhone(order)" class="tel-link" :href="`tel:${contactPhone(order)}`">{{ contactPhone(order) }}</a>
+              <a v-if="accountPhone(order)" class="tel-link" :href="`tel:${accountPhone(order)}`">账号 {{ accountPhone(order) }}</a>
               <span v-if="order.user?.wechat">微信 {{ order.user.wechat }}</span>
             </p>
             <p class="total">${{ formatMoney(order.final_total) }}</p>
@@ -222,10 +222,11 @@ import { formatOrderMoney2 } from '../utils/orderPricing'
 import { useModal } from '../composables/useModal'
 import PageLoading from '../components/PageLoading.vue'
 import ImageLightbox from '../components/ImageLightbox.vue'
+import AddressDetails from '../components/AddressDetails.vue'
 
 export default {
   name: 'DeliveryPlanning',
-  components: { PageLoading, ImageLightbox },
+  components: { PageLoading, ImageLightbox, AddressDetails },
   setup() {
     const { confirm, success, error: showError } = useModal()
     return { confirm, success, showError }
@@ -286,14 +287,22 @@ export default {
     displayName(order) {
       return order.user?.nickname || order.address?.recipient_name || '客户'
     },
-    contactPhone(order) {
-      return order.user?.phone || order.address?.phone || ''
+    normalizePhone(phone) {
+      const digits = String(phone || '').replace(/\D/g, '')
+      if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1)
+      return digits
+    },
+    accountPhone(order) {
+      const userPhone = order.user?.phone || ''
+      const addressPhone = order.address?.phone || ''
+      if (!userPhone) return ''
+      const userDigits = this.normalizePhone(userPhone)
+      const addressDigits = this.normalizePhone(addressPhone)
+      if (userDigits && addressDigits && userDigits === addressDigits) return ''
+      return userPhone
     },
     displayContact(order) {
-      const phone = this.contactPhone(order)
-      const wechat = order.user?.wechat
-      if (!phone && !wechat) return ''
-      return phone || wechat
+      return this.accountPhone(order) || order.user?.wechat || ''
     },
     formatMoney(value) {
       return formatOrderMoney2(value || 0)
@@ -310,11 +319,6 @@ export default {
       if (order.payment_status === 'refunded' || order.payment_status === 'failed') return 'failed'
       if (order.payment_method === 'card') return 'card'
       return 'unpaid'
-    },
-    displayAddress(order) {
-      const a = order.address
-      if (!a) return '无地址'
-      return [a.address_line1, a.address_line2, a.city, a.postal_code].filter(Boolean).join(' ')
     },
     photoUrl(order) {
       return this.photoByOrder[order.id] || order.delivery_photo_url || ''
@@ -636,6 +640,9 @@ export default {
   font-size: var(--md-label-size);
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+.address {
+  color: var(--md-on-surface);
 }
 .contact {
   display: flex;

@@ -2,13 +2,21 @@ from flask import Blueprint, jsonify, request
 from models import db
 from models.product import Product
 from models.product_category import ProductCategory
-from models.groupdeal import GroupDeal, GroupDealProduct, deal_product_to_dict
+from models.groupdeal import GroupDeal
 from models.product_sales_stats import ProductSalesStats
 from models.user import AuthToken, User
 from datetime import datetime, timezone, date, timedelta
 from models.base import utc_now
 from sqlalchemy import func, desc
+from sqlalchemy.orm import selectinload
 from constants.status_enums import GroupDealStatus
+from utils.deal_products import (
+    group_deal_products_by_deal,
+    load_group_deal_products,
+    product_eager_options,
+    serialize_loaded_deal_products,
+)
+from utils.sales_stats import sales_stats_totals_by_product
 
 def get_user_id_optional():
     """Get user_id if authenticated, otherwise return None (optional auth for group deal endpoint)"""
@@ -26,7 +34,7 @@ def get_user_id_optional():
         return None  # Invalid/expired token, but that's OK for this endpoint
     
     # Get user
-    user = User.query.get(auth_token.user_id)
+    user = User.query.options(selectinload(User.roles)).get(auth_token.user_id)
     if not user or not user.is_active:
         return None  # User not found or inactive
     
@@ -48,7 +56,7 @@ def get_current_user_optional():
         return None  # Invalid/expired token, but that's OK for this endpoint
     
     # Get user
-    user = User.query.get(auth_token.user_id)
+    user = User.query.options(selectinload(User.roles)).get(auth_token.user_id)
     if not user or not user.is_active:
         return None  # User not found or inactive
     
@@ -106,7 +114,7 @@ def get_products():
         else:
             query = query.order_by(Product.created_at.desc())
         
-        products = query.all()
+        products = query.options(*product_eager_options()).all()
         
         # For public API, optionally include sales stats if requested
         include_stats = request.args.get('include_stats', 'false').lower() == 'true'
@@ -114,23 +122,14 @@ def get_products():
         
         if include_stats:
             start_date = date.today() - timedelta(days=days)
+            stats_map = sales_stats_totals_by_product([p.id for p in products], start_date)
             for product in products:
                 product_dict = product.to_dict()
-                
-                # Get sales stats
-                stats_query = db.session.query(
-                    func.sum(ProductSalesStats.quantity_sold).label('total_sold'),
-                    func.sum(ProductSalesStats.order_count).label('total_orders')
-                ).filter(
-                    ProductSalesStats.product_id == product.id,
-                    ProductSalesStats.sale_date >= start_date
-                ).first()
-                
+                stats = stats_map.get(product.id, {})
                 product_dict['sales_stats'] = {
-                    'total_sold': int(stats_query.total_sold) if stats_query.total_sold else 0,
-                    'total_orders': int(stats_query.total_orders) if stats_query.total_orders else 0
+                    'total_sold': stats.get('total_sold', 0),
+                    'total_orders': stats.get('total_orders', 0)
                 }
-                
                 products_data.append(product_dict)
         else:
             products_data = [product.to_dict() for product in products]
@@ -179,50 +178,21 @@ def get_group_deals():
             # Regular users can see active, upcoming, closed, and completed deals (but not draft)
             statuses = ['active', 'upcoming', 'preparing', 'ready_for_pickup', 'closed', 'completed']
         
-        from sqlalchemy.orm import joinedload
-        
         deals = GroupDeal.query.filter(
             GroupDeal.status.in_(statuses),
             GroupDeal.deleted_at.is_(None)
         ).order_by(GroupDeal.order_start_date.desc()).all()
         
-        # Batch load all products for all deals to avoid N+1 queries
-        deal_ids = [deal.id for deal in deals]
-        deal_products_query = GroupDealProduct.query.filter(
-            GroupDealProduct.group_deal_id.in_(deal_ids)
-        ).all()
-        
-        # Group by deal_id
-        deal_products_map = {}
-        for dp in deal_products_query:
-            if dp.group_deal_id not in deal_products_map:
-                deal_products_map[dp.group_deal_id] = []
-            deal_products_map[dp.group_deal_id].append(dp)
-        
-        # Batch load all products
-        product_ids = [dp.product_id for dp in deal_products_query]
-        products_query = Product.query.filter(
-            Product.id.in_(product_ids),
-            Product.is_active == True
-        ).all()
-        products_map = {p.id: p for p in products_query}
-        
-        # Build response
+        deal_products_map = group_deal_products_by_deal(load_group_deal_products([deal.id for deal in deals]))
+
         deals_data = []
         for deal in deals:
             deal_dict = deal.to_dict()
-            deal_products = deal_products_map.get(deal.id, [])
-            
-            products_data = []
-            for dp in deal_products:
-                product = products_map.get(dp.product_id)
-                if product:
-                    product_dict = _apply_buyer_product_pricing(
-                        deal_product_to_dict(dp, product=product), current_user
-                    )
-                    products_data.append(product_dict)
-            
-            # Sort products: out of stock last, discount first, then sort_order
+            products_data = serialize_loaded_deal_products(
+                deal_products_map.get(deal.id, []),
+                buyer=current_user,
+                active_products_only=True,
+            )
             _sort_deal_products(products_data)
             deal_dict['products'] = products_data
             deals_data.append(deal_dict)
@@ -269,25 +239,14 @@ def _query_open_group_deals(is_admin: bool):
     ).order_by(GroupDeal.order_start_date.desc())
 
 
-def _apply_buyer_product_pricing(product_dict, buyer):
-    if product_dict and buyer and getattr(buyer, 'is_influencer', False):
-        from utils.influencer_pricing import apply_influencer_discount_to_product_payload
-        return apply_influencer_discount_to_product_payload(product_dict, buyer.id)
-    return product_dict
-
-
 def _serialize_group_deal_with_products(deal, buyer=None):
     """Build deal dict with nested products (same shape as list/detail endpoints)."""
     buyer = buyer if buyer is not None else get_current_user_optional()
     deal_dict = deal.to_dict()
-    deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
-    products_data = []
-    for dp in deal_products:
-        product = Product.query.get(dp.product_id)
-        if product:
-            products_data.append(_apply_buyer_product_pricing(
-                deal_product_to_dict(dp, product=product), buyer
-            ))
+    products_data = serialize_loaded_deal_products(
+        load_group_deal_products(deal.id),
+        buyer=buyer,
+    )
     _sort_deal_products(products_data)
     deal_dict['products'] = products_data
     return deal_dict
@@ -325,7 +284,7 @@ def get_latest_group_deal():
         deal = _query_open_group_deals(is_admin).first()
         if not deal:
             return jsonify({'deal': None}), 200
-        return jsonify({'deal': _serialize_group_deal_with_products(deal)}), 200
+        return jsonify({'deal': _serialize_group_deal_with_products(deal, buyer=current_user)}), 200
     except Exception as e:
         return jsonify({
             'error': 'Failed to fetch latest group deal',
@@ -350,7 +309,7 @@ def get_group_deal(deal_id):
                 'message': 'Deal not found'
             }), 404
 
-        deal_dict = _serialize_group_deal_with_products(deal)
+        deal_dict = _serialize_group_deal_with_products(deal, buyer=current_user)
         return jsonify({'deal': deal_dict}), 200
     except Exception as e:
         return jsonify({

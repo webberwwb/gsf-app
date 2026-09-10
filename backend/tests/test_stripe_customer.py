@@ -7,6 +7,7 @@ from utils.stripe_payments import (
     card_setup_method_params,
     ensure_stripe_customer,
     sync_saved_card,
+    unbind_saved_card,
 )
 
 
@@ -17,6 +18,8 @@ def _user(**overrides):
         stripe_payment_method_id='pm_old',
         stripe_card_brand='visa',
         stripe_card_last4='4242',
+        delivery_consent_accepted_at='2026-09-09',
+        delivery_consent_version='2026-09',
         nickname='Weibo',
         wechat=None,
         phone='+19025809630',
@@ -81,6 +84,19 @@ def test_sync_saved_card_clears_missing_payment_method(app):
     assert card['has_card'] is False
     assert user.stripe_payment_method_id is None
     assert user.stripe_card_last4 is None
+    assert user.delivery_consent_version is None
+    assert user.delivery_consent_accepted_at is None
+
+
+def test_unbind_saved_card_detaches_and_clears_consent(app):
+    user = _user()
+    client = MagicMock()
+    with patch('utils.stripe_payments.get_stripe_client', return_value=client):
+        card = unbind_saved_card(user)
+    assert card['has_card'] is False
+    assert user.stripe_payment_method_id is None
+    assert user.delivery_consent_version is None
+    client.v1.payment_methods.detach.assert_called_once_with('pm_old')
 
 
 def test_card_setup_uses_live_pmc(app):

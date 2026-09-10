@@ -48,6 +48,11 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 <span class="value">{{ order.user?.nickname || order.user?.phone || 'N/A' }}</span>
+                <a
+                  v-if="order.user?.phone && order.user?.nickname && !order.pii_locked"
+                  class="phone-badge"
+                  :href="`tel:${order.user.phone}`"
+                >{{ order.user.phone }}</a>
                 <span v-if="order.user?.wechat && !order.pii_locked" class="wechat-badge">微信: {{ order.user.wechat }}</span>
                 <button 
                   v-if="!isFulfillmentOnly && order.user && !order.user.is_admin" 
@@ -97,9 +102,9 @@
                   </svg>
                   支付方式:
                 </label>
-                <select v-model="localPaymentMethod" class="payment-method-select" @change="handlePaymentMethodChange" :disabled="isFulfillmentOnly || (order && order.delivery_method === 'delivery')">
+                <select v-model="localPaymentMethod" class="payment-method-select" @change="handlePaymentMethodChange" :disabled="isFulfillmentOnly">
                   <option value="">未选择</option>
-                  <option value="cash" :disabled="order && order.delivery_method === 'delivery'">现金</option>
+                  <option value="cash">现金</option>
                   <option value="etransfer" :disabled="order && order.delivery_method === 'delivery'">电子转账</option>
                   <option value="card" :disabled="order && order.delivery_method === 'pickup'">信用卡</option>
                 </select>
@@ -146,7 +151,7 @@
                   :disabled="chargingStripe"
                   @click="chargeStripe"
                 >
-                  {{ chargingStripe ? '扣款中...' : '收取信用卡' }}
+                  {{ chargingStripe ? '扣款中...' : stripeChargeButtonLabel }}
                 </button>
                 <button
                   v-if="order.payment_status !== 'paid'"
@@ -220,9 +225,13 @@
                   </div>
                 </div>
                 
-                <div v-if="loadingAddresses" class="loading-addresses">加载地址中...</div>
+                <div v-if="loadingAddresses" class="loading-addresses">
+                  <AddressDetails v-if="order.address" :address="order.address" show-email />
+                  <span v-else>加载地址中...</span>
+                </div>
                 <div v-else-if="userAddresses.length === 0 && !showAddAddressForm" class="no-addresses">
-                  用户暂无保存的地址，请添加新地址
+                  <AddressDetails v-if="order.address" :address="order.address" show-email />
+                  <span v-else>用户暂无保存的地址，请添加新地址</span>
                 </div>
                 <div v-else class="addresses-list">
                   <div 
@@ -234,9 +243,7 @@
                       <input type="radio" :checked="localAddressId === address.id" readonly>
                     </div>
                     <div class="address-content">
-                      <div class="address-line">{{ address.address_line1 }}</div>
-                      <div v-if="address.address_line2" class="address-line">{{ address.address_line2 }}</div>
-                      <div class="address-city">{{ address.city }}, {{ address.postal_code }}</div>
+                      <AddressDetails :address="address" show-email />
                     </div>
                   </div>
                 </div>
@@ -272,6 +279,10 @@
                       <label>邮编 *</label>
                       <input v-model="newAddress.postal_code" type="text" placeholder="M1A 2B3" class="form-input" required>
                     </div>
+                  </div>
+                  <div class="form-group">
+                    <label>配送说明</label>
+                    <textarea v-model="newAddress.delivery_instructions" rows="2" placeholder="例如：请放在门口" class="form-input"></textarea>
                   </div>
                   <div class="form-actions">
                     <button @click="saveNewAddress" class="save-address-btn" :disabled="savingAddress || !isAddressValid">
@@ -743,11 +754,12 @@ import { previewOrderTotals, formatOrderMoney2 } from '../utils/orderPricing'
 import { fetchShippingConfig } from '../utils/shipping'
 import ProductVariantPicker from './ProductVariantPicker.vue'
 import ImageLightbox from './ImageLightbox.vue'
+import AddressDetails from './AddressDetails.vue'
 import { isFulfillmentOnly } from '../utils/auth'
 
 export default {
   name: 'OrderDetailModal',
-  components: { ProductVariantPicker, ImageLightbox },
+  components: { ProductVariantPicker, ImageLightbox, AddressDetails },
   setup() {
     const { confirm, success, error } = useModal()
     return { confirm, success, error }
@@ -801,7 +813,8 @@ export default {
         address_line1: '',
         address_line2: '',
         city: '',
-        postal_code: ''
+        postal_code: '',
+        delivery_instructions: ''
       },
       editableItems: [],
       showAddProductModal: false,
@@ -845,6 +858,11 @@ export default {
         || this.localPaymentMethod === 'card'
         || Boolean(this.order.stripe_payment_method_id)
         || Boolean(this.order.stripe_charge_status)
+    },
+    stripeChargeButtonLabel() {
+      const method = this.localPaymentMethod || this.order?.payment_method
+      if (method === 'cash') return '未能收取现金，从绑卡扣款'
+      return '收取信用卡'
     },
     orderCardLabel() {
       const brand = this.order?.stripe_card_brand
@@ -1197,7 +1215,8 @@ export default {
         address_line1: '',
         address_line2: '',
         city: '',
-        postal_code: ''
+        postal_code: '',
+        delivery_instructions: ''
       }
       this.editableItems = []
       this.showAddProductModal = false
@@ -1622,7 +1641,11 @@ export default {
         updateData.pickup_location = 'markham'
       } else if (this.localDeliveryMethod === 'delivery') {
         updateData.address_id = this.localAddressId
-        updateData.payment_method = this.localPaymentMethod === 'etransfer' ? 'etransfer' : 'card'
+        if (this.localPaymentMethod === 'cash' || this.localPaymentMethod === 'card') {
+          updateData.payment_method = this.localPaymentMethod
+        } else {
+          updateData.payment_method = 'card'
+        }
       }
       
       // Include order notes
@@ -1835,7 +1858,8 @@ export default {
         address_line1: '',
         address_line2: '',
         city: '',
-        postal_code: ''
+        postal_code: '',
+        delivery_instructions: ''
       }
     },
     async saveNewAddress() {
@@ -1890,7 +1914,8 @@ export default {
           address_line1: this.newAddress.address_line1.trim(),
           address_line2: this.newAddress.address_line2?.trim() || null,
           city: this.newAddress.city.trim(),
-          postal_code: this.newAddress.postal_code.trim()
+          postal_code: this.newAddress.postal_code.trim(),
+          delivery_instructions: this.newAddress.delivery_instructions?.trim() || null
         }
         
         console.log('[saveNewAddress] Payload:', payload)
@@ -1915,7 +1940,8 @@ export default {
           address_line1: '',
           address_line2: '',
           city: '',
-          postal_code: ''
+          postal_code: '',
+          delivery_instructions: ''
         }
         
         await this.success('地址已添加')
@@ -2777,6 +2803,7 @@ export default {
 .info-item-user {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -2786,14 +2813,24 @@ export default {
   color: rgba(0, 0, 0, 0.6);
 }
 
+.info-item-user .phone-badge,
 .info-item-user .wechat-badge {
-  margin-left: 8px;
+  margin-left: 0;
   padding: 2px 8px;
-  background: #E8F5E9;
-  color: #2E7D32;
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
+  text-decoration: none;
+}
+
+.info-item-user .phone-badge {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
+.info-item-user .wechat-badge {
+  background: #E8F5E9;
+  color: #2E7D32;
 }
 
 .impersonate-btn-small {
@@ -3706,7 +3743,7 @@ export default {
 .loading-addresses,
 .no-addresses {
   padding: var(--md-spacing-md);
-  text-align: center;
+  text-align: left;
   color: rgba(0, 0, 0, 0.6);
   font-size: 0.875rem;
 }
@@ -3715,8 +3752,6 @@ export default {
   display: flex;
   flex-direction: column;
   gap: var(--md-spacing-sm);
-  max-height: 300px;
-  overflow-y: auto;
 }
 
 .address-item {

@@ -53,6 +53,30 @@ def update_product_sales_stats(order):
         db.session.rollback()
         raise e
 
+def sales_stats_totals_by_product(product_ids, start_date):
+    """One grouped query: {product_id: {total_sold, total_orders}} since start_date."""
+    from sqlalchemy import func
+
+    ids = list({int(p) for p in product_ids if p is not None})
+    if not ids:
+        return {}
+    rows = db.session.query(
+        ProductSalesStats.product_id,
+        func.sum(ProductSalesStats.quantity_sold),
+        func.sum(ProductSalesStats.order_count),
+    ).filter(
+        ProductSalesStats.product_id.in_(ids),
+        ProductSalesStats.sale_date >= start_date,
+    ).group_by(ProductSalesStats.product_id).all()
+    return {
+        pid: {
+            'total_sold': int(sold or 0),
+            'total_orders': int(orders or 0),
+        }
+        for pid, sold, orders in rows
+    }
+
+
 def get_product_sales_by_date_range(product_id, start_date, end_date):
     """Get aggregated sales for a product within date range
     

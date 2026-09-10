@@ -111,9 +111,7 @@
           <span v-if="order.delivery_method === 'pickup'" class="location-text">
             {{ order.pickup_location || 'N/A' }}
           </span>
-          <span v-else-if="order.address" class="location-text">
-            {{ formatAddress(order.address) }}
-          </span>
+          <AddressDetails v-else-if="order.address" :address="order.address" compact />
         </div>
       </div>
 
@@ -166,9 +164,11 @@ import {
   orderAmountDueNumber,
   formatOrderMoney2
 } from '../utils/orderPricing'
+import AddressDetails from './AddressDetails.vue'
 
 export default {
   name: 'GroupDealOrderListItem',
+  components: { AddressDetails },
   props: {
     order: {
       type: Object,
@@ -224,13 +224,6 @@ export default {
       if (order.payment_method === 'card' && order.stripe_charge_status === 'failed') return 'payment-failed'
       if (order.payment_method === 'card') return 'payment-card-on-file'
       return `payment-${order.payment_status}`
-    },
-    formatAddress(address) {
-      if (!address) return 'N/A'
-      const parts = []
-      if (address.address_line1) parts.push(address.address_line1)
-      if (address.city) parts.push(address.city)
-      return parts.join(', ') || 'N/A'
     },
     moneyFinal(o) {
       return formatOrderMoney2(orderFinalTotalNumber(o))
@@ -428,7 +421,6 @@ export default {
 }
 
 .user-info,
-.delivery-info,
 .items-summary,
 .notes-info {
   display: flex;
@@ -436,6 +428,20 @@ export default {
   gap: 6px;
   flex: 1;
   min-width: 0;
+}
+
+.delivery-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.delivery-info :deep(.address-details) {
+  flex: 1 1 100%;
+  margin-left: 22px;
 }
 
 .user-info svg,
@@ -548,9 +554,7 @@ export default {
 .location-text {
   font-size: 0.75rem;
   color: rgba(0, 0, 0, 0.6);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .items-row {
@@ -589,10 +593,6 @@ export default {
   font-size: 0.75rem;
   color: rgba(0, 0, 0, 0.7);
   font-style: italic;
-  background: #FFF9C4;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border-left: 2px solid #FFC107;
   flex: 1;
   word-break: break-word;
 }

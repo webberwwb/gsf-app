@@ -397,7 +397,7 @@
       <!-- Payment Method Selection -->
       <div class="payment-section">
         <h3 class="section-title">支付方式</h3>
-        <div v-if="showLegacyPaymentOptions" class="payment-options">
+        <div v-if="deliveryMethod === 'pickup'" class="payment-options">
           <label 
             :class="['payment-option', { active: paymentMethod === 'cash' }]"
           >
@@ -448,27 +448,66 @@
             </div>
           </label>
         </div>
-        <div v-else class="card-bind-panel">
-          <div v-if="hasCardOnFile" class="card-on-file">
-            <div>
-              <span class="card-on-file-label">已绑卡</span>
-              <span class="card-on-file-detail">{{ savedCardLabel }}</span>
+        <div v-else class="delivery-payment">
+          <div class="card-bind-panel">
+            <div v-if="hasCardOnFile" class="card-on-file">
+              <div>
+                <span class="card-on-file-label">已绑卡</span>
+                <span class="card-on-file-detail">{{ savedCardLabel }}</span>
+              </div>
+              <div class="card-on-file-status">{{ deliveryCardStatus }}</div>
             </div>
-            <div class="card-on-file-status">提交订单后称重再扣款</div>
+            <div v-else class="card-on-file card-on-file--empty">
+              配送需先绑定银行卡（信用卡或 Visa/Mastercard 借记卡）
+            </div>
+            <button
+              type="button"
+              class="bind-card-btn"
+              :disabled="bindingCard"
+              @click="startCardSetup"
+            >
+              {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
+            </button>
+            <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
+            <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
           </div>
-          <div v-else class="card-on-file card-on-file--empty">
-            配送需先绑定银行卡（信用卡或 Visa/Mastercard 借记卡）
+          <h4 class="selection-subtitle">选择支付方式</h4>
+          <div class="payment-options">
+            <label :class="['payment-option', { active: paymentMethod === 'cash' }]">
+              <input type="radio" name="deliveryPaymentMethod" value="cash" v-model="paymentMethod" class="payment-radio" />
+              <div class="option-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <div class="option-content">
+                <h4>现金</h4>
+                <p>配送时当面支付</p>
+              </div>
+              <div class="option-check">
+                <svg v-if="paymentMethod === 'cash'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </label>
+            <label :class="['payment-option', { active: paymentMethod === 'card' }]">
+              <input type="radio" name="deliveryPaymentMethod" value="card" v-model="paymentMethod" class="payment-radio" />
+              <div class="option-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+              </div>
+              <div class="option-content">
+                <h4>在线支付</h4>
+                <p>称重后从已绑银行卡扣款</p>
+              </div>
+              <div class="option-check">
+                <svg v-if="paymentMethod === 'card'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </label>
           </div>
-          <button
-            type="button"
-            class="bind-card-btn"
-            :disabled="bindingCard"
-            @click="startCardSetup"
-          >
-            {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
-          </button>
-          <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
-          <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
         </div>
         <p class="payment-note">{{ paymentNote }}</p>
       </div>
@@ -585,8 +624,15 @@
       :show="showCardSetup"
       :customer-name="currentUser?.nickname || currentUser?.wechat || ''"
       :customer-phone="currentUser?.phone || ''"
-      @close="showCardSetup = false"
+      @close="onCardSetupModalClose"
       @saved="onCardSaved"
+    />
+    <DeliveryConsentModal
+      :show="showConsentModal"
+      :saving="consentSaving"
+      :error="consentError"
+      @accept="acceptDeliveryConsent"
+      @cancel="cancelDeliveryConsent"
     />
   </div>
 </template>
@@ -595,6 +641,8 @@
 import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
 import CardSetupModal from '../components/CardSetupModal.vue'
+import DeliveryConsentModal from '../components/DeliveryConsentModal.vue'
+import deliveryConsentGate from '../mixins/deliveryConsentGate'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import { useCheckoutStore } from '../stores/checkout'
 import { toCheckoutLineDisplay } from '../utils/orderItemPricing'
@@ -614,8 +662,10 @@ export default {
   components: {
     AddressForm,
     CardSetupModal,
+    DeliveryConsentModal,
     OrderLineDisplay
   },
+  mixins: [deliveryConsentGate],
   setup() {
     const checkoutStore = useCheckoutStore()
     const authStore = useAuthStore()
@@ -728,25 +778,27 @@ export default {
       const src = this.cardOnFile || this.currentUser || {}
       return cardLabel(src.brand || src.stripe_card_brand, src.last4 || src.stripe_card_last4)
     },
-    onlinePaymentEnabled() {
-      return !!this.deal?.online_payment_enabled
-    },
-    showLegacyPaymentOptions() {
-      return !this.onlinePaymentEnabled || this.deliveryMethod === 'pickup'
+    deliveryCardStatus() {
+      if (this.paymentMethod === 'card') {
+        return '称重后从该卡扣款'
+      }
+      return '现金未收到时将从该卡扣款'
     },
     paymentNote() {
-      if (this.onlinePaymentEnabled && this.deliveryMethod === 'delivery') {
-        return '下单不扣款，称重和运费确定后一次性扣款。未扣款不发货'
+      if (this.deliveryMethod === 'delivery') {
+        if (this.paymentMethod === 'card') {
+          return '下单不扣款，称重后扣款。未扣款不发货'
+        }
+        return '配送时现金支付；无人收货或未能支付现金时，从已绑定银行卡扣款'
       }
       return '根据实际重量支付（现金或电子转账）'
     },
     canConfirm() {
       if (this.deliveryMethod === 'delivery') {
-        if (this.onlinePaymentEnabled) {
-          return this.selectedAddressId !== null && this.hasCardOnFile
-        }
-        return this.selectedAddressId !== null
-      } else if (this.deliveryMethod === 'pickup') {
+        const payOk = this.paymentMethod === 'cash' || this.paymentMethod === 'card'
+        return this.selectedAddressId !== null && this.hasDeliveryConsent && this.hasCardOnFile && payOk
+      }
+      if (this.deliveryMethod === 'pickup') {
         return this.selectedPickupLocation !== null
       }
       return true
@@ -915,6 +967,12 @@ export default {
     },
     maxStoreCreditApplicable() {
       this.syncShippingCreditPreview()
+    },
+    hasCardOnFile() {
+      this.enforceDeliveryEligibility()
+    },
+    hasDeliveryConsent() {
+      this.enforceDeliveryEligibility()
     }
   },
   beforeUnmount() {
@@ -925,16 +983,37 @@ export default {
   },
   methods: {
     setDeliveryMethod(method) {
-      this.checkoutStore.setDeliveryMethod(method)
-      if (method === 'delivery' && this.onlinePaymentEnabled) {
-        this.loadCardOnFile()
+      if (method === 'pickup') {
+        this.stayPickupAfterGate()
+        return
       }
+      this.requestDelivery()
+    },
+    applyDeliveryAfterGate() {
+      this.checkoutStore.setDeliveryMethod('delivery')
+      if (this.paymentMethod === 'etransfer') {
+        this.checkoutStore.setPaymentMethod('cash')
+      }
+      this.loadCardOnFile()
+      if (this.addresses.length === 0) {
+        this.loadAddresses()
+      }
+    },
+    stayPickupAfterGate() {
+      this.checkoutStore.setDeliveryMethod('pickup')
+    },
+    onCardSetupModalClose() {
+      this.showCardSetup = false
+      this.onCardSetupClosed()
     },
     async loadCardOnFile() {
       if (!this.isAuthenticated) return
       try {
         const { data } = await apiClient.get('/payments/card')
         this.cardOnFile = data
+        if (!hasSavedCard(data) && this.currentUser?.has_delivery_consent) {
+          await this.authStore.checkAuth()
+        }
       } catch (e) {
         this.cardOnFile = this.currentUser?.has_card_on_file
           ? {
@@ -990,6 +1069,7 @@ export default {
       try {
         await this.authStore.checkAuth()
       } catch (e) { /* card already saved */ }
+      this.onCardSavedForGate()
     },
     toggleApplyStoreCredit() {
       if (this.maxStoreCreditApplicable <= 0) return
@@ -1947,6 +2027,16 @@ export default {
   color: var(--md-on-surface-variant);
   text-align: center;
   font-style: italic;
+}
+
+.delivery-payment {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.delivery-payment .selection-subtitle {
+  margin: 4px 0 0;
 }
 
 .card-bind-panel {

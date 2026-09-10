@@ -164,39 +164,83 @@ def convert_source_customers_to_influencer(owner_user_id, source, exclude_user_i
     }
 
 
+def resolve_rates_for_products(influencer_user_id, product_ids):
+    """Batch resolve_rate for many products. Returns {product_id: (type, amount)}."""
+    ids = [pid for pid in {int(p) for p in product_ids if p is not None}]
+    if not influencer_user_id or not ids:
+        return {}
+    overrides = InfluencerRateOverride.query.filter(
+        InfluencerRateOverride.influencer_user_id == influencer_user_id,
+        InfluencerRateOverride.product_id.in_(ids),
+    ).all()
+    override_map = {row.product_id: row for row in overrides}
+    globals_ = InfluencerProductRate.query.filter(
+        InfluencerProductRate.product_id.in_(ids),
+    ).all()
+    global_map = {row.product_id: row for row in globals_}
+
+    out = {}
+    for pid in ids:
+        override = override_map.get(pid)
+        if override is not None:
+            amount = Decimal(str(override.amount or 0))
+            if amount > 0:
+                out[pid] = (override.commission_type or COMMISSION_PER_ITEM, amount)
+            continue
+        global_rate = global_map.get(pid)
+        if global_rate is None:
+            continue
+        amount = Decimal(str(global_rate.amount or 0))
+        if amount > 0:
+            out[pid] = (global_rate.commission_type or COMMISSION_PER_ITEM, amount)
+    return out
+
+
 def resolve_rate(influencer_user_id, product_id):
     """Return (commission_type, amount Decimal) or None if no positive rate."""
-    override = InfluencerRateOverride.query.filter_by(
-        influencer_user_id=influencer_user_id,
-        product_id=product_id,
-    ).first()
-    if override is not None:
-        amount = Decimal(str(override.amount or 0))
-        if amount <= 0:
-            return None
-        return override.commission_type or COMMISSION_PER_ITEM, amount
+    if product_id is None:
+        return None
+    return resolve_rates_for_products(influencer_user_id, [product_id]).get(product_id)
 
-    global_rate = InfluencerProductRate.query.filter_by(product_id=product_id).first()
-    if global_rate is None:
-        return None
-    amount = Decimal(str(global_rate.amount or 0))
-    if amount <= 0:
-        return None
-    return global_rate.commission_type or COMMISSION_PER_ITEM, amount
+
+def resolved_commissions_for_products(influencer_user_id, product_ids):
+    """Batch _resolved_commission, including $0 rows for UI."""
+    ids = [pid for pid in {int(p) for p in product_ids if p is not None}]
+    if not influencer_user_id or not ids:
+        return {}
+    overrides = InfluencerRateOverride.query.filter(
+        InfluencerRateOverride.influencer_user_id == influencer_user_id,
+        InfluencerRateOverride.product_id.in_(ids),
+    ).all()
+    override_map = {row.product_id: row for row in overrides}
+    globals_ = InfluencerProductRate.query.filter(
+        InfluencerProductRate.product_id.in_(ids),
+    ).all()
+    global_map = {row.product_id: row for row in globals_}
+    out = {}
+    for pid in ids:
+        override = override_map.get(pid)
+        if override is not None:
+            out[pid] = (override.commission_type or COMMISSION_PER_ITEM, Decimal(str(override.amount or 0)))
+            continue
+        global_rate = global_map.get(pid)
+        if global_rate is None:
+            out[pid] = (COMMISSION_PER_ITEM, Decimal('0'))
+        else:
+            out[pid] = (
+                global_rate.commission_type or COMMISSION_PER_ITEM,
+                Decimal(str(global_rate.amount or 0)),
+            )
+    return out
 
 
 def _resolved_commission(influencer_user_id, product_id):
     """Rate lookup that still returns $0 rows so the UI can show type/unit."""
-    override = InfluencerRateOverride.query.filter_by(
-        influencer_user_id=influencer_user_id,
-        product_id=product_id,
-    ).first()
-    if override is not None:
-        return override.commission_type or COMMISSION_PER_ITEM, Decimal(str(override.amount or 0))
-    global_rate = InfluencerProductRate.query.filter_by(product_id=product_id).first()
-    if global_rate is None:
+    if product_id is None:
         return COMMISSION_PER_ITEM, Decimal('0')
-    return global_rate.commission_type or COMMISSION_PER_ITEM, Decimal(str(global_rate.amount or 0))
+    return resolved_commissions_for_products(influencer_user_id, [product_id]).get(
+        product_id, (COMMISSION_PER_ITEM, Decimal('0'))
+    )
 
 
 def _product_weight_unit(product):
@@ -249,8 +293,11 @@ def _line_weight(item, product):
     return ref * qty, True
 
 
-def _item_public_dict(item, product, influencer_user_id):
-    commission_type, rate = _resolved_commission(influencer_user_id, item.product_id)
+def _item_public_dict(item, product, influencer_user_id, resolved=None):
+    if resolved is None:
+        commission_type, rate = _resolved_commission(influencer_user_id, item.product_id)
+    else:
+        commission_type, rate = resolved
     weight, weight_estimated = _line_weight(item, product)
     if commission_type == COMMISSION_PER_WEIGHT:
         units = weight if weight is not None else Decimal('0')
@@ -387,13 +434,14 @@ def compute_order_commission(order, influencer_user_id):
         p.id: p
         for p in Product.query.filter(Product.id.in_(product_ids)).all()
     } if product_ids else {}
+    rates = resolve_rates_for_products(influencer_user_id, product_ids)
 
     for item in order.items or []:
         if getattr(item, 'deleted_at', None):
             continue
         if getattr(item, 'cannot_fulfill', False):
             continue
-        resolved = resolve_rate(influencer_user_id, item.product_id)
+        resolved = rates.get(item.product_id)
         if not resolved:
             continue
         commission_type, rate = resolved
@@ -693,9 +741,13 @@ def _is_closed_cycle_order(order):
 
 def _visible_customer_orders(customer_ids, min_group_deal_id=None):
     from constants.status_enums import OrderStatus
+    from sqlalchemy.orm import selectinload, joinedload
     if not customer_ids:
         return []
-    query = Order.query.filter(
+    query = Order.query.options(
+        selectinload(Order.items),
+        joinedload(Order.group_deal),
+    ).filter(
         Order.user_id.in_(customer_ids),
         Order.deleted_at.is_(None),
         Order.status != OrderStatus.CANCELLED.value,
@@ -782,6 +834,13 @@ def customers_for(influencer_user_id, for_admin=False):
     paid_by_customer = {}
     for order in _paid_completed_orders(customer_ids, min_group_deal_id=min_deal_id):
         paid_by_customer.setdefault(order.user_id, []).append(order)
+    entries_by_customer = {}
+    if customer_ids:
+        for entry in InfluencerCommissionEntry.query.filter(
+            InfluencerCommissionEntry.influencer_user_id == influencer_user_id,
+            InfluencerCommissionEntry.customer_user_id.in_(customer_ids),
+        ).all():
+            entries_by_customer.setdefault(entry.customer_user_id, []).append(entry)
     rows = []
     for customer in customers:
         visible = orders_by_customer.get(customer.id, [])
@@ -790,10 +849,7 @@ def customers_for(influencer_user_id, for_admin=False):
         paid_orders = paid_by_customer.get(customer.id, [])
         spend = sum((Decimal(str(o.total or 0)) for o in paid_orders), Decimal('0'))
         commission = Decimal('0')
-        for entry in InfluencerCommissionEntry.query.filter_by(
-            influencer_user_id=influencer_user_id,
-            customer_user_id=customer.id,
-        ).all():
+        for entry in entries_by_customer.get(customer.id, []):
             if entry.status != STATUS_REVERSED:
                 commission += Decimal(str(entry.amount or 0))
         extra = {
@@ -873,6 +929,7 @@ def customer_detail_for(influencer_user_id, customer_id):
         p.id: p
         for p in Product.query.filter(Product.id.in_(product_ids)).all()
     } if product_ids else {}
+    rates = resolved_commissions_for_products(influencer_user_id, product_ids)
     order_rows = []
     for order in orders:
         entry = entries.get(order.id)
@@ -881,7 +938,12 @@ def customer_detail_for(influencer_user_id, customer_id):
         preview = Decimal('0')
         any_estimated = False
         for item in order.items or []:
-            row = _item_public_dict(item, products.get(item.product_id), influencer_user_id)
+            row = _item_public_dict(
+                item,
+                products.get(item.product_id),
+                influencer_user_id,
+                resolved=rates.get(item.product_id, (COMMISSION_PER_ITEM, Decimal('0'))),
+            )
             items.append(row)
             preview += Decimal(str(row['commission_amount'] or 0))
             if row['commission_estimated'] or row['line_total_estimated']:

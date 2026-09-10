@@ -53,6 +53,10 @@ class User(BaseModel):
     stripe_payment_method_id = db.Column(db.String(255), nullable=True)
     stripe_card_brand = db.Column(db.String(32), nullable=True)
     stripe_card_last4 = db.Column(db.String(4), nullable=True)
+
+    # Delivery 须知: must match current DELIVERY_CONSENT_VERSION to place 配送 orders
+    delivery_consent_accepted_at = db.Column(db.DateTime, nullable=True)
+    delivery_consent_version = db.Column(db.String(16), nullable=True)
     
     # User source (e.g., "花泽", "default")
     user_source = db.Column(db.String(50), nullable=True, default='default')
@@ -73,11 +77,22 @@ class User(BaseModel):
     )
     tokens = db.relationship('AuthToken', backref='user', lazy=True, cascade='all, delete-orphan')
     roles = db.relationship('UserRole', backref='user', lazy=True, cascade='all, delete-orphan')
+    influencer_profile = db.relationship(
+        'InfluencerProfile',
+        uselist=False,
+        viewonly=True,
+        foreign_keys='InfluencerProfile.user_id',
+    )
     
     @property
     def is_active(self):
         """Check if user is active"""
         return self.status == UserStatus.ACTIVE.value
+
+    @property
+    def has_delivery_consent(self):
+        from constants.delivery_consent import user_has_delivery_consent
+        return user_has_delivery_consent(self)
     
     @property
     def is_admin(self):
@@ -99,9 +114,8 @@ class User(BaseModel):
         """Check if user has an active 推荐官 role."""
         if not any(role.role == 'influencer' for role in self.roles):
             return False
-        from models.influencer import InfluencerProfile
-        profile = InfluencerProfile.query.filter_by(user_id=self.id, is_active=True).first()
-        return bool(profile)
+        profile = self.influencer_profile
+        return bool(profile and profile.is_active)
     
     def has_role(self, role_name):
         """Check if user has a specific role"""
@@ -116,7 +130,7 @@ class User(BaseModel):
         """Get count of orders for this user"""
         return len(self.orders) if self.orders else 0
     
-    def to_dict(self, include_order_count=False, include_referrer=False):
+    def to_dict(self, include_order_count=False, include_referrer=False, order_count=None):
         data = super().to_dict()
         data.update({
             'phone': self.phone,
@@ -133,6 +147,7 @@ class User(BaseModel):
             'has_card_on_file': bool(self.stripe_payment_method_id),
             'stripe_card_brand': self.stripe_card_brand,
             'stripe_card_last4': self.stripe_card_last4,
+            'has_delivery_consent': self.has_delivery_consent,
             'wechat': self.wechat,
             'user_source': self.user_source or 'default',
             'is_active': self.is_active,
@@ -155,7 +170,7 @@ class User(BaseModel):
             data['referrer_is_influencer'] = False
         
         if include_order_count:
-            data['order_count'] = self.order_count
+            data['order_count'] = self.order_count if order_count is None else int(order_count)
         
         return data
 

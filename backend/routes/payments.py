@@ -23,6 +23,7 @@ from utils.stripe_payments import (
     charge_order_off_session,
     create_pay_again_session,
     sync_saved_card,
+    unbind_saved_card,
 )
 
 payments_bp = Blueprint('payments', __name__)
@@ -65,6 +66,24 @@ def get_card_on_file():
     card = sync_saved_card(user)
     db.session.commit()
     return jsonify(card), 200
+
+
+@payments_bp.route('/payments/card', methods=['DELETE'])
+def delete_card_on_file():
+    user, err = _require_user()
+    if err:
+        return err
+    try:
+        card = unbind_saved_card(user)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Unbind card failed: %s', e, exc_info=True)
+        return jsonify({'error': '解绑银行卡失败', 'message': str(e)}), 502
+    return jsonify({
+        **card,
+        'user': user.to_dict(include_referrer=True),
+    }), 200
 
 
 @payments_bp.route('/payments/setup-intent', methods=['POST'])

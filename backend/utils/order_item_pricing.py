@@ -238,11 +238,15 @@ def resolve_per_item_unit(product, variant, product_qty, snapshot_delta=None):
     return round_money_float(unit), round_money_float(delta)
 
 
-def expand_request_items(items):
+def expand_request_items(items, products=None):
     """Split weight-based lines so each physical item is quantity=1."""
+    from utils.query_batch import products_by_ids
+
+    if products is None:
+        products = products_by_ids(item_data.get('product_id') for item_data in items)
     expanded = []
     for item_data in items:
-        product = Product.query.get(item_data['product_id'])
+        product = products.get(item_data['product_id'])
         if not product:
             raise ValueError(f'Product {item_data["product_id"]} not found')
         qty = int(item_data.get('quantity') or 1)
@@ -584,9 +588,8 @@ def order_item_fields_for_merge(source_item):
     }
 
 
-def enrich_order_item_dict(item, product=None):
+def enrich_order_item_dict(item, product=None, source_order=None):
     """Add display fields for API responses."""
-    from models.order import Order
     from models.product import Product
 
     product = product or Product.query.get(item.product_id)
@@ -626,7 +629,9 @@ def enrich_order_item_dict(item, product=None):
         }
 
     if getattr(item, 'source_order_id', None) or getattr(item, 'source_item_id', None):
-        src_order = Order.query.get(item.source_order_id) if item.source_order_id else None
+        src_order = source_order
+        if src_order is None and item.source_order_id:
+            src_order = item.source_order
         item_dict['lineage'] = {
             'source_order_id': item.source_order_id,
             'source_order_number': src_order.order_number if src_order else None,
@@ -659,15 +664,36 @@ def enrich_order_item_dict(item, product=None):
     return item_dict
 
 
+def enrich_order_items(items):
+    """Serialize many order lines with one product/source-order prefetch."""
+    from models.order import Order
+    from utils.query_batch import products_by_ids, rows_by_id
+
+    items = list(items or [])
+    if not items:
+        return []
+    products = products_by_ids(item.product_id for item in items)
+    source_orders = rows_by_id(Order, (item.source_order_id for item in items))
+    return [
+        enrich_order_item_dict(
+            item,
+            products.get(item.product_id),
+            source_order=source_orders.get(item.source_order_id) if item.source_order_id else None,
+        )
+        for item in items
+    ]
+
+
 def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
     """
     Mark all order lines for a product in a group deal unavailable/available.
     Applies substitute pricing or zero per each line's accept_substitute.
     Returns stats dict.
     """
-    from models.order import Order, OrderItem
+    from models.order import Order
     from models import db
     from constants.status_enums import OrderStatus
+    from sqlalchemy.orm import selectinload
 
     product = Product.query.get(product_id)
     if not product:
@@ -675,7 +701,7 @@ def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
     if is_unavailable and not product.substitute_enabled:
         raise ValueError('此商品未配置备选，无法切换备选')
 
-    orders = Order.query.filter(
+    orders = Order.query.options(selectinload(Order.items)).filter(
         Order.group_deal_id == group_deal_id,
         Order.deleted_at.is_(None),
         Order.status != OrderStatus.CANCELLED.value,
@@ -720,7 +746,44 @@ def priced_items_from_request(items, unavailable_by_item_id=None, *, require_var
     unavailable_by_item_id = unavailable_by_item_id or {}
     order_items = []
     subtotal = Decimal('0')
-    expanded = expand_request_items(items)
+    from models.groupdeal import GroupDealProduct
+    from models.user import User
+    from sqlalchemy.orm import selectinload
+    from utils.query_batch import products_by_ids
+    from utils.influencer_pricing import attach_influencer_buyer_discount
+    from services.influencer_service import resolve_rates_for_products
+
+    products = products_by_ids(item_data.get('product_id') for item_data in items)
+    expanded = expand_request_items(items, products=products)
+
+    sale_by_product = {}
+    if group_deal_id and products:
+        sale_by_product = {
+            dp.product_id: dp
+            for dp in GroupDealProduct.query.filter(
+                GroupDealProduct.group_deal_id == group_deal_id,
+                GroupDealProduct.product_id.in_(list(products)),
+            ).all()
+        }
+
+    buyer = None
+    rate_by_product = {}
+    if buyer_user_id:
+        buyer = User.query.options(
+            selectinload(User.roles),
+            selectinload(User.influencer_profile),
+        ).get(buyer_user_id)
+        if buyer and buyer.is_influencer:
+            rate_by_product = resolve_rates_for_products(buyer.id, list(products))
+
+    for product in products.values():
+        attach_deal_sale(product, deal_product=sale_by_product.get(product.id) if group_deal_id else None)
+        attach_influencer_buyer_discount(
+            product,
+            user_id=buyer_user_id,
+            user=buyer,
+            resolved=rate_by_product.get(product.id) if buyer and buyer.is_influencer else None,
+        )
 
     pooled_qty = {}
     for item_data in expanded:
@@ -728,12 +791,9 @@ def priced_items_from_request(items, unavailable_by_item_id=None, *, require_var
         pooled_qty[pid] = pooled_qty.get(pid, 0) + int(item_data.get('quantity') or 0)
 
     for item_data in expanded:
-        product = Product.query.get(item_data['product_id'])
+        product = products.get(item_data['product_id'])
         if not product:
             raise ValueError(f'Product {item_data["product_id"]} not found')
-        attach_deal_sale(product, group_deal_id=group_deal_id)
-        from utils.influencer_pricing import attach_influencer_buyer_discount
-        attach_influencer_buyer_discount(product, buyer_user_id)
 
         item_id = item_data.get('id')
         is_unavailable = item_data.get('is_unavailable')

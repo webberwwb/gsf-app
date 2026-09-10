@@ -17,6 +17,7 @@ from urllib.parse import urlencode, quote
 from decimal import Decimal
 
 from services import referral_service
+from constants.delivery_consent import DELIVERY_CONSENT_VERSION
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -555,6 +556,38 @@ def update_wechat():
             'error': 'Internal server error',
             'message': str(e)
         }), 500
+
+@auth_bp.route('/me/delivery-consent', methods=['POST'])
+def accept_delivery_consent():
+    """Record that the current user accepted the delivery 须知."""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.replace('Bearer ', '').strip()
+    else:
+        token = auth_header.strip()
+
+    if not token:
+        return jsonify({'error': 'No token provided'}), 401
+
+    auth_token = AuthToken.query.filter_by(token=token, is_revoked=False).first()
+    if not auth_token or not auth_token.is_valid():
+        return jsonify({'error': 'Invalid or expired token'}), 401
+
+    user = User.query.get(auth_token.user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 401
+    if not user.is_active:
+        return jsonify({'error': 'User account is inactive'}), 403
+
+    user.delivery_consent_accepted_at = utc_now()
+    user.delivery_consent_version = DELIVERY_CONSENT_VERSION
+    db.session.commit()
+
+    return jsonify({
+        'user': user.to_dict(include_referrer=True),
+        'message': '已同意配送须知',
+    }), 200
+
 
 # Google OAuth routes for Admin
 @auth_bp.route('/google/login-url', methods=['GET'])

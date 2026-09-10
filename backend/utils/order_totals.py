@@ -37,11 +37,13 @@ def calculate_amount_due(order) -> Decimal:
 def order_items_for_shipping(order):
     """Build order_items list for calculate_shipping_fee from active lines."""
     from utils.order_audit import active_items_for_order
-    from models.product import Product
+    from utils.query_batch import products_by_ids
 
+    active_items = active_items_for_order(order.id)
+    products = products_by_ids(oi.product_id for oi in active_items)
     items = []
-    for oi in active_items_for_order(order.id):
-        product = Product.query.get(oi.product_id)
+    for oi in active_items:
+        product = products.get(oi.product_id)
         if product:
             items.append({
                 'product': product,

@@ -5,10 +5,27 @@ This module provides thread-safe stock management using database row-level locki
 to prevent race conditions during high concurrency scenarios.
 """
 
+from collections import defaultdict
+
 from models import db
 from models.groupdeal import GroupDealProduct
-from sqlalchemy import select
 from flask import current_app
+
+
+def _lock_deal_products(group_deal_id, product_ids):
+    ids = list({int(pid) for pid in product_ids if pid is not None})
+    if not ids:
+        return {}
+    rows = (
+        db.session.query(GroupDealProduct)
+        .filter(
+            GroupDealProduct.group_deal_id == group_deal_id,
+            GroupDealProduct.product_id.in_(ids),
+        )
+        .with_for_update()
+        .all()
+    )
+    return {row.product_id: row for row in rows}
 
 
 def check_and_reserve_stock(group_deal_id, items):
@@ -29,17 +46,13 @@ def check_and_reserve_stock(group_deal_id, items):
         Exception: If database operations fail
     """
     try:
+        needed = defaultdict(int)
         for item in items:
-            product_id = item['product_id']
-            quantity = item['quantity']
-            
-            # Get the group deal product with row-level lock to prevent race conditions
-            # This ensures no other transaction can modify this row until we commit
-            deal_product = db.session.query(GroupDealProduct).filter_by(
-                group_deal_id=group_deal_id,
-                product_id=product_id
-            ).with_for_update().first()
-            
+            needed[item['product_id']] += item['quantity']
+
+        deal_products = _lock_deal_products(group_deal_id, needed.keys())
+        for product_id, quantity in needed.items():
+            deal_product = deal_products.get(product_id)
             if not deal_product:
                 return False, f'Product {product_id} not found in this group deal'
             
@@ -82,16 +95,13 @@ def restore_stock(group_deal_id, items):
         Exception: If database operations fail
     """
     try:
+        needed = defaultdict(int)
         for item in items:
-            product_id = item['product_id']
-            quantity = item['quantity']
-            
-            # Get the group deal product with row-level lock
-            deal_product = db.session.query(GroupDealProduct).filter_by(
-                group_deal_id=group_deal_id,
-                product_id=product_id
-            ).with_for_update().first()
-            
+            needed[item['product_id']] += item['quantity']
+
+        deal_products = _lock_deal_products(group_deal_id, needed.keys())
+        for product_id, quantity in needed.items():
+            deal_product = deal_products.get(product_id)
             if deal_product and deal_product.deal_stock_limit is not None:
                 # Restore stock
                 deal_product.deal_stock_limit += quantity
@@ -156,6 +166,7 @@ def update_stock_after_order_modification(group_deal_id, old_items, new_items):
         
         # Get all affected products
         all_product_ids = set(old_quantities.keys()) | set(new_quantities.keys())
+        deal_products = _lock_deal_products(group_deal_id, all_product_ids)
         
         # Calculate net changes and check stock availability
         for product_id in all_product_ids:
@@ -166,12 +177,7 @@ def update_stock_after_order_modification(group_deal_id, old_items, new_items):
             if net_change == 0:
                 continue  # No change for this product
             
-            # Get the group deal product with row-level lock
-            deal_product = db.session.query(GroupDealProduct).filter_by(
-                group_deal_id=group_deal_id,
-                product_id=product_id
-            ).with_for_update().first()
-            
+            deal_product = deal_products.get(product_id)
             if not deal_product:
                 return False, f'Product {product_id} not found in this group deal'
             

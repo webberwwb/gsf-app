@@ -38,9 +38,18 @@
             <h3 class="panel-title">绑定的银行卡</h3>
             <p v-if="savedCardLabel" class="bound-card-value">{{ savedCardLabel }}</p>
             <p v-else class="placeholder-msg">尚未绑定银行卡</p>
-            <p class="panel-hint">配送订单称重后从此卡扣款。卡号由 Stripe 托管，本APP只保存后四位方便核对。</p>
+            <p class="panel-hint">配送需绑定银行卡。解绑后将关闭配送，需重新同意须知并绑卡才能再次选择配送。卡号由 Stripe 托管，本APP只保存后四位方便核对。</p>
             <button type="button" class="ledger-btn" @click="showCardSetup = true">
               {{ savedCardLabel ? '更换银行卡' : '绑定银行卡' }}
+            </button>
+            <button
+              v-if="savedCardLabel"
+              type="button"
+              class="outline-btn unbind-card-btn"
+              :disabled="unbindingCard"
+              @click="unbindCard"
+            >
+              {{ unbindingCard ? '解绑中...' : '解绑银行卡' }}
             </button>
           </div>
 
@@ -253,7 +262,8 @@ export default {
       creditTxError: null,
       referralUiHadCompletedOrder: null,
       showCardSetup: false,
-      cardOnFile: null
+      cardOnFile: null,
+      unbindingCard: false
     }
   },
   computed: {
@@ -370,6 +380,25 @@ export default {
         })
       }
       await this.success('银行卡已绑定')
+    },
+    async unbindCard() {
+      const ok = await this.confirm('解绑后将无法选择配送。再次配送需重新同意《配送订单须知》并绑定银行卡。确定解绑？')
+      if (!ok) return
+      this.unbindingCard = true
+      try {
+        const { data } = await apiClient.delete('/payments/card')
+        this.cardOnFile = data
+        if (data.user) {
+          this.authStore.setUser(data.user)
+        } else {
+          await this.authStore.checkAuth()
+        }
+        await this.success('已解绑银行卡')
+      } catch (e) {
+        await this.showError(e.response?.data?.error || e.response?.data?.message || '解绑失败')
+      } finally {
+        this.unbindingCard = false
+      }
     },
     async fetchUser() {
       try {
@@ -1211,6 +1240,11 @@ export default {
 
 .ledger-btn:active {
   opacity: 0.9;
+}
+
+.unbind-card-btn {
+  width: 100%;
+  margin-top: var(--md-spacing-sm);
 }
 
 .ledger-overlay {

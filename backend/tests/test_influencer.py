@@ -705,6 +705,86 @@ def test_influencer_self_buy_shows_and_charges_price_minus_commission(app, db_se
     assert Decimal(str(subtotal2)) == Decimal('32.00')
 
 
+def test_resolve_rates_for_products_matches_single_and_skips_zero(app, db_session):
+    inf = _make_influencer(phone='+10000000072')
+    priced = _product('有价', price=10)
+    free = _product('零佣', price=10)
+    overridden = _product('覆盖', price=10)
+    db_session.add_all([
+        InfluencerProductRate(product_id=priced.id, commission_type='per_item', amount=Decimal('0.50')),
+        InfluencerProductRate(product_id=free.id, commission_type='per_item', amount=Decimal('0')),
+        InfluencerProductRate(product_id=overridden.id, commission_type='per_item', amount=Decimal('1.00')),
+        InfluencerRateOverride(
+            influencer_user_id=inf.id,
+            product_id=overridden.id,
+            commission_type='per_item',
+            amount=Decimal('0.10'),
+        ),
+    ])
+    db_session.flush()
+
+    ids = [priced.id, free.id, overridden.id]
+    batched = influencer_service.resolve_rates_for_products(inf.id, ids)
+    assert batched[priced.id] == influencer_service.resolve_rate(inf.id, priced.id)
+    assert free.id not in batched
+    assert influencer_service.resolve_rate(inf.id, free.id) is None
+    assert batched[overridden.id] == ('per_item', Decimal('0.10'))
+    assert influencer_service.resolve_rates_for_products(inf.id, []) == {}
+
+
+def test_group_deal_detail_query_count_does_not_grow_with_products(app, db_session):
+    from sqlalchemy import event
+    from models.product_variant import ProductVariant
+    from models.product_category import ProductCategory
+    from models.supplier import Supplier
+
+    inf = _make_influencer(phone='+10000000073')
+    category = ProductCategory(name='肉', is_active=True)
+    supplier = Supplier(name='供应商')
+    db_session.add_all([category, supplier])
+    db_session.flush()
+
+    deal = _deal()
+    for i in range(12):
+        product = Product(
+            name=f'货{i}',
+            pricing_type='per_item',
+            pricing_data={'price': 10 + i},
+            is_active=True,
+            category_id=category.id,
+            supplier_id=supplier.id,
+        )
+        db_session.add(product)
+        db_session.flush()
+        db_session.add(ProductVariant(product_id=product.id, name='默认', sort_order=0))
+        db_session.add(GroupDealProduct(group_deal_id=deal.id, product_id=product.id))
+        db_session.add(InfluencerProductRate(
+            product_id=product.id, commission_type='per_item', amount=Decimal('0.25'),
+        ))
+    db_session.flush()
+
+    client = app.test_client()
+    statements = []
+
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(db.engine, 'before_cursor_execute', _before_cursor_execute)
+    try:
+        res = client.get(
+            f'/api/group-deals/{deal.id}',
+            headers={'Authorization': f'Bearer {_token(inf)}'},
+        )
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', _before_cursor_execute)
+
+    assert res.status_code == 200
+    assert len(res.get_json()['deal']['products']) == 12
+    assert res.get_json()['deal']['products'][0]['influencer_discount'] is True
+    # deal + auth + user/roles + deal products + variants + 2 rate tables
+    assert len(statements) <= 12
+
+
 def test_admin_assign_and_unassign_influencer(app, db_session):
     admin = _admin()
     target = _user('+10000000080', '待指定')
@@ -782,3 +862,27 @@ def test_admin_bind_and_unbind_influencer_customer(app, db_session):
     assert removed.status_code == 200
     db_session.refresh(customer)
     assert customer.referred_by_user_id is None
+
+
+def test_customers_for_query_count_does_not_grow_with_customers(app, db_session):
+    from sqlalchemy import event
+
+    inf = _make_influencer(phone='+10000000074')
+    for i in range(8):
+        customer = _user(f'+1000000011{i}', f'客{i}')
+        customer.referred_by_user_id = inf.id
+    db_session.flush()
+
+    statements = []
+
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(db.engine, 'before_cursor_execute', _before_cursor_execute)
+    try:
+        rows = influencer_service.customers_for(inf.id)
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', _before_cursor_execute)
+
+    assert len(rows) == 8
+    assert len(statements) <= 8
