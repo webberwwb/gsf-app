@@ -1,6 +1,6 @@
 <template>
   <div class="group-deals-page">
-    <div class="page-header-actions">
+    <div v-if="!isFulfillmentOnly" class="page-header-actions">
       <button @click="openAddModal" class="add-btn">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -13,7 +13,7 @@
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else-if="groupDeals.length === 0" class="empty-state">
       <p>暂无团购活动</p>
-      <button @click="openAddModal" class="add-first-btn">创建第一个团购</button>
+      <button v-if="!isFulfillmentOnly" @click="openAddModal" class="add-first-btn">创建第一个团购</button>
     </div>
     <div v-else class="deals-list">
       <div v-for="deal in groupDeals" :key="deal.id" class="deal-card" @click="viewDealDetail(deal.id)">
@@ -25,7 +25,7 @@
             </span>
             <span v-if="deal.online_payment_enabled" class="status-badge online-payment">在线支付</span>
           </div>
-          <div class="deal-actions">
+          <div v-if="!isFulfillmentOnly" class="deal-actions">
             <button @click.stop="editDeal(deal)" class="edit-btn">编辑</button>
             <button @click.stop="deleteDeal(deal.id)" class="delete-btn">删除</button>
           </div>
@@ -102,6 +102,7 @@ import GroupDealForm from '../components/GroupDealForm.vue'
 import CopyGroupDealModal from '../components/CopyGroupDealModal.vue'
 import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
+import { isFulfillmentOnly } from '../utils/auth'
 import { formatProductListPrice } from '../utils/productPriceDisplay'
 
 export default {
@@ -113,6 +114,11 @@ export default {
   setup() {
     const { confirm, error: showError } = useModal()
     return { confirm, showError }
+  },
+  computed: {
+    isFulfillmentOnly() {
+      return isFulfillmentOnly()
+    }
   },
   data() {
     return {

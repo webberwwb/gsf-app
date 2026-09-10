@@ -43,7 +43,6 @@ MYSQL_HOST: /cloudsql/$PROJECT_ID:us-central1:gsf-app-mysql
 MYSQL_PORT: "3306"
 MYSQL_DATABASE: gsf_app
 TWILIO_VERIFY_SERVICE_SID: VA9f6a6a1fd2013d3ed38ec4e7552a369e
-ADMIN_ALLOWED_EMAILS: info@digitelf.com,grainstoryfarm@gmail.com,harris010908@gmail.com
 GOOGLE_OAUTH_CLIENT_ID: 304694762003-ngilk1cidevokj46vb9amu3led74qbo1.apps.googleusercontent.com
 GOOGLE_OAUTH_REDIRECT_URI: https://backend.grainstoryfarm.ca/api/auth/google/callback
 ADMIN_FRONTEND_URL: https://admin.grainstoryfarm.ca

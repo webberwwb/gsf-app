@@ -48,9 +48,9 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 <span class="value">{{ order.user?.nickname || order.user?.phone || 'N/A' }}</span>
-                <span v-if="order.user?.wechat" class="wechat-badge">微信: {{ order.user.wechat }}</span>
+                <span v-if="order.user?.wechat && !order.pii_locked" class="wechat-badge">微信: {{ order.user.wechat }}</span>
                 <button 
-                  v-if="order.user && !order.user.is_admin" 
+                  v-if="!isFulfillmentOnly && order.user && !order.user.is_admin" 
                   @click.stop="impersonateUser(order.user.id)" 
                   class="impersonate-btn-small"
                   title="代登录此用户">
@@ -97,7 +97,7 @@
                   </svg>
                   支付方式:
                 </label>
-                <select v-model="localPaymentMethod" class="payment-method-select" @change="handlePaymentMethodChange" :disabled="order && order.delivery_method === 'delivery'">
+                <select v-model="localPaymentMethod" class="payment-method-select" @change="handlePaymentMethodChange" :disabled="isFulfillmentOnly || (order && order.delivery_method === 'delivery')">
                   <option value="">未选择</option>
                   <option value="cash" :disabled="order && order.delivery_method === 'delivery'">现金</option>
                   <option value="etransfer" :disabled="order && order.delivery_method === 'delivery'">电子转账</option>
@@ -106,7 +106,7 @@
               </div>
             </div>
             <!-- Payment Action Buttons -->
-            <div class="info-row payment-actions">
+            <div v-if="!isFulfillmentOnly" class="info-row payment-actions">
               <button 
                 v-if="order && localPaymentMethod === 'etransfer' && order.payment_status === 'unpaid'"
                 @click="handleMarkAsPaid" 
@@ -126,7 +126,7 @@
                 标记为未付款
               </button>
             </div>
-            <div v-if="showStripePanel" class="stripe-panel">
+            <div v-if="!isFulfillmentOnly && showStripePanel" class="stripe-panel">
               <div class="stripe-panel-title">信用卡扣款</div>
               <div v-if="orderCardLabel" class="stripe-row">卡：{{ orderCardLabel }}</div>
               <div class="stripe-row">状态：{{ stripeStatusLabel }}</div>
@@ -282,6 +282,28 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <div v-if="order && order.delivery_photo_url" class="order-info-section">
+            <div class="section-header">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0118.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <h3>送达照片</h3>
+            </div>
+            <button type="button" class="delivery-photo-btn" @click="viewingPhoto = order.delivery_photo_url">
+              <img :src="order.delivery_photo_url" alt="送达照片" />
+              <span>点击查看大图</span>
+            </button>
+            <button
+              type="button"
+              class="delete-delivery-photo-btn"
+              :disabled="deletingPhoto"
+              @click="deleteDeliveryPhoto"
+            >
+              {{ deletingPhoto ? '删除中...' : '删除照片' }}
+            </button>
           </div>
 
           <!-- Order Notes Section -->
@@ -544,7 +566,7 @@
               <h3>价格与调整</h3>
             </div>
             
-            <div class="adjustment-section">
+            <div v-if="!isFulfillmentOnly" class="adjustment-section">
               <div class="adjustment-header">
                 <span class="total-label">订单调整:</span>
                 <div class="adjustment-input-wrapper">
@@ -706,6 +728,7 @@
       </div>
     </div>
     </div>
+    <ImageLightbox :src="viewingPhoto" @close="viewingPhoto = ''" />
   </Teleport>
 </template>
 
@@ -719,10 +742,12 @@ import { estimateAdminLinePrice, resolveOrderLineTotal, isDeclinedSubstituteLine
 import { previewOrderTotals, formatOrderMoney2 } from '../utils/orderPricing'
 import { fetchShippingConfig } from '../utils/shipping'
 import ProductVariantPicker from './ProductVariantPicker.vue'
+import ImageLightbox from './ImageLightbox.vue'
+import { isFulfillmentOnly } from '../utils/auth'
 
 export default {
   name: 'OrderDetailModal',
-  components: { ProductVariantPicker },
+  components: { ProductVariantPicker, ImageLightbox },
   setup() {
     const { confirm, success, error } = useModal()
     return { confirm, success, error }
@@ -795,10 +820,15 @@ export default {
       auditTrail: null,
       auditLoading: false,
       auditError: null,
-      shippingConfigReady: false
+      shippingConfigReady: false,
+      viewingPhoto: '',
+      deletingPhoto: false
     }
   },
   computed: {
+    isFulfillmentOnly() {
+      return isFulfillmentOnly()
+    },
     previewDeliveryMethod() {
       return this.localDeliveryMethod || this.order?.delivery_method || 'pickup'
     },
@@ -1535,6 +1565,22 @@ export default {
         await this.syncOrderFromServer(res.data?.order)
       } catch (err) {
         await this.error(err.response?.data?.error || err.response?.data?.message || '更新失败')
+      }
+    },
+    async deleteDeliveryPhoto() {
+      if (!this.order?.id) return
+      const ok = await this.confirm('删除这张送达照片？', { type: 'warning' })
+      if (!ok) return
+      this.deletingPhoto = true
+      try {
+        const res = await apiClient.delete(`/admin/fulfillment/orders/${this.order.id}/photo`)
+        this.viewingPhoto = ''
+        const updated = res.data?.order || { ...this.order, delivery_photo_url: null }
+        this.$emit('order-updated', { ...this.order, ...updated, delivery_photo_url: null })
+      } catch (err) {
+        await this.error(err.response?.data?.error || err.response?.data?.message || '删除照片失败')
+      } finally {
+        this.deletingPhoto = false
       }
     },
     handleUpdateOrder() {
@@ -3620,6 +3666,41 @@ export default {
 .refresh-addresses-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.delivery-photo-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.delivery-photo-btn img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  background: #111;
+  border-radius: var(--md-radius-md);
+}
+.delivery-photo-btn span {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--md-primary);
+}
+.delete-delivery-photo-btn {
+  margin-top: 0.6rem;
+  min-height: 40px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(198, 40, 40, 0.28);
+  border-radius: var(--md-radius-sm);
+  background: #fff;
+  color: #C62828;
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .loading-addresses,

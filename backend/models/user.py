@@ -65,7 +65,12 @@ class User(BaseModel):
         backref=db.backref('referred_users', lazy='dynamic'),
     )
     addresses = db.relationship('Address', backref='user', lazy=True, cascade='all, delete-orphan')
-    orders = db.relationship('Order', backref='user', lazy=True)
+    orders = db.relationship(
+        'Order',
+        backref='user',
+        lazy=True,
+        foreign_keys='Order.user_id',
+    )
     tokens = db.relationship('AuthToken', backref='user', lazy=True, cascade='all, delete-orphan')
     roles = db.relationship('UserRole', backref='user', lazy=True, cascade='all, delete-orphan')
     
@@ -78,6 +83,16 @@ class User(BaseModel):
     def is_admin(self):
         """Check if user has admin role"""
         return any(role.role == 'admin' for role in self.roles)
+
+    @property
+    def is_fulfillment(self):
+        """Check if user has 配货员 role."""
+        return any(role.role == 'fulfillment' for role in self.roles)
+
+    @property
+    def can_access_admin_panel(self):
+        """Admin app login: full admin or 配货员."""
+        return self.is_admin or self.is_fulfillment
 
     @property
     def is_influencer(self):
@@ -122,6 +137,7 @@ class User(BaseModel):
             'user_source': self.user_source or 'default',
             'is_active': self.is_active,
             'is_admin': self.is_admin,
+            'is_fulfillment': self.is_fulfillment,
             'is_influencer': self.is_influencer,
             'roles': self.get_roles()
         })

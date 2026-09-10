@@ -30,7 +30,7 @@ from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, 
 from schemas.product import CreateProductSchema, UpdateProductSchema, BulkUpdateSortOrderSchema
 from schemas.product_category import CreateProductCategorySchema, UpdateProductCategorySchema, BulkUpdateCategorySortOrderSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
-from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateUserSchema
+from schemas.admin import CreateSupplierSchema, UpdateSupplierSchema, AssignRoleSchema, UpdateOrderStatusSchema, UpdateOrderPaymentSchema, MergeOrdersSchema, UpdateDeliveryFeeConfigSchema, UpdateUserSchema, CreateStaffUserSchema
 from schemas.work_document import CreateWorkDocumentSchema, UpdateWorkDocumentSchema, CreateActionItemSchema, UpdateActionItemSchema
 from schemas.order import (
     UpdateOrderWeightsSchema,
@@ -77,6 +77,7 @@ import io
 from models.credit_transaction import CreditTransaction
 from models.referral_program import ReferralProgramConfig, ReferralRecord
 from services import credit_service
+from services import fulfillment_service
 from services import referral_service
 
 # Optional imports for image upload
@@ -98,8 +99,8 @@ except ImportError:
 
 admin_bp = Blueprint('admin', __name__)
 
-def require_admin_auth():
-    """Check if user is authenticated and has admin role"""
+def require_admin_auth(allow_fulfillment=False):
+    """Check if user is authenticated and has admin (or optional 配货员) access."""
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
         token = auth_header.replace('Bearer ', '').strip()
@@ -128,10 +129,10 @@ def require_admin_auth():
     if not user.is_active:
         return None, jsonify({'error': 'User account is inactive'}), 403
     
-    if not user.is_admin:
-        return None, jsonify({'error': 'Admin access required'}), 403
-    
-    return auth_token.user_id, None, None
+    if user.is_admin or (allow_fulfillment and user.is_fulfillment):
+        return auth_token.user_id, None, None
+
+    return None, jsonify({'error': 'Admin access required'}), 403
 
 def get_gcs_client():
     """Get Google Cloud Storage client"""
@@ -154,7 +155,7 @@ def get_gcs_client():
 @admin_bp.route('/upload-image', methods=['POST'])
 def upload_image():
     """Upload product image to Google Cloud Storage"""
-    user_id, error_response, status_code = require_admin_auth()
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
     
@@ -202,7 +203,10 @@ def upload_image():
         image_data = output.getvalue()
         
         # Generate unique filename
-        filename = f"products/{uuid.uuid4()}.{format.lower()}"
+        folder = (request.form.get('folder') or 'products').strip().lower()
+        if folder not in ('products', 'deliveries'):
+            folder = 'products'
+        filename = f"{folder}/{uuid.uuid4()}.{format.lower()}"
         
         # Upload to GCS
         gcs_client = get_gcs_client()
@@ -728,6 +732,40 @@ def get_user(user_id):
             'message': str(e)
         }), 404
 
+@admin_bp.route('/users', methods=['POST'])
+def create_staff_user():
+    """Create a staff user by email so they can Google-login after a role is assigned."""
+    admin_user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    validated_data, error_response, status_code = validate_request(CreateStaffUserSchema)
+    if error_response:
+        return error_response, status_code
+
+    email = validated_data['email'].strip().lower()
+    existing = User.query.filter(db.func.lower(User.email) == email).first()
+    if existing:
+        return jsonify({'error': '该邮箱已存在', 'user': existing.to_dict()}), 409
+
+    user = User(
+        email=email,
+        nickname=validated_data['nickname'].strip(),
+        phone=None,
+        status=UserStatus.ACTIVE.value,
+        points=0,
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    role_name = validated_data.get('role') or 'fulfillment'
+    db.session.add(UserRole(user_id=user.id, role=role_name))
+    if role_name == 'fulfillment':
+        fulfillment_service.activate_profile_for_user(user.id)
+    db.session.commit()
+    return jsonify({'user': user.to_dict()}), 201
+
+
 @admin_bp.route('/users/<int:user_id>', methods=['PATCH'])
 def update_user(user_id):
     """Update user information (admin only)"""
@@ -993,12 +1031,19 @@ def get_user_roles(user_id):
             'message': str(e)
         }), 500
 
+def _actor_can_manage_user_addresses(actor_id, target_user_id):
+    actor = User.query.get(actor_id)
+    return fulfillment_service.fulfillment_can_access_customer_addresses(actor, target_user_id)
+
+
 @admin_bp.route('/users/<int:user_id>/addresses', methods=['GET'])
 def get_user_addresses(user_id):
     """Get user addresses"""
-    admin_user_id, error_response, status_code = require_admin_auth()
+    admin_user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
+    if not _actor_can_manage_user_addresses(admin_user_id, user_id):
+        return jsonify({'error': '没有权限查看地址'}), 403
 
     try:
         user = User.query.get_or_404(user_id)
@@ -1018,9 +1063,11 @@ def get_user_addresses(user_id):
 @admin_bp.route('/users/<int:user_id>/addresses', methods=['POST'])
 def create_user_address(user_id):
     """Create a new address for a user"""
-    admin_user_id, error_response, status_code = require_admin_auth()
+    admin_user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
+    if not _actor_can_manage_user_addresses(admin_user_id, user_id):
+        return jsonify({'error': '没有权限修改地址'}), 403
 
     try:
         user = User.query.get_or_404(user_id)
@@ -1099,6 +1146,8 @@ def assign_user_role(user_id):
         if role_name == 'influencer':
             from services import influencer_service
             influencer_service.activate_profile_for_user(user.id)
+        if role_name == 'fulfillment':
+            fulfillment_service.activate_profile_for_user(user.id)
         db.session.commit()
         
         current_app.logger.info(f'Assigned role {role_name} to user {user.id}')
@@ -1140,6 +1189,8 @@ def remove_user_role(user_id, role_name):
         if role_name == 'influencer':
             from services import influencer_service
             influencer_service.deactivate_profile_for_user(user.id)
+        if role_name == 'fulfillment':
+            fulfillment_service.deactivate_profile_for_user(user.id)
         db.session.commit()
         
         current_app.logger.info(f'Removed role {role_name} from user {user.id}')
@@ -1160,7 +1211,7 @@ def remove_user_role(user_id, role_name):
 @admin_bp.route('/group-deals', methods=['GET'])
 def get_group_deals():
     """Get all group deals"""
-    user_id, error_response, status_code = require_admin_auth()
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
     
@@ -1172,6 +1223,10 @@ def get_group_deals():
         
         # Build query - filter out soft-deleted deals
         query = GroupDeal.query.filter(GroupDeal.deleted_at.is_(None))
+
+        actor = User.query.get(user_id)
+        if fulfillment_service.is_fulfillment_only(actor):
+            query = query.filter(GroupDeal.status != GroupDealStatus.DRAFT.value)
         
         # Apply status filter
         if status_filter:
@@ -1184,33 +1239,27 @@ def get_group_deals():
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         
         deals = pagination.items
-        
-        # Get all deal IDs to fetch products in bulk
-        deal_ids = [deal.id for deal in deals]
-        
-        # Fetch all GroupDealProducts for these deals in one query with eager loading
-        from sqlalchemy.orm import joinedload
-        deal_products_query = GroupDealProduct.query.options(
-            joinedload(GroupDealProduct.product).joinedload(Product.category),
-            joinedload(GroupDealProduct.product).joinedload(Product.supplier)
-        ).filter(GroupDealProduct.group_deal_id.in_(deal_ids))
-        
-        deal_products_all = deal_products_query.all()
-        
-        # Group products by deal_id
+        include_products = request.args.get('include_products', '1').strip().lower() not in ('0', 'false', 'no')
+
         products_by_deal = {}
-        for dp in deal_products_all:
-            if dp.group_deal_id not in products_by_deal:
-                products_by_deal[dp.group_deal_id] = []
-            
-            if dp.product:
-                products_by_deal[dp.group_deal_id].append(deal_product_to_dict(dp))
-        
-        # Include products for each deal
+        if include_products:
+            deal_ids = [deal.id for deal in deals]
+            deal_products_all = GroupDealProduct.query.options(
+                joinedload(GroupDealProduct.product).joinedload(Product.category),
+                joinedload(GroupDealProduct.product).joinedload(Product.supplier)
+            ).filter(GroupDealProduct.group_deal_id.in_(deal_ids)).all()
+
+            for dp in deal_products_all:
+                if dp.group_deal_id not in products_by_deal:
+                    products_by_deal[dp.group_deal_id] = []
+                if dp.product:
+                    products_by_deal[dp.group_deal_id].append(deal_product_to_dict(dp))
+
         deals_data = []
         for deal in deals:
             deal_dict = deal.to_dict()
-            deal_dict['products'] = products_by_deal.get(deal.id, [])
+            if include_products:
+                deal_dict['products'] = products_by_deal.get(deal.id, [])
             deals_data.append(deal_dict)
         
         return jsonify({
@@ -1233,7 +1282,7 @@ def get_group_deals():
 @admin_bp.route('/group-deals/<int:deal_id>', methods=['GET'])
 def get_group_deal(deal_id):
     """Get a single group deal by ID"""
-    user_id, error_response, status_code = require_admin_auth()
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
     
@@ -1242,6 +1291,9 @@ def get_group_deal(deal_id):
             GroupDeal.id == deal_id,
             GroupDeal.deleted_at.is_(None)
         ).first_or_404()
+        actor = User.query.get(user_id)
+        if fulfillment_service.is_fulfillment_only(actor) and deal.status == GroupDealStatus.DRAFT.value:
+            return jsonify({'error': '团购不存在'}), 404
         deal_dict = deal.to_dict()
         
         # Products for this deal (single query + joinedload — avoid N+1 Product.query.get per row)
@@ -1614,7 +1666,7 @@ def delete_group_deal(deal_id):
 @admin_bp.route('/products', methods=['GET'])
 def get_admin_products():
     """Get all products with optional sales stats and sorting (admin only)"""
-    user_id, error_response, status_code = require_admin_auth()
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
     
@@ -1879,9 +1931,10 @@ def _build_admin_order_dict(order):
 @admin_bp.route('/orders', methods=['GET'])
 def get_admin_orders():
     """Get all orders (admin only)"""
-    user_id, error_response, status_code = require_admin_auth()
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
+    acting_user = User.query.get(user_id)
     
     try:
         # Get query parameters for pagination and filtering
@@ -1975,6 +2028,7 @@ def get_admin_orders():
             ]
             order_dict['items'] = items_data
             order_dict['items_count'] = len(items_data)
+            fulfillment_service.apply_order_pii_lock(order_dict, order.group_deal, acting_user)
             
             orders_data.append(order_dict)
         
@@ -2140,9 +2194,10 @@ def get_admin_stripe_payments():
 @admin_bp.route('/orders/<int:order_id>', methods=['GET'])
 def get_admin_order(order_id):
     """Get a single order by ID (admin only)"""
-    user_id, error_response, status_code = require_admin_auth()
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
+    acting_user = User.query.get(user_id)
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
@@ -2169,6 +2224,7 @@ def get_admin_order(order_id):
                 order_dict['address'] = address.to_dict()
         
         order_dict['items'] = [enrich_order_item_dict(item) for item in order.items]
+        fulfillment_service.apply_order_pii_lock(order_dict, group_deal, acting_user)
         
         return jsonify({
             'order': order_dict
@@ -2184,9 +2240,10 @@ def get_admin_order(order_id):
 @admin_bp.route('/orders/<int:order_id>/status', methods=['PUT'])
 def update_order_status(order_id):
     """Update order status (admin only)"""
-    user_id, error_response, status_code = require_admin_auth()
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
+    acting_user = User.query.get(user_id)
     
     # Validate request data using schema
     validated_data, error_response, status_code = validate_request(UpdateOrderStatusSchema)
@@ -2197,6 +2254,12 @@ def update_order_status(order_id):
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        write_block = fulfillment_service.fulfillment_write_blocked(acting_user, order.group_deal)
+        if write_block:
+            return jsonify({'error': write_block}), 403
+        if fulfillment_service.is_fulfillment_only(acting_user):
+            if not fulfillment_service.fulfillment_status_allowed(order.status, status):
+                return jsonify({'error': '当前角色不能进行该状态变更'}), 403
         from utils.order_payment import delivery_ship_blocked
         if delivery_ship_blocked(order, status):
             return jsonify({'error': '配送订单未付款，不能发货'}), 400
@@ -2715,7 +2778,7 @@ def update_order_weights(order_id):
 @admin_bp.route('/orders/<int:order_id>/audit-trail', methods=['GET'])
 def get_order_audit_trail(order_id):
     """Merge history, item lineage, archived lines, and operation log for an order."""
-    _, error_response, status_code = require_admin_auth()
+    _, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
 
@@ -2732,9 +2795,10 @@ def get_order_audit_trail(order_id):
 @admin_bp.route('/orders/<int:order_id>/update', methods=['PUT'])
 def update_admin_order(order_id):
     """Update order items (add/remove items, update weights) - admin only"""
-    admin_user_id, error_response, status_code = require_admin_auth()
+    admin_user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
+    acting_user = User.query.get(admin_user_id)
     
     # Validate request data using schema
     validated_data, error_response, status_code = validate_request(AdminUpdateOrderSchema)
@@ -2758,6 +2822,15 @@ def update_admin_order(order_id):
         ).first()
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
+
+        write_block = fulfillment_service.fulfillment_write_blocked(acting_user, group_deal)
+        if write_block:
+            return jsonify({'error': write_block}), 403
+        if fulfillment_service.is_fulfillment_only(acting_user):
+            payment_method = None
+            delivery_method = None
+            address_id = None
+            pickup_location = None
         
         filtered_items = [
             i for i in items_data

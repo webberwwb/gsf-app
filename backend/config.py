@@ -85,12 +85,6 @@ class Config:
     ADMIN_FRONTEND_URL = os.environ.get('ADMIN_FRONTEND_URL', 'https://admin.grainstoryfarm.ca')
     APP_FRONTEND_URL = os.environ.get('APP_FRONTEND_URL', 'https://app.grainstoryfarm.ca')
     
-    # Admin allowed email domains (comma-separated)
-    ADMIN_ALLOWED_DOMAINS = os.environ.get('ADMIN_ALLOWED_DOMAINS', '').split(',') if os.environ.get('ADMIN_ALLOWED_DOMAINS') else []
-    
-    # Admin allowed email addresses (comma-separated) - takes precedence over domains
-    ADMIN_ALLOWED_EMAILS = [email.strip() for email in os.environ.get('ADMIN_ALLOWED_EMAILS', '').split(',') if email.strip()] if os.environ.get('ADMIN_ALLOWED_EMAILS') else []
-    
     # Google Cloud Storage configuration for product images
     GCS_BUCKET_NAME = os.environ.get('GCS_BUCKET_NAME', 'gsf-app-product-images')
     GCS_PROJECT_ID = os.environ.get('GCS_PROJECT_ID', 'focused-mote-477703-f0')

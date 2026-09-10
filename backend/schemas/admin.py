@@ -33,7 +33,7 @@ class UpdateSupplierSchema(Schema):
 
 class AssignRoleSchema(Schema):
     """Schema for assigning a role to a user"""
-    role = fields.String(required=True, validate=validate.OneOf(['admin', 'user', 'influencer']))
+    role = fields.String(required=True, validate=validate.OneOf(['admin', 'user', 'influencer', 'fulfillment']))
     
     class Meta:
         unknown = EXCLUDE
@@ -107,6 +107,19 @@ class UpdateDeliveryFeeConfigSchema(Schema):
         validate=[validate.Length(min=1), validate_tiers]
     )
     
+    class Meta:
+        unknown = EXCLUDE
+
+
+class CreateStaffUserSchema(Schema):
+    """Create a staff login user (email + nickname) so they can Google-login after a role is assigned."""
+    email = fields.Email(required=True)
+    nickname = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    role = fields.String(
+        missing='fulfillment',
+        validate=validate.OneOf(['admin', 'fulfillment']),
+    )
+
     class Meta:
         unknown = EXCLUDE
 

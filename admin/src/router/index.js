@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import apiClient from '../api/client'
+import { isFulfillmentOnly } from '../utils/auth'
 
 const router = createRouter({
   history: createWebHistory('/'),
@@ -16,67 +17,92 @@ const router = createRouter({
         {
           path: 'products',
           name: 'Products',
-          component: () => import('../views/Products.vue')
+          component: () => import('../views/Products.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'group-deals',
           name: 'GroupDeals',
-          component: () => import('../views/GroupDeals.vue')
+          component: () => import('../views/GroupDeals.vue'),
+          meta: { roles: ['admin', 'fulfillment'] }
         },
         {
           path: 'group-deals/:id',
           name: 'GroupDealDetail',
-          component: () => import('../views/GroupDealDetail.vue')
+          component: () => import('../views/GroupDealDetail.vue'),
+          meta: { roles: ['admin', 'fulfillment'] }
+        },
+        {
+          path: 'delivery-planning',
+          name: 'DeliveryPlanning',
+          component: () => import('../views/DeliveryPlanning.vue'),
+          meta: { roles: ['admin', 'fulfillment'] }
+        },
+        {
+          path: 'earnings',
+          name: 'FulfillmentEarnings',
+          component: () => import('../views/FulfillmentEarnings.vue'),
+          meta: { roles: ['admin', 'fulfillment'] }
         },
         {
           path: 'orders',
           name: 'Orders',
-          component: () => import('../views/Orders.vue')
+          component: () => import('../views/Orders.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'stripe-payments',
           name: 'StripePayments',
-          component: () => import('../views/StripePayments.vue')
+          component: () => import('../views/StripePayments.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'users',
           name: 'Users',
-          component: () => import('../views/Users.vue')
+          component: () => import('../views/Users.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'credit-referrals',
           name: 'CreditAndReferrals',
-          component: () => import('../views/CreditAndReferrals.vue')
+          component: () => import('../views/CreditAndReferrals.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'influencers',
           name: 'Influencers',
-          component: () => import('../views/Influencers.vue')
+          component: () => import('../views/Influencers.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'sales-management',
           name: 'SalesManagement',
-          component: () => import('../views/SalesManagement.vue')
+          component: () => import('../views/SalesManagement.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'suppliers',
           name: 'Suppliers',
-          component: () => import('../views/Suppliers.vue')
+          component: () => import('../views/Suppliers.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'shipping-fee',
           name: 'ShippingFeeManagement',
-          component: () => import('../views/ShippingFeeManagement.vue')
+          component: () => import('../views/ShippingFeeManagement.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'after-sales',
           name: 'AfterSales',
-          component: () => import('../views/AfterSales.vue')
+          component: () => import('../views/AfterSales.vue'),
+          meta: { roles: ['admin'] }
         },
         {
           path: 'work-arrangement',
           name: 'WorkArrangement',
-          component: () => import('../views/WorkArrangement.vue')
+          component: () => import('../views/WorkArrangement.vue'),
+          meta: { roles: ['admin'] }
         }
       ]
     },
@@ -138,6 +164,12 @@ router.beforeEach(async (to, from, next) => {
     // If on login page with token, redirect to dashboard
     if (to.path === '/login') {
       next('/')
+      return
+    }
+
+    const allowedRoles = to.meta?.roles
+    if (allowedRoles && isFulfillmentOnly() && !allowedRoles.includes('fulfillment')) {
+      next('/group-deals')
       return
     }
     

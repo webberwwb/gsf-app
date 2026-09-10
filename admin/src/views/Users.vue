@@ -30,6 +30,7 @@
             <button @click="toggleCheckboxes" class="add-source-btn" :class="{ 'active': showCheckboxes }">
               {{ showCheckboxes ? '取消' : '管理获客渠道' }}
             </button>
+            <button @click="openCreateStaff" class="add-source-btn">创建员工账号</button>
           </div>
           <div class="bulk-actions" v-if="showCheckboxes && selectedUsers.length > 0">
             <span class="selected-count">已选择 {{ selectedUsers.length }} 个用户</span>
@@ -62,6 +63,7 @@
               <div class="user-name-row">
                 <span class="user-name">{{ user.nickname || user.phone || '未设置' }}</span>
                 <span v-if="user.is_admin" class="admin-badge">管理员</span>
+                <span v-else-if="user.is_fulfillment" class="fulfillment-badge">配货员</span>
                 <span v-else-if="user.is_influencer" class="influencer-badge">推荐官</span>
                 <span v-else class="normal-user-badge">普通用户</span>
                 <span v-if="user.user_source" class="source-badge" :class="user.user_source === '花泽' ? 'source-huaze' : 'source-default'">
@@ -144,6 +146,32 @@
       </div>
     </div>
 
+    <div v-if="showCreateStaffModal" class="modal-overlay" @click="showCreateStaffModal = false">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h2>创建员工账号</h2>
+          <button @click="showCreateStaffModal = false" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="role-form">
+            <label>邮箱</label>
+            <input v-model="staffForm.email" type="email" class="form-input" placeholder="Google 登录邮箱" />
+            <label>昵称</label>
+            <input v-model="staffForm.nickname" type="text" class="form-input" placeholder="显示名称" />
+            <label>角色</label>
+            <select v-model="staffForm.role" class="role-select">
+              <option value="fulfillment">配货员</option>
+              <option value="admin">管理员</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="showCreateStaffModal = false" class="cancel-btn">取消</button>
+          <button @click="createStaffUser" class="confirm-btn" :disabled="!staffForm.email || !staffForm.nickname">创建</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Role Management Modal -->
     <div v-if="showRoleModal" class="modal-overlay" @click="closeRoleModal">
       <div class="modal-content" @click.stop>
@@ -169,6 +197,7 @@
               <option value="admin">管理员</option>
               <option value="user">普通用户</option>
               <option value="influencer">推荐官</option>
+              <option value="fulfillment">配货员</option>
             </select>
           </div>
         </div>
@@ -263,6 +292,12 @@ export default {
       searchQuery: '',
       selectedUsers: [],
       showCheckboxes: false,
+      showCreateStaffModal: false,
+      staffForm: {
+        email: '',
+        nickname: '',
+        role: 'fulfillment'
+      },
       showRoleModal: false,
       roleModalUser: null,
       roleAction: '',
@@ -433,11 +468,26 @@ export default {
     formatDate(dateString) {
       return formatDateTimeEST_CN(dateString) || 'N/A'
     },
+    openCreateStaff() {
+      this.staffForm = { email: '', nickname: '', role: 'fulfillment' }
+      this.showCreateStaffModal = true
+    },
+    async createStaffUser() {
+      try {
+        await apiClient.post('/admin/users', this.staffForm)
+        await this.success('员工账号已创建，对方可用该 Google 邮箱登录')
+        this.showCreateStaffModal = false
+        await this.fetchUsers()
+      } catch (error) {
+        await this.error(error.response?.data?.error || error.response?.data?.message || '创建失败')
+      }
+    },
     getRoleLabel(role) {
       const labels = {
         'admin': '管理员',
         'user': '普通用户',
-        'influencer': '推荐官'
+        'influencer': '推荐官',
+        'fulfillment': '配货员'
       }
       return labels[role] || role
     },
@@ -864,6 +914,16 @@ export default {
   padding: 0.125rem 0.5rem;
   background: var(--md-primary);
   color: white;
+  border-radius: var(--md-radius-sm);
+  font-size: var(--md-label-size);
+  font-weight: 500;
+}
+
+.fulfillment-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  background: #FFF3E0;
+  color: #E65100;
   border-radius: var(--md-radius-sm);
   font-size: var(--md-label-size);
   font-weight: 500;

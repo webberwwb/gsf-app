@@ -3,7 +3,7 @@ from models import db
 from sqlalchemy import Numeric, and_
 from sqlalchemy.orm import backref, foreign
 from datetime import datetime
-from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod
+from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, DeliveryHandler
 
 class Order(BaseModel):
     """Order model - tracks order details, payment, pickup status, and points"""
@@ -62,6 +62,19 @@ class Order(BaseModel):
     # Workflow: submitted → confirmed → preparing → ready_for_pickup/out_for_delivery → completed
     status = db.Column(db.String(50), default=OrderStatus.SUBMITTED.value, nullable=False)
     
+    # Delivery assignment (fulfillment / 配货员)
+    delivery_handler = db.Column(
+        db.String(20),
+        default=DeliveryHandler.UNASSIGNED.value,
+        nullable=False,
+    )
+    delivery_assignee_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    delivery_route_seq = db.Column(db.Integer, nullable=True)
+    delivery_photo_url = db.Column(db.String(512), nullable=True)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+    third_party_note = db.Column(db.String(255), nullable=True)
+    delivery_fee_earned = db.Column(Numeric(10, 2), nullable=True)
+
     # Notes
     notes = db.Column(db.Text, nullable=True)
     
@@ -90,6 +103,10 @@ class Order(BaseModel):
         foreign_keys='OrderItem.order_id',
     )
     address = db.relationship('Address', backref='orders')
+    delivery_assignee = db.relationship(
+        'User',
+        foreign_keys='Order.delivery_assignee_id',
+    )
     merged_into_order = db.relationship(
         'Order',
         remote_side='Order.id',
@@ -151,6 +168,13 @@ class Order(BaseModel):
             'pickup_date': self.pickup_date.isoformat() if self.pickup_date else None,
             'status': self.status,
             'notes': self.notes,
+            'delivery_handler': self.delivery_handler or DeliveryHandler.UNASSIGNED.value,
+            'delivery_assignee_id': self.delivery_assignee_id,
+            'delivery_route_seq': self.delivery_route_seq,
+            'delivery_photo_url': self.delivery_photo_url,
+            'delivered_at': self.delivered_at.isoformat() if self.delivered_at else None,
+            'third_party_note': self.third_party_note,
+            'delivery_fee_earned': float(self.delivery_fee_earned) if self.delivery_fee_earned is not None else None,
             'merged_into_order_id': self.merged_into_order_id,
             'merged_at': self.merged_at.isoformat() if self.merged_at else None,
         })

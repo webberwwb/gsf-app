@@ -15,7 +15,7 @@ from models.influencer import (
     InfluencerRateOverride,
 )
 from models.product import Product
-from models.user import User
+from models.user import User, UserRole
 from routes.admin import require_admin_auth
 from services import influencer_service
 
@@ -48,6 +48,45 @@ def list_influencers():
         return error_response, status_code
     profiles = InfluencerProfile.query.order_by(InfluencerProfile.id.desc()).all()
     return jsonify({'influencers': [_profile_row(p) for p in profiles]}), 200
+
+
+@admin_influencers_bp.route('/influencers', methods=['POST'])
+def assign_influencer():
+    admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'user_id is required'}), 400
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': '用户不存在'}), 404
+    existing_role = UserRole.query.filter_by(user_id=user.id, role='influencer').first()
+    if not existing_role:
+        db.session.add(UserRole(user_id=user.id, role='influencer'))
+    profile = influencer_service.activate_profile_for_user(user.id)
+    db.session.commit()
+    return jsonify({'influencer': _profile_row(profile)}), 200
+
+
+@admin_influencers_bp.route('/influencers/<int:user_id>', methods=['DELETE'])
+def unassign_influencer(user_id):
+    admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': '用户不存在'}), 404
+    profile = InfluencerProfile.query.filter_by(user_id=user_id).first()
+    role = UserRole.query.filter_by(user_id=user_id, role='influencer').first()
+    if not profile and not role:
+        return jsonify({'error': '该用户不是推荐官'}), 404
+    if role:
+        db.session.delete(role)
+    influencer_service.deactivate_profile_for_user(user_id)
+    db.session.commit()
+    return jsonify({'message': '已移除推荐官'}), 200
 
 
 @admin_influencers_bp.route('/influencers/config', methods=['GET'])
@@ -136,7 +175,7 @@ def get_influencer(user_id):
     if not profile:
         return jsonify({'error': '推荐官不存在'}), 404
     data = _profile_row(profile)
-    data['customers'] = influencer_service.customers_for(user_id)
+    data['customers'] = influencer_service.customers_for(user_id, for_admin=True)
     data['overrides'] = [
         row.to_dict(include_product=True)
         for row in InfluencerRateOverride.query.filter_by(influencer_user_id=user_id).all()
@@ -169,6 +208,54 @@ def update_influencer(user_id):
         profile.is_active = bool(data['is_active'])
     db.session.commit()
     return jsonify({'influencer': _profile_row(profile)}), 200
+
+
+@admin_influencers_bp.route('/influencers/<int:user_id>/customers', methods=['POST'])
+def assign_influencer_customer(user_id):
+    admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    data = request.get_json() or {}
+    customer_id = data.get('customer_user_id') or data.get('user_id')
+    if not customer_id:
+        return jsonify({'error': 'customer_user_id is required'}), 400
+    try:
+        customer, previous_id = influencer_service.bind_customer_to_influencer(user_id, int(customer_id))
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(e, exc_info=True)
+        return jsonify({'error': '绑定客户失败', 'message': str(e)}), 500
+    return jsonify({
+        'customer_user_id': customer.id,
+        'influencer_user_id': user_id,
+        'previous_referrer_user_id': previous_id,
+        'customers': influencer_service.customers_for(user_id, for_admin=True),
+    }), 200
+
+
+@admin_influencers_bp.route('/influencers/<int:user_id>/customers/<int:customer_id>', methods=['DELETE'])
+def unassign_influencer_customer(user_id, customer_id):
+    admin_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    try:
+        influencer_service.unbind_customer_from_influencer(user_id, customer_id)
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(e, exc_info=True)
+        return jsonify({'error': '移除客户失败', 'message': str(e)}), 500
+    return jsonify({
+        'message': '已移除客户',
+        'customers': influencer_service.customers_for(user_id, for_admin=True),
+    }), 200
 
 
 @admin_influencers_bp.route('/influencers/<int:user_id>/overrides', methods=['PUT'])

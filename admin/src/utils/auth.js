@@ -41,6 +41,18 @@ export async function checkAuth() {
  * Get current admin user from localStorage
  * @returns {Object|null}
  */
+export function isAdmin(user = getCurrentUser()) {
+  return Boolean(user?.is_admin || (user?.roles || []).includes('admin'))
+}
+
+export function isFulfillment(user = getCurrentUser()) {
+  return Boolean(user?.is_fulfillment || (user?.roles || []).includes('fulfillment'))
+}
+
+export function isFulfillmentOnly(user = getCurrentUser()) {
+  return isFulfillment(user) && !isAdmin(user)
+}
+
 export function getCurrentUser() {
   const userStr = localStorage.getItem('admin_user')
   if (!userStr) {

@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, current_app, redirect
 from models import db
-from models.user import User, AuthToken, UserRole
+from models.user import User, AuthToken
 from models.otp_attempt import OTPAttempt
 from datetime import datetime, timedelta, timezone
 from models.base import utc_now
@@ -645,69 +645,25 @@ def google_callback():
                 'error': 'Failed to get user email from Google'
             }), 400
         
-        # Check email allowlist
-        admin_allowed_emails = Config.ADMIN_ALLOWED_EMAILS
-        admin_domains = Config.ADMIN_ALLOWED_DOMAINS
-        
-        # Get frontend URL from config (set in .env for local, env var for prod)
         frontend_url = Config.ADMIN_FRONTEND_URL
-        
-        # Check if we're in production (Cloud Run has K_SERVICE env var)
         is_production = os.environ.get('K_SERVICE') is not None
-        
-        # Ensure we're using the correct frontend URL (never localhost in production)
         if is_production and (not frontend_url or 'localhost' in frontend_url.lower()):
             current_app.logger.error(f'Invalid ADMIN_FRONTEND_URL in production: {frontend_url}. Using default.')
             frontend_url = 'https://admin.grainstoryfarm.ca'
         elif not is_production and not frontend_url:
-            # Default to localhost:3001 for local development
             frontend_url = 'http://localhost:3001'
             current_app.logger.info(f'Using default localhost URL for local development: {frontend_url}')
-        
-        if admin_allowed_emails:
-            if email.lower() not in [e.lower() for e in admin_allowed_emails]:
-                error_message = 'Your email address is not authorized for admin access. Please contact an administrator.'
-                return redirect(f'{frontend_url}/login?error={quote(error_message)}')
-        elif admin_domains:
-            email_domain = email.split('@')[1] if '@' in email else ''
-            if email_domain not in admin_domains:
-                error_message = f'Email domain {email_domain} is not authorized for admin access'
-                return redirect(f'{frontend_url}/login?error={quote(error_message)}')
-        
-        # Find or create user
-        user = User.query.filter_by(email=email).first()
 
-        if not user:
-            # Create new admin user
-            user = User(
-                email=email,
-                nickname=name,
-                phone=None,  # Google OAuth users don't need phone
-                status=UserStatus.ACTIVE.value,
-                points=0
-            )
-            db.session.add(user)
-            db.session.flush()
-            current_app.logger.info(f'Created new admin user: {email}, ID: {user.id}')
-        else:
-            # Update existing user
-            if name and not user.nickname:
-                user.nickname = name
-            user.last_login_date = utc_now()
-            current_app.logger.info(f'Found existing admin user: {email}, ID: {user.id}')
+        user = User.query.filter(db.func.lower(User.email) == email.lower()).first()
+        if not user or not user.is_active or not user.can_access_admin_panel:
+            error_message = '请联系管理员开通权限'
+            return redirect(f'{frontend_url}/login?error={quote(error_message)}')
 
-        # Ensure last_login_date is set
-        if not user.last_login_date:
-            user.last_login_date = utc_now()
-
-        # Ensure user has admin role
-        admin_role = UserRole.query.filter_by(user_id=user.id, role='admin').first()
-        if not admin_role:
-            admin_role = UserRole(user_id=user.id, role='admin')
-            db.session.add(admin_role)
-            current_app.logger.info(f'Assigned admin role to user: {email}, ID: {user.id}')
-
+        if name and not user.nickname:
+            user.nickname = name
+        user.last_login_date = utc_now()
         db.session.commit()
+        current_app.logger.info(f'Admin panel login: {email}, ID: {user.id}, roles={user.get_roles()}')
         
         # Generate auth token (100 years expiration - effectively never expires)
         # Store as naive datetime (MySQL doesn't support timezone-aware)
@@ -764,46 +720,17 @@ def dev_login():
     if not email:
         return jsonify({'error': 'Email is required'}), 400
     
-    # Verify email is in the allowed list
-    admin_allowed_emails = Config.ADMIN_ALLOWED_EMAILS
-    if not admin_allowed_emails or email.lower() not in [e.lower() for e in admin_allowed_emails]:
-        return jsonify({
-            'error': 'Unauthorized',
-            'message': f'Email {email} is not in the admin allowed list'
-        }), 403
-    
     try:
-        # Find or create user
-        user = User.query.filter_by(email=email).first()
-        
-        if not user:
-            # Create new admin user
-            user = User(
-                email=email,
-                nickname=email.split('@')[0],
-                phone=None,
-                status=UserStatus.ACTIVE.value,
-                points=0
-            )
-            db.session.add(user)
-            db.session.flush()
-            current_app.logger.info(f'[DEV] Created new admin user: {email}, ID: {user.id}')
-        else:
-            user.last_login_date = utc_now()
-            current_app.logger.info(f'[DEV] Found existing admin user: {email}, ID: {user.id}')
-        
-        # Ensure last_login_date is set
-        if not user.last_login_date:
-            user.last_login_date = utc_now()
-        
-        # Ensure user has admin role
-        admin_role = UserRole.query.filter_by(user_id=user.id, role='admin').first()
-        if not admin_role:
-            admin_role = UserRole(user_id=user.id, role='admin')
-            db.session.add(admin_role)
-            current_app.logger.info(f'[DEV] Assigned admin role to user: {email}, ID: {user.id}')
-        
+        user = User.query.filter(db.func.lower(User.email) == email.lower()).first()
+        if not user or not user.is_active or not user.can_access_admin_panel:
+            return jsonify({
+                'error': 'Unauthorized',
+                'message': '请联系管理员开通权限'
+            }), 403
+
+        user.last_login_date = utc_now()
         db.session.commit()
+        current_app.logger.info(f'[DEV] Panel login: {email}, ID: {user.id}, roles={user.get_roles()}')
         
         # Generate auth token (100 years expiration)
         expires_at = utc_now() + timedelta(days=36500)

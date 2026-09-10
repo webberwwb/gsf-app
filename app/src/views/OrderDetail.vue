@@ -418,6 +418,12 @@
             </div>
           </button>
         </div>
+        <div v-if="order.delivery_photo_url" class="delivery-photo-block">
+          <button type="button" class="delivery-photo-btn" @click="viewingPhoto = order.delivery_photo_url">
+            <img :src="order.delivery_photo_url" alt="送达照片" />
+            <span>送达照片 · 点击查看</span>
+          </button>
+        </div>
       </div>
 
       <!-- Payment Method Selection -->
@@ -803,6 +809,7 @@
         </div>
       </div>
     </div>
+    <ImageLightbox :src="viewingPhoto" @close="viewingPhoto = ''" />
     <CardSetupModal
       :show="showCardSetup"
       :customer-name="currentUser?.nickname || currentUser?.wechat || ''"
@@ -835,6 +842,7 @@ import {
 import { fetchShippingConfig } from '../utils/shipping'
 import { cardLabel, hasSavedCard, CARD_PRIVACY_NOTE, customerPaymentDisplay } from '../utils/stripeCard'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
+import ImageLightbox from '../components/ImageLightbox.vue'
 import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
@@ -866,6 +874,7 @@ export default {
   name: 'OrderDetail',
   components: {
     ProductDetailModal,
+    ImageLightbox,
     Modal,
     ProductDetailsSection,
     OrderLineDisplay,
@@ -888,6 +897,7 @@ export default {
       selectedProduct: null,
       showPriceInfoModal: false,
       priceInfoMessage: '',
+      viewingPhoto: '',
       showAddressModal: false,
       addresses: [],
       addressesLoading: false,
@@ -2242,6 +2252,33 @@ export default {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
   font-weight: 500;
+}
+
+.delivery-photo-block {
+  margin-top: var(--md-spacing-md);
+}
+.delivery-photo-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.delivery-photo-btn img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  background: #111;
+  border-radius: var(--md-radius-md);
+}
+.delivery-photo-btn span {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: var(--md-label-size);
+  font-weight: 600;
+  color: var(--md-primary);
 }
 
 .products-section,

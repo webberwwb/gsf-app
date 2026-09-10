@@ -23,10 +23,10 @@
           <span v-else>登录中...</span>
         </button>
 
-        <!-- Dev login button - only shows in local development -->
+        <!-- Dev login buttons - only show in local development -->
         <button
           v-if="showDevLogin"
-          @click="devLogin"
+          @click="devLogin('info@digitelf.com')"
           class="login-btn dev-btn"
           :disabled="loading"
         >
@@ -34,6 +34,17 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
           <span>开发者登录 (info@digitelf.com)</span>
+        </button>
+        <button
+          v-if="showDevLogin"
+          @click="devLogin('webberwwb@gmail.com')"
+          class="login-btn fulfillment-dev-btn"
+          :disabled="loading"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          <span>配货员登录 (webberwwb@gmail.com)</span>
         </button>
 
         <div v-if="error" class="error-message">
@@ -106,17 +117,14 @@ export default {
              hostname.startsWith('172.')
     },
     
-    async devLogin() {
+    async devLogin(email) {
       this.loading = true
       this.error = null
 
       try {
-        const response = await apiClient.post('/auth/dev-login', {
-          email: 'info@digitelf.com'
-        })
+        const response = await apiClient.post('/auth/dev-login', { email })
 
         if (response.data.token) {
-          // Store token and user info
           localStorage.setItem('admin_auth_token', response.data.token)
           localStorage.setItem('admin_user', JSON.stringify(response.data.user))
 
@@ -124,8 +132,9 @@ export default {
             localStorage.setItem('admin_auth_token_expires_at', response.data.expires_at)
           }
 
-          // Redirect to dashboard
-          this.$router.push('/')
+          const roles = response.data.user?.roles || []
+          const fulfillmentOnly = roles.includes('fulfillment') && !roles.includes('admin')
+          this.$router.push(fulfillmentOnly ? '/group-deals' : '/')
         } else {
           this.error = 'Dev login failed'
         }
@@ -398,6 +407,18 @@ export default {
 
 .dev-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, #5568d3 0%, #63408a 100%);
+}
+
+.fulfillment-dev-btn {
+  background: var(--md-primary);
+  color: white;
+  border: none;
+  text-transform: none;
+  font-size: 0.875rem;
+}
+
+.fulfillment-dev-btn:hover:not(:disabled) {
+  background: var(--md-primary-variant);
 }
 
 .error-message {

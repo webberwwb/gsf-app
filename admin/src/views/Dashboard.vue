@@ -24,7 +24,7 @@
           </svg>
           <span>仪表盘</span>
         </router-link> -->
-        <router-link to="/products" class="nav-item" :class="{ active: $route.path === '/products' }">
+        <router-link v-if="showAdminNav" to="/products" class="nav-item" :class="{ active: $route.path === '/products' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
           </svg>
@@ -36,61 +36,74 @@
           </svg>
           <span>团购管理</span>
         </router-link>
-        <router-link to="/orders" class="nav-item" :class="{ active: $route.path === '/orders' }">
+        <router-link to="/delivery-planning" class="nav-item" :class="{ active: $route.path === '/delivery-planning' }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10h2m8 0h6m-6 0a2 2 0 11-4 0m10 0V8a1 1 0 00-1-1h-4" />
+          </svg>
+          <span>配送规划</span>
+        </router-link>
+        <router-link to="/earnings" class="nav-item" :class="{ active: $route.path === '/earnings' }">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>收入明细</span>
+        </router-link>
+        <router-link v-if="showAdminNav" to="/orders" class="nav-item" :class="{ active: $route.path === '/orders' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
           <span>订单管理</span>
         </router-link>
-        <router-link to="/stripe-payments" class="nav-item" :class="{ active: $route.path === '/stripe-payments' }">
+        <router-link v-if="showAdminNav" to="/stripe-payments" class="nav-item" :class="{ active: $route.path === '/stripe-payments' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
           </svg>
           <span>在线支付</span>
         </router-link>
-        <router-link to="/users" class="nav-item" :class="{ active: $route.path.startsWith('/users') }">
+        <router-link v-if="showAdminNav" to="/users" class="nav-item" :class="{ active: $route.path.startsWith('/users') }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
           <span>用户管理</span>
         </router-link>
-        <router-link to="/influencers" class="nav-item" :class="{ active: $route.path.startsWith('/influencers') }">
+        <router-link v-if="showAdminNav" to="/influencers" class="nav-item" :class="{ active: $route.path.startsWith('/influencers') }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l2.4 6.9H22l-6 4.4 2.3 7.2L12 17.4 5.7 21.5 8 14.3 2 9.9h7.6L12 3z" />
           </svg>
           <span>推荐官</span>
         </router-link>
-        <router-link to="/credit-referrals" class="nav-item" :class="{ active: $route.path === '/credit-referrals' }">
+        <router-link v-if="showAdminNav" to="/credit-referrals" class="nav-item" :class="{ active: $route.path === '/credit-referrals' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v13m0-13V6a2 2 0 112-2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
           </svg>
           <span>用户推广</span>
         </router-link>
-        <router-link to="/sales-management" class="nav-item" :class="{ active: $route.path === '/sales-management' }">
+        <router-link v-if="showAdminNav" to="/sales-management" class="nav-item" :class="{ active: $route.path === '/sales-management' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span>销售管理</span>
         </router-link>
-        <router-link to="/suppliers" class="nav-item" :class="{ active: $route.path === '/suppliers' }">
+        <router-link v-if="showAdminNav" to="/suppliers" class="nav-item" :class="{ active: $route.path === '/suppliers' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
           </svg>
           <span>供应商管理</span>
         </router-link>
-        <router-link to="/shipping-fee" class="nav-item" :class="{ active: $route.path === '/shipping-fee' }">
+        <router-link v-if="showAdminNav" to="/shipping-fee" class="nav-item" :class="{ active: $route.path === '/shipping-fee' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
           </svg>
           <span>运费管理</span>
         </router-link>
-        <router-link to="/after-sales" class="nav-item" :class="{ active: $route.path === '/after-sales' }">
+        <router-link v-if="showAdminNav" to="/after-sales" class="nav-item" :class="{ active: $route.path === '/after-sales' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
           </svg>
           <span>售后分析</span>
         </router-link>
-        <router-link to="/work-arrangement" class="nav-item" :class="{ active: $route.path === '/work-arrangement' }">
+        <router-link v-if="showAdminNav" to="/work-arrangement" class="nav-item" :class="{ active: $route.path === '/work-arrangement' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
@@ -154,20 +167,23 @@
           </svg>
         </button>
       </header>
-      <div class="content-area">
+      <div class="content-area" :class="{ 'content-area--clock': showClockBar && !clockBarCollapsed }">
         <router-view />
       </div>
+      <FulfillmentClockBar v-if="showClockBar" @collapsed-change="clockBarCollapsed = $event" />
     </main>
   </div>
 </template>
 
 <script>
-import { getCurrentUser, clearAuth } from '../utils/auth'
+import { getCurrentUser, clearAuth, isFulfillmentOnly } from '../utils/auth'
 import { useModal } from '../composables/useModal'
 import { usePageHeader } from '../stores/pageHeader'
+import FulfillmentClockBar from '../components/FulfillmentClockBar.vue'
 
 export default {
   name: 'Dashboard',
+  components: { FulfillmentClockBar },
   setup() {
     const { confirm } = useModal()
     const { state: pageHeaderState } = usePageHeader()
@@ -175,14 +191,21 @@ export default {
   },
   data() {
     return {
-      user: null,
+      user: getCurrentUser(),
       sidebarOpen: false,
-      version: '加载中...'
+      version: '加载中...',
+      clockBarCollapsed: false
     }
   },
   computed: {
     isGroupDealDetail() {
       return this.$route.name === 'GroupDealDetail'
+    },
+    showAdminNav() {
+      return !isFulfillmentOnly(this.user)
+    },
+    showClockBar() {
+      return isFulfillmentOnly(this.user)
     },
     pageTitle() {
       if (this.isGroupDealDetail) {
@@ -192,6 +215,8 @@ export default {
         // '/': '仪表盘', // Hidden for now
         '/products': '商品管理',
         '/group-deals': '团购管理',
+        '/delivery-planning': '配送规划',
+        '/earnings': '收入明细',
         '/orders': '订单管理',
         '/stripe-payments': '在线支付',
         '/users': '用户管理',
@@ -840,6 +865,10 @@ export default {
   -webkit-overflow-scrolling: touch;
   padding: var(--md-spacing-lg);
   padding-bottom: calc(var(--md-spacing-lg) + env(safe-area-inset-bottom));
+}
+
+.content-area--clock {
+  padding-bottom: var(--md-spacing-lg);
 }
 
 /* Reduce padding on smaller laptops */

@@ -202,6 +202,26 @@ class DeliveryMethod(str, Enum):
         return {method.value: cls.get_label(method) for method in cls}
 
 
+class DeliveryHandler(str, Enum):
+    """Who will deliver a delivery order."""
+    UNASSIGNED = 'unassigned'
+    SELF = 'self'
+    THIRD_PARTY = 'third_party'
+
+    @classmethod
+    def get_label(cls, handler):
+        labels = {
+            cls.UNASSIGNED: '未分配',
+            cls.SELF: '自己送',
+            cls.THIRD_PARTY: '第三方',
+        }
+        return labels.get(handler, handler)
+
+    @classmethod
+    def get_all_values(cls):
+        return [handler.value for handler in cls]
+
+
 class PaymentMethod(str, Enum):
     """
     Payment Method Enum
@@ -232,5 +252,13 @@ class PaymentMethod(str, Enum):
 
 
 # Export for easy access
-__all__ = ['OrderStatus', 'PaymentStatus', 'GroupDealStatus', 'UserStatus', 'DeliveryMethod', 'PaymentMethod']
+__all__ = [
+    'OrderStatus',
+    'PaymentStatus',
+    'GroupDealStatus',
+    'UserStatus',
+    'DeliveryMethod',
+    'DeliveryHandler',
+    'PaymentMethod',
+]
 

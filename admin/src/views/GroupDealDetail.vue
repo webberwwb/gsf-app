@@ -24,7 +24,7 @@
         <div class="nav-spacer" aria-hidden="true"></div>
       </div>
 
-      <div class="header-actions">
+      <div v-if="!isFulfillmentOnly" class="header-actions">
         <button @click="viewCommission" class="commission-btn" :disabled="loading || !groupDeal">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -59,7 +59,8 @@
               {{ getStatusLabel(groupDeal.status) }}
             </span>
             <span v-if="groupDeal.online_payment_enabled" class="status-badge online-payment">在线支付</span>
-            <select 
+            <select
+              v-if="!isFulfillmentOnly"
               v-model="groupDeal.status" 
               @change="handleGroupDealStatusChange"
               :disabled="updatingGroupDealStatus"
@@ -346,7 +347,7 @@
       </div>
 
       <GroupDealFulfillmentPanel
-        v-if="groupDeal?.products?.some(p => p.substitute_enabled || p.substitute?.enabled)"
+        v-if="!isFulfillmentOnly && groupDeal?.products?.some(p => p.substitute_enabled || p.substitute?.enabled)"
         :group-deal-id="groupDeal.id"
         :products="groupDeal.products"
         :orders="orders"
@@ -407,7 +408,7 @@
                 </svg>
               </button>
             </div>
-            <button @click="findDuplicates" class="duplicates-btn" :disabled="loadingDuplicates">
+            <button v-if="!isFulfillmentOnly" @click="findDuplicates" class="duplicates-btn" :disabled="loadingDuplicates">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px;">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
@@ -611,6 +612,7 @@ import { orderAmountDueNumber, formatOrderMoney2, orderFinalTotalNumber, orderSt
 import { calculateOrderPoints } from '../utils/orderPoints'
 import { resolveOrderLineTotal } from '../utils/orderItemPricing'
 import { loadGroupDealOrderPrefs, saveGroupDealOrderPrefs } from '../utils/groupDealOrderPrefs'
+import { isFulfillmentOnly } from '../utils/auth'
 
 const PACKING_COMPLETE_STATUSES = ['packing_complete', 'ready_for_pickup', 'out_for_delivery', 'delivering', 'completed']
 
@@ -748,6 +750,9 @@ export default {
     }
   },
   computed: {
+    isFulfillmentOnly() {
+      return isFulfillmentOnly()
+    },
     orderListPrefs() {
       return {
         activeOrderTab: this.activeOrderTab,

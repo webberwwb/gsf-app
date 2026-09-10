@@ -45,6 +45,13 @@ def _make_influencer(phone='+10000000001', nickname='官', payout=PAYOUT_CREDIT)
     return user
 
 
+def _admin():
+    user = _user('+10000000999', 'Admin')
+    db.session.add(UserRole(user_id=user.id, role='admin'))
+    db.session.flush()
+    return user
+
+
 def _token(user):
     existing = AuthToken.query.filter_by(user_id=user.id, is_revoked=False).first()
     if existing:
@@ -696,3 +703,82 @@ def test_influencer_self_buy_shows_and_charges_price_minus_commission(app, db_se
     )
     assert Decimal(str(items2[0]['unit_price'])) == Decimal('16.00')
     assert Decimal(str(subtotal2)) == Decimal('32.00')
+
+
+def test_admin_assign_and_unassign_influencer(app, db_session):
+    admin = _admin()
+    target = _user('+10000000080', '待指定')
+    client = app.test_client()
+    headers = {'Authorization': f'Bearer {_token(admin)}'}
+
+    res = client.post(
+        '/api/admin/influencers',
+        json={'user_id': target.id},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    body = res.get_json()['influencer']
+    assert body['user_id'] == target.id
+    assert body['is_active'] is True
+    db_session.refresh(target)
+    assert target.is_influencer is True
+    assert target.referral_code
+
+    listed = client.get('/api/admin/influencers', headers=headers)
+    assert listed.status_code == 200
+    ids = [row['user_id'] for row in listed.get_json()['influencers']]
+    assert target.id in ids
+
+    removed = client.delete(f'/api/admin/influencers/{target.id}', headers=headers)
+    assert removed.status_code == 200
+    db_session.refresh(target)
+    assert target.is_influencer is False
+    profile = InfluencerProfile.query.filter_by(user_id=target.id).first()
+    assert profile is not None
+    assert profile.is_active is False
+
+
+def test_admin_bind_and_unbind_influencer_customer(app, db_session):
+    admin = _admin()
+    inf = _make_influencer(phone='+10000000081', nickname='官甲')
+    other = _make_influencer(phone='+10000000082', nickname='官乙')
+    customer = _user('+10000000083', '客户甲')
+    client = app.test_client()
+    headers = {'Authorization': f'Bearer {_token(admin)}'}
+
+    self_bind = client.post(
+        f'/api/admin/influencers/{inf.id}/customers',
+        json={'customer_user_id': inf.id},
+        headers=headers,
+    )
+    assert self_bind.status_code == 400
+
+    res = client.post(
+        f'/api/admin/influencers/{inf.id}/customers',
+        json={'customer_user_id': customer.id},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    db_session.refresh(customer)
+    assert customer.referred_by_user_id == inf.id
+    assert Decimal(str(customer.store_credit_balance or 0)) == Decimal('0')
+    phones = [row.get('phone') for row in res.get_json()['customers']]
+    assert customer.phone in phones
+
+    moved = client.post(
+        f'/api/admin/influencers/{other.id}/customers',
+        json={'customer_user_id': customer.id},
+        headers=headers,
+    )
+    assert moved.status_code == 200
+    db_session.refresh(customer)
+    assert customer.referred_by_user_id == other.id
+    assert moved.get_json()['previous_referrer_user_id'] == inf.id
+
+    removed = client.delete(
+        f'/api/admin/influencers/{other.id}/customers/{customer.id}',
+        headers=headers,
+    )
+    assert removed.status_code == 200
+    db_session.refresh(customer)
+    assert customer.referred_by_user_id is None

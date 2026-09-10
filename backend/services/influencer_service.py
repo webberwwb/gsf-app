@@ -769,7 +769,7 @@ def dashboard_for(influencer_user_id):
     }
 
 
-def customers_for(influencer_user_id):
+def customers_for(influencer_user_id, for_admin=False):
     profile = get_active_profile(influencer_user_id)
     min_deal_id = _commission_from_group_deal_id(profile)
     customers = User.query.filter_by(referred_by_user_id=influencer_user_id).order_by(
@@ -796,19 +796,57 @@ def customers_for(influencer_user_id):
         ).all():
             if entry.status != STATUS_REVERSED:
                 commission += Decimal(str(entry.amount or 0))
-        rows.append(customer_public_dict(customer, {
+        extra = {
             'order_count': len(visible),
             'in_progress_order_count': in_progress,
             'closed_order_count': closed,
             'paid_order_count': len(paid_orders),
             'spend': float(round_money(spend)),
             'commission': float(round_money(commission)),
-        }))
+        }
+        if for_admin:
+            extra.update({
+                'phone': customer.phone,
+                'wechat': customer.wechat,
+                'email': customer.email,
+            })
+        rows.append(customer_public_dict(customer, extra))
     rows.sort(key=lambda row: (
         row['in_progress_order_count'] or 0,
         row['closed_order_count'] or 0,
     ), reverse=True)
     return rows
+
+
+def bind_customer_to_influencer(influencer_user_id, customer_user_id):
+    """Admin bind. Does not grant invite/lead bonuses."""
+    if not influencer_user_id or not customer_user_id:
+        raise ValueError('user_id is required')
+    if int(influencer_user_id) == int(customer_user_id):
+        raise ValueError('不能将推荐官绑定为自己的客户')
+    influencer = User.query.get(influencer_user_id)
+    customer = User.query.get(customer_user_id)
+    if not influencer or not customer:
+        raise ValueError('用户不存在')
+    profile = InfluencerProfile.query.filter_by(user_id=influencer_user_id).first()
+    if not profile:
+        raise ValueError('推荐官不存在')
+    previous_id = customer.referred_by_user_id
+    customer.referred_by_user_id = influencer.id
+    db.session.flush()
+    return customer, previous_id
+
+
+def unbind_customer_from_influencer(influencer_user_id, customer_user_id):
+    """Admin unbind. Historical commission entries are left unchanged."""
+    customer = User.query.get(customer_user_id)
+    if not customer:
+        raise ValueError('用户不存在')
+    if customer.referred_by_user_id != influencer_user_id:
+        raise ValueError('该用户不是此推荐官的客户')
+    customer.referred_by_user_id = None
+    db.session.flush()
+    return customer
 
 
 def customer_detail_for(influencer_user_id, customer_id):
