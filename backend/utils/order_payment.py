@@ -3,7 +3,6 @@
 from models.base import utc_now
 from models.user import User
 from constants.status_enums import PaymentStatus, OrderStatus, DeliveryMethod, PaymentMethod
-from constants.delivery_consent import user_has_delivery_consent
 from utils.order_points import award_order_points
 from services import referral_service, influencer_service
 
@@ -32,15 +31,16 @@ def payment_method_error(
     user=None,
     require_card_on_file=True,
     online_payment_enabled=False,
+    delivery_consented=False,
 ):
     """Return a Chinese error string if delivery/payment combo is invalid, else None.
 
-    Delivery requires current 须知 consent and a card on file. Cash or card is
+    Delivery requires this-order 须知 consent and a card on file. Cash or card is
     then allowed; e-transfer is not. Pickup stays cash / e-transfer.
     """
     if delivery_method == DeliveryMethod.DELIVERY.value:
-        if user is not None and not user_has_delivery_consent(user):
-            return '请先阅读并同意《配送订单须知》'
+        if not delivery_consented:
+            return '请先阅读并同意《配送须知》'
         if require_card_on_file and user is not None and not getattr(user, 'stripe_payment_method_id', None):
             return '请先绑定银行卡后再提交配送订单'
         if payment_method == PaymentMethod.ETRANSFER.value:

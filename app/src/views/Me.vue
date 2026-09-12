@@ -14,6 +14,7 @@
         <h2>未登录</h2>
         <p>请先登录以查看您的账号信息</p>
         <button @click="goToLogin" class="signup-btn">立即登录</button>
+        <DeliveryAgreementLink @open="openDeliveryAgreement" />
       </div>
       
       <!-- Authenticated Content -->
@@ -38,7 +39,8 @@
             <h3 class="panel-title">绑定的银行卡</h3>
             <p v-if="savedCardLabel" class="bound-card-value">{{ savedCardLabel }}</p>
             <p v-else class="placeholder-msg">尚未绑定银行卡</p>
-            <p class="panel-hint">配送需绑定银行卡。解绑后将关闭配送，需重新同意须知并绑卡才能再次选择配送。卡号由 Stripe 托管，本APP只保存后四位方便核对。</p>
+            <p class="panel-hint">配送需绑定银行卡。解绑后将无法选择配送，需重新绑卡。卡号由 Stripe 托管，本APP只保存后四位方便核对。</p>
+            <DeliveryAgreementLink @open="openDeliveryAgreement" />
             <button type="button" class="ledger-btn" @click="showCardSetup = true">
               {{ savedCardLabel ? '更换银行卡' : '绑定银行卡' }}
             </button>
@@ -215,13 +217,18 @@
           </div>
         </div>
       </Teleport>
-      <CardSetupModal
-        :show="showCardSetup"
-        :customer-name="userNickname"
-        :customer-phone="userPhone"
-        @close="showCardSetup = false"
-        @saved="onCardSaved"
-      />
+    <CardSetupModal
+      :show="showCardSetup"
+      :customer-name="userNickname"
+      :customer-phone="userPhone"
+      @close="showCardSetup = false"
+      @saved="onCardSaved"
+    />
+    <DeliveryConsentModal
+      :show="showConsentModal"
+      :view-only="true"
+      @cancel="showConsentModal = false"
+    />
     </main>
   </div>
 </template>
@@ -237,10 +244,12 @@ import { getUserHasCompletedOrderCached } from '../utils/referralInviteUi'
 import { formatOrderMoney2 } from '../utils/orderPricing'
 import { cardLabel, hasSavedCard } from '../utils/stripeCard'
 import CardSetupModal from '../components/CardSetupModal.vue'
+import DeliveryConsentModal from '../components/DeliveryConsentModal.vue'
+import DeliveryAgreementLink from '../components/DeliveryAgreementLink.vue'
 
 export default {
   name: 'Me',
-  components: { CardSetupModal },
+  components: { CardSetupModal, DeliveryConsentModal, DeliveryAgreementLink },
   setup() {
     const { confirm, error: showError, success, alert: showAlert } = useModal()
     const authStore = useAuthStore()
@@ -263,7 +272,8 @@ export default {
       referralUiHadCompletedOrder: null,
       showCardSetup: false,
       cardOnFile: null,
-      unbindingCard: false
+      unbindingCard: false,
+      showConsentModal: false
     }
   },
   computed: {
@@ -368,6 +378,9 @@ export default {
           : { has_card: false }
       }
     },
+    openDeliveryAgreement() {
+      this.showConsentModal = true
+    },
     async onCardSaved(card) {
       this.cardOnFile = card
       this.showCardSetup = false
@@ -382,7 +395,7 @@ export default {
       await this.success('银行卡已绑定')
     },
     async unbindCard() {
-      const ok = await this.confirm('解绑后将无法选择配送。再次配送需重新同意《配送订单须知》并绑定银行卡。确定解绑？')
+      const ok = await this.confirm('解绑后将无法选择配送。再次配送需重新绑定银行卡。确定解绑？')
       if (!ok) return
       this.unbindingCard = true
       try {

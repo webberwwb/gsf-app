@@ -741,6 +741,24 @@ def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
     return stats
 
 
+def restore_existing_line_weights(request_items, existing_items):
+    """Customers cannot set final_weight. Keep staff-entered weights on unchanged lines."""
+    existing = {item.id: item for item in (existing_items or []) if getattr(item, 'id', None)}
+    for item_data in request_items or []:
+        item_data.pop('final_weight', None)
+        src = existing.get(item_data.get('id'))
+        if not src or src.final_weight is None:
+            continue
+        if src.product_id != item_data.get('product_id'):
+            continue
+        if int(src.quantity or 0) != int(item_data.get('quantity') or 0):
+            continue
+        if src.variant_id != item_data.get('variant_id'):
+            continue
+        item_data['final_weight'] = float(src.final_weight)
+    return request_items
+
+
 def priced_items_from_request(items, unavailable_by_item_id=None, *, require_variant=True, group_deal_id=None, buyer_user_id=None):
     """Build priced order line dicts from request items. Raises ValueError on error."""
     unavailable_by_item_id = unavailable_by_item_id or {}

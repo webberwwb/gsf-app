@@ -48,13 +48,13 @@
         <p v-if="deal.description" class="deal-description">{{ deal.description }}</p>
         
         <div class="deal-dates">
-          <div class="date-row">
+          <div class="date-row" :class="{ 'date-row-highlight': isUpcoming }">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="date-icon">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <div class="date-info">
               <span class="date-label">开团时间</span>
-              <span class="date-value">{{ formatDateTime(deal.order_start_date) }}</span>
+              <span class="date-value">{{ isUpcoming ? formatDealOpenTime(deal.order_start_date) : formatDateTime(deal.order_start_date) }}</span>
             </div>
           </div>
           <div class="date-row">
@@ -79,7 +79,16 @@
       </div>
 
       <!-- Loaded via GET /group-deals/:id -->
-      <div v-if="deal && deal.status === 'closed'" class="deal-status-notice">
+      <div v-if="deal && isUpcoming" class="deal-status-notice upcoming">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="notice-icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div class="notice-content">
+          <strong>尚未开团，暂不可下单</strong>
+          <p>本团将于 <em>{{ dealOpenTimeLabel }}</em> 开团，届时即可选购下单。现在可以先浏览商品。</p>
+        </div>
+      </div>
+      <div v-else-if="deal && deal.status === 'closed'" class="deal-status-notice">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="notice-icon">
           <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
@@ -352,6 +361,13 @@
 
               <!-- Product Selection Controls -->
               <div class="product-selection" :class="{ 'disabled': isOutOfStock(product) }">
+                <div v-if="isUpcoming" class="order-locked-hint">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{{ dealOpenTimeLabel }} 开团后即可下单</span>
+                </div>
+                <template v-else>
                 <ProductDetailsSection
                   v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
                   :product="product"
@@ -472,6 +488,7 @@
                     </div>
                   </div>
                 </div>
+                </template>
               </div>
           </div>
           </div>
@@ -519,6 +536,7 @@ import apiClient from '../api/client'
 import { useCheckoutStore } from '../stores/checkout'
 import { useAuthStore } from '../stores/auth'
 import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
+import { getGroupDealStatusLabel } from '@shared/status-enums.js'
 import { useModal } from '../composables/useModal'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import Modal from '../components/Modal.vue'
@@ -583,6 +601,12 @@ export default {
     },
     dealFulfillmentPhase() {
       return this.deal && ['preparing', 'ready_for_pickup'].includes(this.deal.status)
+    },
+    isUpcoming() {
+      return this.deal?.status === 'upcoming'
+    },
+    dealOpenTimeLabel() {
+      return this.formatDealOpenTime(this.deal?.order_start_date)
     },
     isOrderEditable() {
       if (!this.deal) return false
@@ -984,6 +1008,22 @@ export default {
     formatDateTime(dateString) {
       return formatDateTimeEST_CN(dateString)
     },
+    formatDealOpenTime(dateString) {
+      if (!dateString) return ''
+      const date = new Date(dateString)
+      const datePart = date.toLocaleDateString('zh-CN', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+      const weekday = date.toLocaleDateString('zh-CN', { weekday: 'short' })
+      const timePart = date.toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })
+      return `${datePart}（${weekday}）${timePart}`
+    },
     formatPickupDate(dateString) {
       return formatPickupDateTime_CN(dateString)
     },
@@ -1009,14 +1049,7 @@ export default {
       return formatMoney(value)
     },
     getStatusLabel(status) {
-      const labels = {
-        draft: '草稿',
-        active: '进行中',
-        closed: '已截单',
-        preparing: '正在配货',
-        ready_for_pickup: '可以取货'
-      }
-      return labels[status] || status
+      return getGroupDealStatusLabel(status)
     },
     isOrderCompleted() {
       return false // This is for the deal detail page, not order completion
@@ -1448,6 +1481,11 @@ export default {
   box-shadow: 0 2px 4px rgba(255, 68, 68, 0.3);
 }
 
+.deal-badge.upcoming {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
 .deal-badge.closed {
   background: #FFF3E0;
   color: #F57C00;
@@ -1583,6 +1621,29 @@ export default {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
   font-weight: 500;
+}
+
+.date-row-highlight {
+  background: #E3F2FD;
+  border-radius: var(--md-radius-md);
+  padding: var(--md-spacing-sm) var(--md-spacing-md);
+  margin-left: calc(-1 * var(--md-spacing-sm));
+  margin-right: calc(-1 * var(--md-spacing-sm));
+}
+
+.date-row-highlight .date-icon {
+  color: #1565C0;
+}
+
+.date-row-highlight .date-label {
+  color: #1565C0;
+  font-weight: 600;
+}
+
+.date-row-highlight .date-value {
+  color: #0D47A1;
+  font-weight: 600;
+  font-size: var(--md-body-size);
 }
 
 .products-section {
@@ -2616,6 +2677,48 @@ export default {
   font-size: var(--md-label-size);
   line-height: 1.5;
   margin: 0;
+}
+
+.deal-status-notice.upcoming {
+  border-color: #1565C0;
+  background: linear-gradient(135deg, rgba(21, 101, 192, 0.08) 0%, rgba(13, 71, 161, 0.04) 100%);
+}
+
+.deal-status-notice.upcoming .notice-icon {
+  color: #1565C0;
+}
+
+.deal-status-notice.upcoming .notice-content strong {
+  color: #0D47A1;
+}
+
+.deal-status-notice.upcoming .notice-content p {
+  color: #1565C0;
+}
+
+.deal-status-notice.upcoming .notice-content em {
+  font-style: normal;
+  font-weight: 700;
+  color: #0D47A1;
+}
+
+.order-locked-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background: #E3F2FD;
+  border-radius: var(--md-radius-md);
+  color: #1565C0;
+  font-size: var(--md-label-size);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.order-locked-hint svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .deal-status-notice.fulfillment {

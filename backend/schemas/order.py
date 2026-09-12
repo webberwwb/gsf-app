@@ -9,7 +9,6 @@ class OrderItemSchema(Schema):
     product_id = fields.Integer(required=True, validate=validate.Range(min=1))
     quantity = fields.Integer(required=True, validate=validate.Range(min=1))
     pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']))
-    final_weight = fields.Float(allow_none=True, validate=validate.Range(min=0))
     variant_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     accept_substitute = fields.Boolean(allow_none=True)
     
@@ -43,7 +42,8 @@ class AdminProductFulfillmentSchema(Schema):
 
 
 class AdminOrderItemSchema(OrderItemSchema):
-    """Admin order item update — may set fulfillment unavailable flag"""
+    """Admin / fulfillment order item update — may set weight and unavailable flag"""
+    final_weight = fields.Float(allow_none=True, validate=validate.Range(min=0))
     is_unavailable = fields.Boolean(allow_none=True)
 
 
@@ -58,6 +58,7 @@ class CreateOrderSchema(Schema):
     notes = fields.String(allow_none=True, validate=validate.Length(max=1000))  # User custom notes
     referral_code = fields.String(allow_none=True, validate=validate.Length(max=32))
     store_credit_to_apply = fields.Decimal(places=2, allow_none=True, as_string=True)
+    delivery_consent = fields.Boolean(missing=False)
     
     @validates('items')
     def validate_items(self, value):
@@ -86,6 +87,7 @@ class UpdateOrderSchema(Schema):
     notes = fields.String(allow_none=True, validate=validate.Length(max=1000))  # User custom notes
     referral_code = fields.String(allow_none=True, validate=validate.Length(max=32))
     store_credit_to_apply = fields.Decimal(places=2, allow_none=True, as_string=True)
+    delivery_consent = fields.Boolean(missing=False)
     
     @validates('items')
     def validate_items(self, value):

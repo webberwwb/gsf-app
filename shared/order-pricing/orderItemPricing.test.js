@@ -8,7 +8,9 @@ import {
   getVariantQuantity,
   setVariantQuantity,
   isSelectionComplete,
-  buildPreviewLinesFromSelection
+  buildPreviewLinesFromSelection,
+  selectionsFromOrderItems,
+  isOrderLinePriceEstimated
 } from './orderItemPricing.js'
 
 describe('quantity breaks', () => {
@@ -139,5 +141,75 @@ describe('mixed variant selection', () => {
     assert.equal(lines.length, 2)
     assert.equal(lines[0].quantity, 1)
     assert.equal(lines[1].quantity, 2)
+  })
+})
+
+describe('selectionsFromOrderItems', () => {
+  it('restores quantity for products without variants', () => {
+    const next = selectionsFromOrderItems(
+      [{ id: 11, product_id: 5, quantity: 3 }],
+      { 5: { quantity: 0, variant_id: null, variant_quantities: {}, accept_substitute: null } }
+    )
+    assert.equal(next[5].quantity, 3)
+    assert.equal(getSelectionQuantity(next[5]), 3)
+    assert.equal(next[5].item_id, 11)
+  })
+
+  it('restores variant quantities and keeps other products empty', () => {
+    const next = selectionsFromOrderItems(
+      [
+        { id: 21, product_id: 8, quantity: 1, variant_id: 101 },
+        { id: 22, product_id: 8, quantity: 2, variant_id: 102 }
+      ],
+      {
+        8: { quantity: 0, variant_id: null, variant_quantities: {}, accept_substitute: null },
+        9: { quantity: 0, variant_id: null, variant_quantities: {}, accept_substitute: null }
+      }
+    )
+    assert.equal(getSelectionQuantity(next[8]), 3)
+    assert.equal(next[8].variant_quantities[101], 1)
+    assert.equal(next[8].variant_quantities[102], 2)
+    assert.equal(next[8].item_ids[101], 21)
+    assert.equal(next[8].item_ids[102], 22)
+    assert.equal(next[9].quantity, 0)
+  })
+
+  it('does not double quantities when applied twice', () => {
+    const first = selectionsFromOrderItems([{ id: 31, product_id: 4, quantity: 2 }])
+    const second = selectionsFromOrderItems([{ id: 31, product_id: 4, quantity: 2 }], first)
+    assert.equal(second[4].quantity, 2)
+  })
+
+  it('restores weight and substitute preference', () => {
+    const next = selectionsFromOrderItems([
+      { id: 41, product_id: 7, quantity: 1, final_weight: 8.5, accept_substitute: true }
+    ])
+    assert.equal(next[7].weight, 8.5)
+    assert.equal(next[7].accept_substitute, true)
+  })
+})
+
+describe('isOrderLinePriceEstimated', () => {
+  const bundled = { pricing_type: 'bundled_weight' }
+
+  it('is estimated when a weight product has no final_weight', () => {
+    assert.equal(
+      isOrderLinePriceEstimated({ product: bundled, total_price: 48.93, quantity: 1 }),
+      true
+    )
+  })
+
+  it('is final when staff entered final_weight', () => {
+    assert.equal(
+      isOrderLinePriceEstimated({ product: bundled, total_price: 62.1, final_weight: 8.5 }),
+      false
+    )
+  })
+
+  it('is not estimated for per-item products', () => {
+    assert.equal(
+      isOrderLinePriceEstimated({ product: { pricing_type: 'per_item' }, total_price: 10 }),
+      false
+    )
   })
 })

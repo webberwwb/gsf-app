@@ -133,6 +133,56 @@ export function getSelectionQuantity(selection = {}) {
   return Math.max(0, parseInt(selection.quantity, 10) || 0)
 }
 
+/**
+ * Rebuild product selections from saved order lines so edit screens
+ * restore quantities (plain products and variant lines).
+ */
+export function selectionsFromOrderItems(items, existing = {}) {
+  const next = { ...existing }
+  const reset = new Set()
+  for (const item of items || []) {
+    if (item == null || item.product_id == null) continue
+    const productId = Number(item.product_id)
+    if (!Number.isFinite(productId)) continue
+
+    const prev = next[productId] || emptyProductSelection()
+    const sel = {
+      ...prev,
+      variant_quantities: { ...(prev.variant_quantities || {}) },
+      item_ids: { ...(prev.item_ids || {}) }
+    }
+
+    if (!reset.has(productId)) {
+      sel.variant_quantities = {}
+      sel.item_ids = {}
+      sel.quantity = 0
+      sel.variant_id = null
+      reset.add(productId)
+    }
+
+    const qty = Math.max(0, parseInt(item.quantity, 10) || 0)
+    if (item.variant_id != null) {
+      const vid = item.variant_id
+      sel.variant_quantities[vid] = (sel.variant_quantities[vid] || 0) + qty
+      if (item.id != null) sel.item_ids[vid] = item.id
+      sel.variant_id = vid
+    } else {
+      sel.quantity = (sel.quantity || 0) + qty
+    }
+
+    sel.quantity = getSelectionQuantity(sel)
+    if (item.accept_substitute !== undefined) {
+      sel.accept_substitute = item.accept_substitute
+    }
+    if (item.id != null) sel.item_id = item.id
+    if (item.final_weight != null && Number(item.final_weight) > 0) {
+      sel.weight = parseFloat(item.final_weight)
+    }
+    next[productId] = sel
+  }
+  return next
+}
+
 function variantQuantitiesTotal(variantQuantities = {}) {
   return Object.values(variantQuantities).reduce((sum, n) => sum + (parseInt(n, 10) || 0), 0)
 }
@@ -401,6 +451,8 @@ export function estimateAdminLinePrice(product, opts = {}) {
   return { unitPrice: roundMoney(unitPrice), totalPrice: roundMoney(totalPrice) }
 }
 
+const WEIGHT_TYPES = ['weight_range', 'unit_weight', 'bundled_weight']
+
 /** Format line total for UI (~ prefix when estimated). */
 export function formatLinePrice(value, { estimated = false } = {}) {
   const prefix = estimated ? '~' : ''
@@ -471,12 +523,9 @@ export function resolveOrderLineTotal(item) {
 }
 
 export function isOrderLinePriceEstimated(item) {
-  const stored = parseFloat(item.total_price)
-  if (Number.isFinite(stored) && stored > 0) return false
   const p = item?.product
-  if (!p) return false
-  if (!['weight_range', 'unit_weight', 'bundled_weight'].includes(p.pricing_type)) return false
-  return !parseWeight(item?.final_weight)
+  if (!p || !WEIGHT_TYPES.includes(p.pricing_type)) return false
+  return parseWeight(item?.final_weight) == null
 }
 
 export function getOrderLineWeightLabel(item) {
@@ -511,8 +560,6 @@ export function toOrderLineDisplay(item) {
     substitute_name: product.substitute?.name
   }
 }
-
-const WEIGHT_TYPES = ['weight_range', 'unit_weight', 'bundled_weight']
 
 /** Sum estimate for user selection; weight types use one line per physical item. */
 export function estimateSelectionTotal(product, quantity, selection = {}) {

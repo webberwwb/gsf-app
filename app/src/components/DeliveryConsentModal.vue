@@ -20,16 +20,17 @@
       </div>
 
       <div class="consent-footer">
-        <label class="consent-check">
+        <label v-if="!viewOnly" class="consent-check">
           <input v-model="agreed" type="checkbox" />
           <span>{{ checkboxLabel }}</span>
         </label>
         <p v-if="error" class="consent-error">{{ error }}</p>
         <div class="consent-actions">
           <button type="button" class="consent-btn consent-btn-cancel" :disabled="saving" @click="onCancel">
-            取消
+            {{ viewOnly ? '关闭' : '取消' }}
           </button>
           <button
+            v-if="!viewOnly"
             type="button"
             class="consent-btn consent-btn-confirm"
             :disabled="!agreed || saving"
@@ -57,7 +58,8 @@ export default {
   props: {
     show: { type: Boolean, default: false },
     saving: { type: Boolean, default: false },
-    error: { type: String, default: '' }
+    error: { type: String, default: '' },
+    viewOnly: { type: Boolean, default: false }
   },
   emits: ['accept', 'cancel'],
   data() {

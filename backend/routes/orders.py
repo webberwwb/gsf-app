@@ -17,6 +17,7 @@ from utils.order_item_pricing import (
     enrich_order_items,
     priced_items_from_request,
     create_order_item_rows,
+    restore_existing_line_weights,
 )
 from utils.query_batch import order_storefront_eager_options
 from utils.order_audit import (
@@ -282,6 +283,7 @@ def create_order():
             payment_method,
             user_row,
             online_payment_enabled=bool(group_deal.online_payment_enabled),
+            delivery_consented=bool(validated_data.get('delivery_consent')),
         )
         if pay_err:
             db.session.rollback()
@@ -570,6 +572,7 @@ def update_order(order_id):
             return error_response, status_code
         
         items = validated_data['items']
+        restore_existing_line_weights(items, order.items)
         delivery_method = validated_data['delivery_method']
         address_id = validated_data.get('address_id')
         pickup_location = validated_data.get('pickup_location')
@@ -640,11 +643,13 @@ def update_order(order_id):
             if not address:
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
         user_row = User.query.get(user_id)
+        already_delivery = order.delivery_method == DeliveryMethod.DELIVERY.value
         pay_err = payment_method_error(
             delivery_method,
             payment_method or order.payment_method,
             user_row,
             online_payment_enabled=bool(group_deal.online_payment_enabled),
+            delivery_consented=bool(validated_data.get('delivery_consent')) or already_delivery,
         )
         if pay_err:
             return jsonify({'error': pay_err}), 400

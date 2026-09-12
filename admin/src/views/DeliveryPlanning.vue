@@ -7,6 +7,17 @@
           {{ deal.title }}（{{ statusLabel(deal.status) }}）
         </option>
       </select>
+      <button
+        type="button"
+        class="print-labels-btn"
+        :disabled="!selectedDealId || printingLabels || !hasLoadedPlan"
+        @click="printLabels"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+        </svg>
+        {{ printingLabels ? '准备打印...' : '打印配送标签' }}
+      </button>
     </div>
 
     <div class="plan-stage">
@@ -89,7 +100,7 @@
           <div v-if="!plan.self.length" class="lane-empty">把要自己送的订单点到这里，再调整顺序</div>
           <article v-for="(order, index) in plan.self" :key="order.id" class="order-card">
             <div class="order-top">
-              <span class="route-seq">{{ index + 1 }}</span>
+              <span class="route-seq">{{ routeSeqLabel(order, index) }}</span>
               <h4 class="customer-name">{{ displayName(order) }}</h4>
               <span class="payment-badge" :class="paymentClass(order)">{{ paymentLabel(order) }}</span>
             </div>
@@ -219,6 +230,8 @@
 <script>
 import apiClient from '../api/client'
 import { formatOrderMoney2 } from '../utils/orderPricing'
+import { routeSeqLabel, sortSelfDeliveryOrders } from '../utils/deliveryRoute'
+import { printSelfDeliveryLabels } from '../utils/printDeliveryLabels'
 import { useModal } from '../composables/useModal'
 import PageLoading from '../components/PageLoading.vue'
 import ImageLightbox from '../components/ImageLightbox.vue'
@@ -244,6 +257,7 @@ export default {
       uploadingId: null,
       deletingId: null,
       activeLane: 'unassigned',
+      printingLabels: false,
       thirdPartyModal: {
         show: false,
         order: null,
@@ -268,6 +282,7 @@ export default {
     this.loadDeals()
   },
   methods: {
+    routeSeqLabel,
     statusLabel(status) {
       const labels = {
         draft: '草稿',
@@ -372,7 +387,7 @@ export default {
         const next = {
           deal: res.data.deal,
           unassigned: res.data.unassigned || [],
-          self: res.data.self || [],
+          self: sortSelfDeliveryOrders(res.data.self || []),
           third_party: res.data.third_party || []
         }
         const photos = { ...this.photoByOrder }
@@ -434,9 +449,17 @@ export default {
       next.splice(target, 0, row)
       this.plan.self = next
       try {
-        await apiClient.put(`/admin/fulfillment/deals/${this.selectedDealId}/route`, {
+        const res = await apiClient.put(`/admin/fulfillment/deals/${this.selectedDealId}/route`, {
           order_ids: next.map((o) => o.id)
         })
+        if (res.data?.self) {
+          this.plan = {
+            deal: res.data.deal || this.plan.deal,
+            unassigned: res.data.unassigned || this.plan.unassigned,
+            self: sortSelfDeliveryOrders(res.data.self),
+            third_party: res.data.third_party || this.plan.third_party
+          }
+        }
       } catch (e) {
         await this.showError(e.response?.data?.error || '保存路线失败')
         await this.loadPlan()
@@ -506,6 +529,19 @@ export default {
       } finally {
         this.savingId = null
       }
+    },
+    async printLabels() {
+      if (!this.plan.deal) return
+      this.printingLabels = true
+      try {
+        const result = printSelfDeliveryLabels({
+          deal: this.plan.deal,
+          orders: this.plan.self
+        })
+        if (!result.ok) await this.showError(result.error)
+      } finally {
+        this.printingLabels = false
+      }
     }
   }
 }
@@ -517,6 +553,10 @@ export default {
   max-width: 100%;
 }
 .page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-spacing-md);
   margin-bottom: var(--md-spacing-md);
 }
 .deal-select {
@@ -527,6 +567,32 @@ export default {
   border-radius: var(--md-radius-md);
   font-size: 16px;
   background: #fff;
+}
+.print-labels-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-spacing-sm);
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: #E1F5FE;
+  color: #0277BD;
+  border: 1px solid rgba(2, 119, 189, 0.2);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--md-elevation-2);
+}
+.print-labels-btn svg {
+  width: 20px;
+  height: 20px;
+}
+.print-labels-btn:hover:not(:disabled) {
+  background: #B3E5FC;
+}
+.print-labels-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .plan-stage {
   position: relative;
@@ -911,6 +977,10 @@ export default {
   }
   .deal-select {
     max-width: none;
+  }
+  .print-labels-btn {
+    width: 100%;
+    min-height: 44px;
   }
   .card-actions {
     display: grid;

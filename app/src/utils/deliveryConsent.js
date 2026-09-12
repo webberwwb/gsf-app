@@ -1,6 +1,6 @@
 export const DELIVERY_CONSENT_VERSION = '2026-09'
 
-export const DELIVERY_CONSENT_TITLE = '配送订单须知'
+export const DELIVERY_CONSENT_TITLE = '配送须知'
 
 export const DELIVERY_CONSENT_INTRO =
   '为了让您的生鲜商品顺利、新鲜地送到家，请在下单前阅读并确认以下配送须知：'
@@ -67,8 +67,4 @@ export const DELIVERY_CONSENT_CLOSING =
   '感谢您的理解与配合。我们希望每一份认真挑选的食材，都能新鲜、顺利地送到您的餐桌。'
 
 export const DELIVERY_CONSENT_CHECKBOX =
-  '我已阅读并同意以上《配送订单须知》。我确认将绑定银行卡，并可选择现金或在线支付；如配送时无人收货或未能成功支付现金，我授权谷语从我绑定的银行卡中扣除订单最终应付金额。'
-
-export function hasDeliveryConsent(user) {
-  return Boolean(user?.has_delivery_consent)
-}
+  '我已阅读并同意以上《配送须知》。我确认将绑定银行卡，并可选择现金或在线支付；如配送时无人收货或未能成功支付现金，我授权谷语从我绑定的银行卡中扣除订单最终应付金额。'

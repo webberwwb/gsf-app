@@ -1,24 +1,37 @@
-import apiClient from '../api/client'
-import { hasDeliveryConsent } from '../utils/deliveryConsent'
-
 export default {
   data() {
     return {
       showConsentModal: false,
       consentSaving: false,
       consentError: '',
-      deliveryGatePending: false
+      consentModalMode: 'agree',
+      deliveryGatePending: false,
+      orderDeliveryConsented: false
     }
   },
   computed: {
     hasDeliveryConsent() {
-      return hasDeliveryConsent(this.currentUser)
+      return this.orderDeliveryConsented
+    },
+    consentViewOnly() {
+      return this.consentModalMode === 'view'
     }
   },
   methods: {
-    async requestDelivery() {
-      if (!this.hasDeliveryConsent) {
+    seedConsentIfExistingDelivery() {
+      if (this.deliveryMethod === 'delivery') {
+        this.orderDeliveryConsented = true
+      }
+    },
+    openDeliveryAgreement() {
+      this.consentError = ''
+      this.consentModalMode = 'view'
+      this.showConsentModal = true
+    },
+    requestDelivery() {
+      if (!this.orderDeliveryConsented) {
         this.consentError = ''
+        this.consentModalMode = 'agree'
         this.showConsentModal = true
         return
       }
@@ -29,30 +42,21 @@ export default {
       }
       this.applyDeliveryAfterGate()
     },
-    async acceptDeliveryConsent() {
-      this.consentSaving = true
+    acceptDeliveryConsent() {
+      this.orderDeliveryConsented = true
+      this.showConsentModal = false
       this.consentError = ''
-      try {
-        const { data } = await apiClient.post('/auth/me/delivery-consent')
-        if (data.user) {
-          this.authStore.setUser(data.user)
-        }
-        this.showConsentModal = false
-        if (!this.hasCardOnFile) {
-          this.deliveryGatePending = true
-          this.startCardSetup()
-          return
-        }
-        this.applyDeliveryAfterGate()
-      } catch (e) {
-        this.consentError = e.response?.data?.error || e.response?.data?.message || '提交失败，请重试'
-      } finally {
-        this.consentSaving = false
+      if (!this.hasCardOnFile) {
+        this.deliveryGatePending = true
+        this.startCardSetup()
+        return
       }
+      this.applyDeliveryAfterGate()
     },
     cancelDeliveryConsent() {
       this.showConsentModal = false
       this.consentError = ''
+      if (this.consentModalMode === 'view') return
       this.stayPickupAfterGate()
     },
     onCardSetupClosed() {
@@ -64,7 +68,7 @@ export default {
     onCardSavedForGate() {
       if (!this.deliveryGatePending) return
       this.deliveryGatePending = false
-      if (this.hasDeliveryConsent && this.hasCardOnFile) {
+      if (this.orderDeliveryConsented && this.hasCardOnFile) {
         this.applyDeliveryAfterGate()
       } else {
         this.stayPickupAfterGate()
@@ -73,7 +77,7 @@ export default {
     enforceDeliveryEligibility() {
       if (this.deliveryGatePending || this.showConsentModal) return
       if (this.deliveryMethod !== 'delivery') return
-      if (this.hasDeliveryConsent && this.hasCardOnFile) return
+      if (this.orderDeliveryConsented && this.hasCardOnFile) return
       this.stayPickupAfterGate()
     }
   }

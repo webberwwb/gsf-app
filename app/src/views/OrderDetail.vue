@@ -206,9 +206,9 @@
                     />
                     <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
                   </div>
-                  <div class="item-total estimated">
-                    <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click.stop="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                  <div class="item-total" :class="{ estimated: isProductPriceEstimated(product) }">
+                    <span>{{ isProductPriceEstimated(product) ? '预估小计' : '小计' }}: ${{ calculateItemTotal(product) }}</span>
+                    <div v-if="isProductPriceEstimated(product)" class="tooltip-container" @click.stop="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -231,9 +231,9 @@
                     />
                     <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
                   </div>
-                  <div class="item-total estimated">
-                    <span>预估小计: ${{ calculateItemTotal(product) }}</span>
-                    <div class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                  <div class="item-total" :class="{ estimated: isProductPriceEstimated(product) }">
+                    <span>{{ isProductPriceEstimated(product) ? '预估小计' : '小计' }}: ${{ calculateItemTotal(product) }}</span>
+                    <div v-if="isProductPriceEstimated(product)" class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -260,25 +260,9 @@
                   <div class="package-info-wrapper">
                     <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
                   </div>
-                  <!-- Weight Input for bundled_weight products -->
-                  <div v-if="getQuantity(product) > 0 && canEditProducts" class="weight-control">
-                    <label>总重量 ({{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}):</label>
-                    <input
-                      type="number"
-                      :value="getWeight(product)"
-                      @input="setWeight(product, $event.target.value)"
-                      :min="product.pricing_data?.min_weight || 7"
-                      :max="(product.pricing_data?.max_weight || 15) * getQuantity(product)"
-                      :step="0.001"
-                      :disabled="!canEditProducts || isOrderCompleted"
-                      class="weight-input"
-                      placeholder="输入实际重量"
-                    />
-                  </div>
-                  <div class="item-total" :class="{ estimated: !hasWeight(product) }">
-                    <span v-if="hasWeight(product)">小计: {{ calculateBundledItemTotal(product) }}</span>
-                    <span v-else>预估小计: {{ calculateBundledItemTotal(product) }}</span>
-                    <div v-if="!hasWeight(product)" class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
+                  <div class="item-total" :class="{ estimated: isProductPriceEstimated(product) }">
+                    <span>{{ isProductPriceEstimated(product) ? '预估小计' : '小计' }}: {{ calculateBundledItemTotal(product) }}</span>
+                    <div v-if="isProductPriceEstimated(product)" class="tooltip-container" @click="showPriceInfo('价格基于最低重量估算，实际价格可能因实际重量而有所不同，取货时确认最终价格')">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="info-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -337,10 +321,14 @@
             </div>
           </button>
 
-          <button 
-            @click="setDeliveryMethod('delivery')"
-            :class="['delivery-option', { active: deliveryMethod === 'delivery' }]"
-            :disabled="!canEditPaymentDelivery"
+          <div
+            role="button"
+            :tabindex="canEditPaymentDelivery ? 0 : -1"
+            :aria-disabled="!canEditPaymentDelivery"
+            :class="['delivery-option', { active: deliveryMethod === 'delivery', disabled: !canEditPaymentDelivery }]"
+            @click="canEditPaymentDelivery && setDeliveryMethod('delivery')"
+            @keydown.enter.prevent="canEditPaymentDelivery && setDeliveryMethod('delivery')"
+            @keydown.space.prevent="canEditPaymentDelivery && setDeliveryMethod('delivery')"
           >
             <div class="option-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -349,13 +337,14 @@
             </div>
             <div class="option-content">
               <h4>配送</h4>
+              <DeliveryAgreementLink @open="openDeliveryAgreement" />
             </div>
             <div class="option-check">
               <svg v-if="deliveryMethod === 'delivery'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-          </button>
+          </div>
         </div>
 
         <!-- Pickup Location Selection -->
@@ -874,6 +863,7 @@
       :show="showConsentModal"
       :saving="consentSaving"
       :error="consentError"
+      :view-only="consentViewOnly"
       @accept="acceptDeliveryConsent"
       @cancel="cancelDeliveryConsent"
     />
@@ -908,6 +898,7 @@ import ProductDetailsSection from '../components/ProductDetailsSection.vue'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import CardSetupModal from '../components/CardSetupModal.vue'
 import DeliveryConsentModal from '../components/DeliveryConsentModal.vue'
+import DeliveryAgreementLink from '../components/DeliveryAgreementLink.vue'
 import deliveryConsentGate from '../mixins/deliveryConsentGate'
 import {
   estimateSelectionTotal,
@@ -919,7 +910,9 @@ import {
   getVariantQuantity,
   setVariantQuantity as applyVariantQuantity,
   emptyProductSelection,
-  productRequiresSubstituteChoice
+  productRequiresSubstituteChoice,
+  selectionsFromOrderItems,
+  isOrderLinePriceEstimated
 } from '../utils/orderItemPricing'
 import {
   formatMoney,
@@ -941,7 +934,8 @@ export default {
     ProductDetailsSection,
     OrderLineDisplay,
     CardSetupModal,
-    DeliveryConsentModal
+    DeliveryConsentModal,
+    DeliveryAgreementLink
   },
   mixins: [deliveryConsentGate],
   data() {
@@ -1261,6 +1255,7 @@ export default {
         // Load order settings
         this.paymentMethod = this.order.payment_method || 'cash'
         this.deliveryMethod = this.order.delivery_method || 'pickup'
+        this.seedConsentIfExistingDelivery()
         if (this.deliveryMethod === 'pickup' && this.paymentMethod === 'card') {
           this.paymentMethod = 'cash'
         }
@@ -1472,33 +1467,7 @@ export default {
       return getSelectionQuantity(this.getSelection(product))
     },
     applyOrderItemsToSelection(items) {
-      const reset = new Set()
-      for (const item of items || []) {
-        if (!this.selectedItems[item.product_id]) {
-          this.selectedItems[item.product_id] = emptyProductSelection()
-        }
-        const sel = this.selectedItems[item.product_id]
-        if (!sel.variant_quantities) sel.variant_quantities = {}
-        if (!sel.item_ids) sel.item_ids = {}
-        if (!reset.has(item.product_id)) {
-          sel.variant_quantities = {}
-          sel.item_ids = {}
-          sel.quantity = 0
-          reset.add(item.product_id)
-        }
-        const qty = item.quantity || 0
-        if (item.variant_id != null) {
-          sel.variant_quantities[item.variant_id] = (sel.variant_quantities[item.variant_id] || 0) + qty
-          sel.item_ids[item.variant_id] = item.id
-        }
-        sel.quantity = getSelectionQuantity(sel)
-        if (item.variant_id) sel.variant_id = item.variant_id
-        sel.accept_substitute = item.accept_substitute
-        sel.item_id = item.id
-        if (item.final_weight != null && item.final_weight > 0) {
-          sel.weight = parseFloat(item.final_weight)
-        }
-      }
+      this.selectedItems = selectionsFromOrderItems(items, this.selectedItems)
     },
     setQuantity(product, value) {
       const qty = parseInt(value) || 0
@@ -1518,29 +1487,20 @@ export default {
         this.selectedItems[product.id] = { quantity: 0 }
       }
       this.selectedItems[product.id].quantity = finalQty
-      
-      // Clear weight if quantity becomes 0
-      if (finalQty === 0) {
+      if (finalQty !== currentQty) {
         delete this.selectedItems[product.id].weight
       }
     },
-    getWeight(product) {
-      return this.selectedItems[product.id]?.weight || null
-    },
-    setWeight(product, value) {
-      if (!this.selectedItems[product.id]) {
-        this.selectedItems[product.id] = { quantity: 0 }
+    staffWeight(product) {
+      const item = this.getOrderItemForProduct(product)
+      if (item && this.getQuantity(product) === (item.quantity || 0) && !isOrderLinePriceEstimated(item)) {
+        return parseFloat(item.final_weight)
       }
-      
-      const weight = parseFloat(value) || null
-      if (weight !== null && weight > 0) {
-        this.selectedItems[product.id].weight = weight
-      } else {
-        delete this.selectedItems[product.id].weight
-      }
+      return null
     },
-    hasWeight(product) {
-      return this.selectedItems[product.id]?.weight != null && this.selectedItems[product.id].weight > 0
+    isProductPriceEstimated(product) {
+      if (!['weight_range', 'unit_weight', 'bundled_weight'].includes(product.pricing_type)) return false
+      return this.staffWeight(product) == null
     },
     increaseQuantity(product) {
       // Only check out-of-stock for increasing quantity
@@ -1582,7 +1542,7 @@ export default {
           if (qty <= 0) continue
           total += estimateSelectionTotal(product, qty, {
             variant_id: v.id,
-            final_weight: this.getWeight(product),
+            final_weight: this.staffWeight(product),
             product_qty: pooled
           })
         }
@@ -1592,7 +1552,7 @@ export default {
       if (pooled === 0) return '0.00'
       return formatMoney(estimateSelectionTotal(product, pooled, {
         variant_id: sel.variant_id,
-        final_weight: this.getWeight(product),
+        final_weight: this.staffWeight(product),
         product_qty: pooled
       }))
     },
@@ -1602,6 +1562,7 @@ export default {
       if (pooled === 0) return '$0.00'
       const total = estimateSelectionTotal(product, pooled, {
         variant_id: sel.variant_id,
+        final_weight: this.staffWeight(product),
         product_qty: pooled
       })
       return formatMoneyDisplay(total)
@@ -1638,8 +1599,8 @@ export default {
       const proposed = applyVariantQuantity(sel, variantId, nextQty)
       const maxQty = product.deal_stock_limit || 999
       if (getSelectionQuantity(proposed) > maxQty) return
-      const weight = sel.weight
       const itemIds = sel.item_ids
+      const weight = getSelectionQuantity(proposed) === getSelectionQuantity(sel) ? sel.weight : undefined
       this.selectedItems[product.id] = { ...sel, ...proposed, item_ids: itemIds, weight }
     },
     quantityBreakHint(product) {
@@ -1679,9 +1640,6 @@ export default {
               variant_id: variantId || undefined,
               accept_substitute: selection.accept_substitute
             }
-            if (product.pricing_type === 'bundled_weight' && selection.weight != null) {
-              itemData.final_weight = parseFloat(selection.weight)
-            }
             orderItems.push(itemData)
           }
           if (variants.length) {
@@ -1710,23 +1668,6 @@ export default {
               variant_id: item.variant_id || undefined,
               accept_substitute: item.accept_substitute
             }
-            // For bundled_weight products, check if user has entered a new weight in selectedItems
-            // If so, use that instead of the existing weight
-            if (item.product?.pricing_type === 'bundled_weight') {
-              const selection = this.selectedItems[item.product_id]
-              if (selection && selection.weight != null && selection.weight > 0) {
-                // User has entered a new weight, use it
-                itemData.final_weight = parseFloat(selection.weight)
-              } else if (item.final_weight != null && item.final_weight > 0) {
-                // No new weight entered, use existing weight
-                itemData.final_weight = parseFloat(item.final_weight)
-              }
-            } else {
-              // For other pricing types, include existing weight if available
-              if (item.final_weight != null && item.final_weight > 0) {
-                itemData.final_weight = parseFloat(item.final_weight)
-              }
-            }
             return itemData
           })
         } else {
@@ -1743,7 +1684,7 @@ export default {
       
       if (this.deliveryMethod === 'delivery' && !this.hasDeliveryConsent) {
         this.requestDelivery()
-        await this.warning('请先阅读并同意《配送订单须知》')
+        await this.warning('请先阅读并同意《配送须知》')
         return
       }
       if (this.deliveryMethod === 'delivery' && !this.hasCardOnFile) {
@@ -1762,6 +1703,9 @@ export default {
           address_id: this.deliveryMethod === 'delivery' ? this.selectedAddressId : null,
           pickup_location: this.deliveryMethod === 'pickup' ? this.selectedPickupLocation : null,
           notes: this.notes.trim() || null
+        }
+        if (this.deliveryMethod === 'delivery') {
+          orderData.delivery_consent = true
         }
         const rawRef = (this.referralCodeInput || '').trim()
         if (this.showReferralInviteRow && !this.currentUser?.referred_by_user_id && rawRef) {
@@ -1906,7 +1850,7 @@ export default {
       try {
         const { data } = await apiClient.get('/payments/card')
         this.cardOnFile = data
-        if (!hasSavedCard(data) && this.currentUser?.has_delivery_consent) {
+        if (!hasSavedCard(data) && this.currentUser?.has_card_on_file) {
           await this.authStore.checkAuth()
         }
       } catch (e) {
@@ -2763,35 +2707,6 @@ export default {
   padding: 0 var(--md-spacing-xs);
 }
 
-.weight-control {
-  display: flex;
-  align-items: center;
-  gap: var(--md-spacing-sm);
-  margin-top: var(--md-spacing-xs);
-}
-
-.weight-control label {
-  font-size: var(--md-label-size);
-  color: var(--md-on-surface-variant);
-  min-width: 120px;
-}
-
-.weight-input {
-  flex: 1;
-  max-width: 150px;
-  height: 32px;
-  border: 1px solid var(--md-outline);
-  border-radius: var(--md-radius-sm);
-  text-align: center;
-  font-size: var(--md-body-size);
-  padding: 0 var(--md-spacing-xs);
-}
-
-.weight-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .package-info-wrapper {
   width: 100%;
   margin-top: var(--md-spacing-xs);
@@ -2859,7 +2774,8 @@ export default {
   text-align: left;
 }
 
-.delivery-option:disabled {
+.delivery-option:disabled,
+.delivery-option.disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

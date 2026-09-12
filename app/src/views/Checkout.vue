@@ -311,9 +311,13 @@
             </div>
           </button>
 
-          <button 
-            @click="setDeliveryMethod('delivery')" 
+          <div
+            role="button"
+            tabindex="0"
             :class="['delivery-option', { active: deliveryMethod === 'delivery' }]"
+            @click="setDeliveryMethod('delivery')"
+            @keydown.enter.prevent="setDeliveryMethod('delivery')"
+            @keydown.space.prevent="setDeliveryMethod('delivery')"
           >
             <div class="option-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -323,13 +327,14 @@
             <div class="option-content">
               <h4>配送</h4>
               <p>配送到指定地址（限GTA）</p>
+              <DeliveryAgreementLink @open="openDeliveryAgreement" />
             </div>
             <div class="option-check">
               <svg v-if="deliveryMethod === 'delivery'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-          </button>
+          </div>
         </div>
 
         <!-- Pickup Location Selection -->
@@ -631,6 +636,7 @@
       :show="showConsentModal"
       :saving="consentSaving"
       :error="consentError"
+      :view-only="consentViewOnly"
       @accept="acceptDeliveryConsent"
       @cancel="cancelDeliveryConsent"
     />
@@ -642,6 +648,7 @@ import apiClient from '../api/client'
 import AddressForm from '../components/AddressForm.vue'
 import CardSetupModal from '../components/CardSetupModal.vue'
 import DeliveryConsentModal from '../components/DeliveryConsentModal.vue'
+import DeliveryAgreementLink from '../components/DeliveryAgreementLink.vue'
 import deliveryConsentGate from '../mixins/deliveryConsentGate'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import { useCheckoutStore } from '../stores/checkout'
@@ -663,6 +670,7 @@ export default {
     AddressForm,
     CardSetupModal,
     DeliveryConsentModal,
+    DeliveryAgreementLink,
     OrderLineDisplay
   },
   mixins: [deliveryConsentGate],
@@ -1011,7 +1019,7 @@ export default {
       try {
         const { data } = await apiClient.get('/payments/card')
         this.cardOnFile = data
-        if (!hasSavedCard(data) && this.currentUser?.has_delivery_consent) {
+        if (!hasSavedCard(data) && this.currentUser?.has_card_on_file) {
           await this.authStore.checkAuth()
         }
       } catch (e) {
@@ -1261,6 +1269,9 @@ export default {
           this.referralCodeInput = ''
         }
         this.applyStoreCredit = this.maxStoreCreditApplicable > 0
+        if (this.existingOrderId && this.deliveryMethod === 'delivery') {
+          this.seedConsentIfExistingDelivery()
+        }
         if (this.deliveryMethod === 'delivery') {
           await this.loadAddresses()
         }
@@ -1382,6 +1393,9 @@ export default {
 
       try {
         const orderData = { ...this.checkoutStore.getOrderData() }
+        if (orderData.delivery_method === 'delivery') {
+          orderData.delivery_consent = true
+        }
         if (!this.isOrderCompleted) {
           const rawRef = (this.referralCodeInput || this.$route.query.ref || '').trim()
           if (this.showReferralInviteRow && !this.currentUser?.referred_by_user_id && rawRef) {

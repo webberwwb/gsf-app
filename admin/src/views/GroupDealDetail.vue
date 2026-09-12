@@ -24,24 +24,30 @@
         <div class="nav-spacer" aria-hidden="true"></div>
       </div>
 
-      <div v-if="!isFulfillmentOnly" class="header-actions">
-        <button @click="viewCommission" class="commission-btn" :disabled="loading || !groupDeal">
+      <div class="header-actions">
+        <button v-if="!isFulfillmentOnly" @click="viewCommission" class="commission-btn" :disabled="loading || !groupDeal">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           查看分红
         </button>
-        <button @click="bulkMarkDelivering" class="bulk-delivery-btn" :disabled="loading || !groupDeal || loadingBulkUpdate">
+        <button v-if="!isFulfillmentOnly" @click="bulkMarkDelivering" class="bulk-delivery-btn" :disabled="loading || !groupDeal || loadingBulkUpdate">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
           </svg>
           {{ loadingBulkUpdate ? '更新中...' : '批量标记配送中' }}
         </button>
-        <button @click="exportOrders" class="export-btn" :disabled="loading || !groupDeal">
+        <button v-if="!isFulfillmentOnly" @click="exportOrders" class="export-btn" :disabled="loading || !groupDeal">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           导出订单
+        </button>
+        <button @click="printDeliveryLabels" class="print-labels-btn" :disabled="loading || !groupDeal || printingLabels">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          {{ printingLabels ? '准备打印...' : '打印配送标签' }}
         </button>
       </div>
     </div>
@@ -614,6 +620,8 @@ import { calculateOrderPoints } from '../utils/orderPoints'
 import { resolveOrderLineTotal } from '../utils/orderItemPricing'
 import { loadGroupDealOrderPrefs, saveGroupDealOrderPrefs } from '../utils/groupDealOrderPrefs'
 import { isFulfillmentOnly } from '../utils/auth'
+import { sortSelfDeliveryOrders } from '../utils/deliveryRoute'
+import { printSelfDeliveryLabels } from '../utils/printDeliveryLabels'
 
 const PACKING_COMPLETE_STATUSES = ['packing_complete', 'ready_for_pickup', 'out_for_delivery', 'delivering', 'completed']
 
@@ -703,6 +711,7 @@ export default {
       ordersToMerge: [],
       // Bulk update
       loadingBulkUpdate: false,
+      printingLabels: false,
       // Commission
       showCommissionModal: false,
       // View mode
@@ -1400,6 +1409,22 @@ export default {
     },
     closeCommissionModal() {
       this.showCommissionModal = false
+    },
+    async printDeliveryLabels() {
+      if (!this.groupDeal) return
+      this.printingLabels = true
+      try {
+        const res = await apiClient.get(`/admin/fulfillment/deals/${this.groupDeal.id}/delivery-plan`)
+        const result = printSelfDeliveryLabels({
+          deal: res.data.deal || this.groupDeal,
+          orders: sortSelfDeliveryOrders(res.data.self || [])
+        })
+        if (!result.ok) await this.showError(result.error)
+      } catch (e) {
+        await this.showError(e.response?.data?.error || '加载配送计划失败')
+      } finally {
+        this.printingLabels = false
+      }
     },
     exportOrders() {
       try {
@@ -2284,6 +2309,35 @@ export default {
 }
 
 .export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.print-labels-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  background: #E1F5FE;
+  color: #0277BD;
+  border: 1px solid rgba(2, 119, 189, 0.2);
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--md-elevation-2);
+}
+
+.print-labels-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.print-labels-btn:hover:not(:disabled) {
+  background: #B3E5FC;
+}
+
+.print-labels-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -3682,7 +3736,8 @@ export default {
   
   .commission-btn,
   .bulk-delivery-btn,
-  .export-btn {
+  .export-btn,
+  .print-labels-btn {
     width: 100%;
     justify-content: center;
     font-size: 0.875rem;
@@ -3691,7 +3746,8 @@ export default {
   
   .commission-btn svg,
   .bulk-delivery-btn svg,
-  .export-btn svg {
+  .export-btn svg,
+  .print-labels-btn svg {
     width: 18px;
     height: 18px;
   }
@@ -3961,7 +4017,8 @@ export default {
   
   .commission-btn,
   .bulk-delivery-btn,
-  .export-btn {
+  .export-btn,
+  .print-labels-btn {
     font-size: 0.8125rem;
     padding: var(--md-spacing-xs) var(--md-spacing-sm);
   }

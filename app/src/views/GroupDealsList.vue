@@ -53,7 +53,7 @@
           </div>
         </div>
         <div class="deal-card-action">
-          <span>{{ deal.status === 'active' ? '立即下单' : '查看详情' }}</span>
+          <span>{{ dealActionLabel(deal.status) }}</span>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
           </svg>
@@ -118,6 +118,11 @@ export default {
     },
     getStatusLabel(status) {
       return getGroupDealStatusLabel(status)
+    },
+    dealActionLabel(status) {
+      if (status === 'active') return '立即下单'
+      if (status === 'upcoming') return '开团后下单'
+      return '查看详情'
     }
   }
 }
