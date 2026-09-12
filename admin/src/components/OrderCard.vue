@@ -140,7 +140,10 @@
                     <div class="tooltip-divider"></div>
                     <div v-if="item.product.pricing_type === 'per_item'" class="tooltip-row">
                       <span class="tooltip-label">价格:</span>
-                      <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price) }}</span>
+                      <span class="tooltip-value">
+                        <span v-if="isProductOnSale(item.product)" class="product-price-original">{{ formatProductCompareAt(item.product) }}</span>
+                        ${{ formatProductListPrice(item.product) }}
+                      </span>
                     </div>
                     <div v-else-if="item.product.pricing_type === 'weight_range'" class="tooltip-section">
                       <div class="tooltip-label">价格区间:</div>
@@ -278,6 +281,11 @@ import {
 import OrderLineDisplay from './OrderLineDisplay.vue'
 import AddressDetails from './AddressDetails.vue'
 import { toOrderLineDisplay } from '../utils/orderItemPricing'
+import {
+  formatProductCompareAt,
+  formatProductListPrice,
+  isProductOnSale
+} from '../utils/productPriceDisplay'
 
 export default {
   name: 'OrderCard',
@@ -323,6 +331,9 @@ export default {
     formatStatMoney(value) {
       return formatOrderMoney2(value)
     },
+    formatProductListPrice,
+    formatProductCompareAt,
+    isProductOnSale,
     toOrderLineDisplay,
     toggleOrderItems() {
       this.showOrderItems = !this.showOrderItems
@@ -339,6 +350,7 @@ export default {
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
         'delivering': '正在配送',
+        'delivered': '已送达',
         'completed': '订单完成',
         'cancelled': '已取消'
       }
@@ -623,9 +635,15 @@ export default {
   color: #2E7D32;
 }
 
-.status-delivering {
+.status-delivering,
+.status-out_for_delivery {
   background: #E1F5FE;
   color: #0277BD;
+}
+
+.status-delivered {
+  background: #E3F2FD;
+  color: #1565C0;
 }
 
 .status-completed {
@@ -1276,6 +1294,13 @@ export default {
   color: var(--md-on-surface);
   font-weight: 600;
   text-align: right;
+}
+
+.product-price-original {
+  margin-right: 6px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.45);
+  text-decoration: line-through;
 }
 
 .tooltip-divider {

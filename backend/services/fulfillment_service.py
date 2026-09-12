@@ -36,7 +36,11 @@ FULFILLMENT_STATUS_TRANSITIONS = {
         OrderStatus.OUT_FOR_DELIVERY.value,
         OrderStatus.READY_FOR_PICKUP.value,
     },
-    OrderStatus.OUT_FOR_DELIVERY.value: {OrderStatus.COMPLETED.value},
+    OrderStatus.OUT_FOR_DELIVERY.value: {
+        OrderStatus.DELIVERED.value,
+        OrderStatus.COMPLETED.value,
+    },
+    OrderStatus.DELIVERED.value: {OrderStatus.COMPLETED.value},
 }
 
 SEED_FULFILLMENT_EMAILS = (
@@ -421,7 +425,7 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
         Order.delivery_method == DeliveryMethod.DELIVERY.value,
         Order.delivery_handler == DeliveryHandler.SELF.value,
         Order.delivery_assignee_id == user_id,
-        Order.status == OrderStatus.COMPLETED.value,
+        Order.status.in_((OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value)),
     )
 
     if date_from:
@@ -680,6 +684,7 @@ def _delivery_order_payload(order, viewer, deal):
             'name': name,
             'quantity': item.quantity,
             'variant_name': item.variant_name,
+            'cutting': bool(getattr(item, 'cutting', False)),
         })
     payload = {
         'id': order.id,

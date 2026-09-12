@@ -4,7 +4,7 @@
  */
 
 import { roundMoney } from './money.js'
-import { resolveOrderLineTotal } from './orderItemPricing.js'
+import { lineProductAmount } from './orderItemPricing.js'
 
 export function calculateShippingFee(subtotal, config) {
   if (!config || !config.tiers || config.tiers.length === 0) {
@@ -31,9 +31,10 @@ export function adjustmentDiscount(adjustment) {
   return adj < 0 ? adj : 0
 }
 
-export function shippingTierBaseFromParts(subtotal, credit = 0, adjustment = 0) {
+export function shippingTierBaseFromParts(subtotal, credit = 0, adjustment = 0, cuttingFees = 0) {
   const disc = adjustmentDiscount(adjustment)
-  return roundMoney(Math.max(0, subtotal - credit + disc))
+  const cut = Number(cuttingFees) || 0
+  return roundMoney(Math.max(0, subtotal - cut - credit + disc))
 }
 
 function itemCountsTowardFreeShipping(item) {
@@ -42,21 +43,21 @@ function itemCountsTowardFreeShipping(item) {
   return product.counts_toward_free_shipping !== false
 }
 
-function grossSubtotalFromItems(items = []) {
-  return roundMoney(items.reduce((sum, item) => sum + resolveOrderLineTotal(item), 0))
+function productSubtotalFromItems(items = []) {
+  return roundMoney(items.reduce((sum, item) => sum + lineProductAmount(item), 0))
 }
 
 /**
  * Allocate shipping_tier_base proportionally across lines that count toward free shipping.
  */
 export function eligibleTierSubtotalFromItems(items = [], tierBase = null) {
-  const gross = grossSubtotalFromItems(items)
+  const gross = productSubtotalFromItems(items)
   if (gross <= 0) return 0
   const base = tierBase != null ? Number(tierBase) : gross
   return roundMoney(
     items.reduce((sum, item) => {
       if (!itemCountsTowardFreeShipping(item)) return sum
-      const line = resolveOrderLineTotal(item)
+      const line = lineProductAmount(item)
       return sum + (line / gross) * base
     }, 0)
   )
@@ -76,8 +77,8 @@ export function previewShippingFeeForOrder({
   adjustment = 0
 } = {}) {
   if (deliveryMethod !== 'delivery') return 0
-  const gross = grossSubtotalFromItems(items)
-  const tierBase = shippingTierBaseFromParts(gross, storeCredit, adjustment)
+  const productGross = productSubtotalFromItems(items)
+  const tierBase = shippingTierBaseFromParts(productGross, storeCredit, adjustment)
   const tierSubtotal = eligibleTierSubtotalFromItems(items, tierBase)
   return calculateShippingFee(tierSubtotal, shippingConfig)
 }

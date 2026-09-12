@@ -59,7 +59,7 @@ class Order(BaseModel):
     pickup_date = db.Column(db.DateTime, nullable=True)
     
     # Order status (see constants.status_enums.OrderStatus for valid values and workflow)
-    # Workflow: submitted → confirmed → preparing → ready_for_pickup/out_for_delivery → completed
+    # Workflow: submitted → confirmed → preparing → ready_for_pickup/out_for_delivery → delivered → completed
     status = db.Column(db.String(50), default=OrderStatus.SUBMITTED.value, nullable=False)
     
     # Delivery assignment (fulfillment / 配货员)
@@ -179,15 +179,15 @@ class Order(BaseModel):
             'merged_at': self.merged_at.isoformat() if self.merged_at else None,
         })
         
-        # Add is_editable flag based on status
         if include_editable:
-            # User can only edit/cancel when status is 'submitted'
-            data['is_editable'] = self.status == 'submitted'
-            # Check if order is past group deal end date for auto-confirm
-            if hasattr(self, 'group_deal') and self.group_deal:
-                from datetime import datetime
-                now = datetime.utcnow()
-                if self.status == 'submitted' and self.group_deal.order_end_date and now > self.group_deal.order_end_date:
+            from constants.status_enums import OrderStatus
+            group_deal = getattr(self, 'group_deal', None)
+            data['can_edit_settings'] = OrderStatus.can_user_edit_settings(self.status)
+            data['can_edit_products'] = OrderStatus.can_user_edit_products(self.status, group_deal)
+            data['is_editable'] = data['can_edit_settings']
+            if group_deal and self.status == 'submitted' and group_deal.order_end_date:
+                from models.base import utc_now
+                if utc_now() > group_deal.order_end_date:
                     data['should_be_confirmed'] = True
         
         return data
@@ -210,6 +210,10 @@ class OrderItem(BaseModel):
     variant_id = db.Column(db.Integer, db.ForeignKey('product_variants.id'), nullable=True, index=True)
     variant_name = db.Column(db.String(255), nullable=True)
     variant_price_delta = db.Column(Numeric(10, 2), nullable=True)
+
+    # 切分 service (snapshot at order time)
+    cutting = db.Column(db.Boolean, default=False, nullable=False)
+    cutting_fee = db.Column(Numeric(10, 2), nullable=True)
 
     # Substitute preference and fulfillment
     accept_substitute = db.Column(db.Boolean, nullable=True)
@@ -256,6 +260,8 @@ class OrderItem(BaseModel):
             'variant_id': self.variant_id,
             'variant_name': self.variant_name,
             'variant_price_delta': float(self.variant_price_delta) if self.variant_price_delta is not None else None,
+            'cutting': bool(self.cutting),
+            'cutting_fee': float(self.cutting_fee) if self.cutting_fee is not None else None,
             'accept_substitute': self.accept_substitute,
             'is_unavailable': self.is_unavailable,
             'cannot_fulfill': self.cannot_fulfill,

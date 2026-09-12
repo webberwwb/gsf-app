@@ -51,8 +51,14 @@ def serialize_loaded_deal_products(
     buyer=None,
     include_all_variants=False,
     active_products_only=False,
+    expose_stock_cap=False,
 ):
-    """Serialize already-loaded deal products. Buyer influencer rates are batched."""
+    """Serialize already-loaded deal products. Buyer influencer rates are batched.
+
+    Storefront keeps `deal_stock_limit` as remaining so qty pickers stay correct.
+    Admin (`expose_stock_cap=True`) keeps the cap on `deal_stock_limit` and adds
+    `deal_stock_remaining`.
+    """
     rows = []
     for dp in deal_products:
         product = dp.product
@@ -73,6 +79,15 @@ def serialize_loaded_deal_products(
     else:
         apply_influencer_discount_to_product_payload = None
 
+    reserved = {}
+    if rows:
+        from utils.stock_management import remaining_stock, reserved_qty_by_product
+        reserved = reserved_qty_by_product(
+            rows[0].group_deal_id, [dp.product_id for dp in rows]
+        )
+    else:
+        from utils.stock_management import remaining_stock
+
     products_data = []
     for dp in rows:
         data = deal_product_to_dict(
@@ -83,5 +98,9 @@ def serialize_loaded_deal_products(
                 data, buyer.id, resolved=rate_by_product.get(dp.product_id)
             )
         if data:
+            cap = data.get('deal_stock_limit')
+            data['deal_stock_remaining'] = remaining_stock(cap, reserved.get(dp.product_id, 0))
+            if not expose_stock_cap:
+                data['deal_stock_limit'] = data['deal_stock_remaining']
             products_data.append(data)
     return products_data

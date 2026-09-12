@@ -297,6 +297,7 @@ export default {
 
 .modal-footer {
   padding: 16px 24px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
   background: #f9fafb;
   display: flex;
   justify-content: flex-end;
@@ -311,6 +312,7 @@ export default {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  min-height: 44px;
 }
 
 .modal-btn-cancel {
@@ -387,29 +389,49 @@ export default {
   opacity: 0;
 }
 
-/* Laptop Responsive Styles */
-@media (max-width: 1366px) {
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
   .modal-container {
-    max-width: 90%;
-    padding: var(--md-spacing-lg);
+    max-width: 100%;
+    border-radius: 16px;
   }
-  
-  .modal-header h2 {
-    font-size: 1.125rem;
+
+  .modal-header {
+    padding: 10px 12px;
   }
-  
+
+  .modal-title {
+    font-size: 16px;
+  }
+
+  .modal-close {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+
   .modal-body {
-    padding: var(--md-spacing-md) 0;
-    font-size: 0.875rem;
+    padding: 16px;
   }
-  
-  .modal-actions {
-    gap: var(--md-spacing-sm);
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    justify-content: stretch;
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    gap: 8px;
   }
-  
+
   .modal-btn {
-    padding: 8px 20px;
-    font-size: 0.875rem;
+    width: 100%;
+    min-height: 48px;
+    font-size: 16px;
+    border-radius: 12px;
   }
 }
 

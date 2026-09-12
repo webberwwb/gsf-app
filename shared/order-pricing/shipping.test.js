@@ -35,6 +35,19 @@ describe('eligible tier subtotal', () => {
     ]
     assert.equal(eligibleTierSubtotalFromItems(items, 80), 48)
   })
+
+  it('excludes cutting fees from the product amount used for allocation', () => {
+    const items = [
+      {
+        product: { counts_toward_free_shipping: true },
+        total_price: 52,
+        quantity: 1,
+        cutting: true,
+        cutting_fee: 2
+      }
+    ]
+    assert.equal(eligibleTierSubtotalFromItems(items, 50), 50)
+  })
 })
 
 describe('previewShippingFeeForOrder', () => {

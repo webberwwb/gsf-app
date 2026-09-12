@@ -4,7 +4,7 @@
  */
 
 import { roundMoney, formatMoney } from './money.js'
-import { resolveOrderLineTotal } from './orderItemPricing.js'
+import { cuttingFeesTotal, resolveOrderLineTotal } from './orderItemPricing.js'
 import { previewShippingFeeForOrder, shippingTierBaseFromParts } from './shipping.js'
 
 export { roundMoney, formatMoney, formatMoneyDisplay } from './money.js'
@@ -41,11 +41,12 @@ export function orderStoreCreditAppliedNumber(order) {
 
 export function orderShippingTierBaseNumber(order, { creditOverride, adjustmentOverride } = {}) {
   const subtotal = orderSubtotalNumber(order)
+  const cutting = cuttingFeesTotal(order?.items || [])
   const credit =
     creditOverride != null ? roundMoney(creditOverride) : orderStoreCreditAppliedNumber(order)
   const adjustment =
     adjustmentOverride != null ? roundMoney(adjustmentOverride) : orderAdjustmentNumber(order)
-  return shippingTierBaseFromParts(subtotal, credit, adjustment)
+  return shippingTierBaseFromParts(subtotal, credit, adjustment, cutting)
 }
 
 export function orderTotalNumber(order, { deriveFromItems = false } = {}) {

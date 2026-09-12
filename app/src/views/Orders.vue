@@ -233,7 +233,6 @@
               </div>
               <div class="order-actions" @click.stop>
                 <span v-if="order.status === 'completed'" class="completed-badge">订单已完成</span>
-                <span v-else-if="!order.is_editable" class="deadline-badge">已截单</span>
                 <template v-else-if="order.is_editable && order.status !== 'cancelled'">
                   <button @click.stop="viewOrderDetail(order)" class="edit-order-btn">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -241,13 +240,18 @@
                     </svg>
                     修改订单
                   </button>
-                  <button @click.stop="confirmCancelOrder(order)" class="cancel-order-btn-small">
+                  <button
+                    v-if="order.status === 'submitted'"
+                    @click.stop="confirmCancelOrder(order)"
+                    class="cancel-order-btn-small"
+                  >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                     取消订单
                   </button>
                 </template>
+                <span v-else-if="order.status !== 'cancelled'" class="deadline-badge">已截单</span>
               </div>
             </div>
           </div>
@@ -484,6 +488,7 @@ export default {
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
         'delivering': '正在配送', // Legacy fallback
+        'delivered': '已送达',
         'completed': '订单完成',
         'cancelled': '已取消',
         // Legacy/fallback
@@ -500,6 +505,7 @@ export default {
         'ready_for_pickup': 'processing',
         'out_for_delivery': 'processing',
         'delivering': 'processing', // Legacy fallback
+        'delivered': 'processing',
         'completed': 'completed',
         'cancelled': 'cancelled',
         // Legacy/fallback

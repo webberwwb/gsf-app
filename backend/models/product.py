@@ -59,6 +59,10 @@ class Product(BaseModel):
     substitute_price = db.Column(Numeric(10, 2), nullable=True)  # legacy; use substitute_pricing_*
     substitute_pricing_type = db.Column(db.String(20), nullable=True)
     substitute_pricing_data = db.Column(JSON, nullable=True)
+
+    # Optional 切分 service (flat per-piece fee; not a variant layer)
+    cutting_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    cutting_fee = db.Column(Numeric(10, 2), default=0, nullable=False)
     
     # Relationships
     group_deal_products = db.relationship('GroupDealProduct', backref='product', lazy=True)
@@ -225,6 +229,8 @@ class Product(BaseModel):
             'variants': variants_data,
             'substitute_enabled': self.substitute_enabled,
             'substitute': self.get_substitute_dict(),
+            'cutting_enabled': bool(self.cutting_enabled),
+            'cutting_fee': float(self.cutting_fee) if self.cutting_fee is not None else 0.0,
         })
         return data
 

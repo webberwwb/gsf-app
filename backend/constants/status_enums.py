@@ -8,7 +8,7 @@ from enum import Enum
 class OrderStatus(str, Enum):
     """
     Order Status Enum
-    Workflow: submitted → confirmed → preparing → packing_complete → ready_for_pickup/out_for_delivery → completed
+    Workflow: submitted → confirmed → preparing → packing_complete → ready_for_pickup/out_for_delivery → delivered → completed
     Can be cancelled at any stage
     """
     SUBMITTED = 'submitted'           # 已提交订单 - User placed order, can edit/cancel
@@ -17,6 +17,7 @@ class OrderStatus(str, Enum):
     PACKING_COMPLETE = 'packing_complete'  # 配货完成 - Packing completed, ready for next step
     READY_FOR_PICKUP = 'ready_for_pickup'  # 可以取货 - Ready for customer pickup
     OUT_FOR_DELIVERY = 'out_for_delivery'  # 正在配送 - Out for delivery (delivery orders only)
+    DELIVERED = 'delivered'           # 已送达 - Dropped off; complete only after payment too
     COMPLETED = 'completed'           # 订单完成 - Order completed and paid
     CANCELLED = 'cancelled'           # 已取消 - Order cancelled
 
@@ -30,6 +31,7 @@ class OrderStatus(str, Enum):
             cls.PACKING_COMPLETE: '配货完成',
             cls.READY_FOR_PICKUP: '可以取货',
             cls.OUT_FOR_DELIVERY: '正在配送',
+            cls.DELIVERED: '已送达',
             cls.COMPLETED: '订单完成',
             cls.CANCELLED: '已取消',
         }
@@ -46,14 +48,40 @@ class OrderStatus(str, Enum):
         return {status.value: cls.get_label(status) for status in cls}
     
     @classmethod
+    def _status_value(cls, status):
+        return status.value if isinstance(status, cls) else status
+
+    @classmethod
+    def can_user_edit_settings(cls, status):
+        """Notes / payment / delivery / credit — user app only."""
+        return cls._status_value(status) in cls.USER_SETTINGS_EDITABLE
+
+    @classmethod
+    def can_user_edit_products(cls, status, group_deal=None, now=None):
+        """Product qty / variant / substitute — submitted and deal still open."""
+        if cls._status_value(status) != cls.SUBMITTED.value:
+            return False
+        if group_deal is None:
+            return True
+        return is_deal_open_for_product_edits(group_deal, now)
+
+    @classmethod
     def is_editable_by_user(cls, status):
-        """Check if user can edit order in this status"""
-        return status == cls.SUBMITTED
+        """User can still change settings (not necessarily products)."""
+        return cls.can_user_edit_settings(status)
     
     @classmethod
     def is_cancellable_by_user(cls, status):
         """Check if user can cancel order in this status"""
-        return status == cls.SUBMITTED
+        return cls._status_value(status) == cls.SUBMITTED.value
+
+
+# After the class so Enum does not treat this tuple as a member.
+OrderStatus.USER_SETTINGS_EDITABLE = (
+    OrderStatus.SUBMITTED.value,
+    OrderStatus.CONFIRMED.value,
+    OrderStatus.PREPARING.value,
+)
 
 
 class PaymentStatus(str, Enum):
@@ -146,6 +174,22 @@ class GroupDealStatus(str, Enum):
     def is_visible_to_users(cls, status):
         """Check if status should be visible to regular users (non-admin)"""
         return status != cls.DRAFT
+
+
+def is_deal_open_for_product_edits(group_deal, now=None):
+    """True while customers may still change product lines on a submitted order."""
+    from models.base import utc_now
+
+    if group_deal is None:
+        return False
+    status = getattr(group_deal, 'status', None)
+    if status == GroupDealStatus.CLOSED.value:
+        return False
+    now = now or utc_now()
+    end = getattr(group_deal, 'order_end_date', None)
+    if end and end < now:
+        return False
+    return True
 
 
 class UserStatus(str, Enum):
@@ -257,6 +301,7 @@ __all__ = [
     'PaymentStatus',
     'GroupDealStatus',
     'UserStatus',
+    'is_deal_open_for_product_edits',
     'DeliveryMethod',
     'DeliveryHandler',
     'PaymentMethod',

@@ -214,6 +214,119 @@ def test_mark_delivered_does_not_require_photo(app):
     assert order.delivery_photo_url is None
 
 
+def test_mark_delivered_unpaid_cash_stays_delivered(app):
+    staff = _fulfillment()
+    order = _order(
+        _user('+10000000128', 'CashDue'),
+        _deal('preparing'),
+        _product(),
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+    )
+    order.payment_method = 'cash'
+    order.payment_status = PaymentStatus.UNPAID.value
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+    res = app.test_client().post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-delivered',
+        json={},
+        headers=_headers(staff),
+    )
+    assert res.status_code == 200
+    db.session.refresh(order)
+    assert order.status == OrderStatus.DELIVERED.value
+    assert order.payment_status == PaymentStatus.UNPAID.value
+    assert order.delivered_at is not None
+
+
+def test_mark_cash_received_then_delivered_completes(app):
+    staff = _fulfillment()
+    order = _order(
+        _user('+10000000129', 'CashFirst'),
+        _deal('preparing'),
+        _product(),
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+    )
+    order.payment_method = 'cash'
+    order.payment_status = PaymentStatus.UNPAID.value
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+    client = app.test_client()
+    headers = _headers(staff)
+
+    cash = client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-cash-received',
+        json={},
+        headers=headers,
+    )
+    assert cash.status_code == 200
+    db.session.refresh(order)
+    assert order.payment_status == PaymentStatus.PAID.value
+    assert order.status == OrderStatus.OUT_FOR_DELIVERY.value
+
+    delivered = client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-delivered',
+        json={},
+        headers=headers,
+    )
+    assert delivered.status_code == 200
+    db.session.refresh(order)
+    assert order.status == OrderStatus.COMPLETED.value
+
+
+def test_delivered_then_cash_received_completes(app):
+    staff = _fulfillment()
+    order = _order(
+        _user('+10000000130', 'DropFirst'),
+        _deal('preparing'),
+        _product(),
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+    )
+    order.payment_method = 'cash'
+    order.payment_status = PaymentStatus.UNPAID.value
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+    client = app.test_client()
+    headers = _headers(staff)
+
+    delivered = client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-delivered',
+        json={},
+        headers=headers,
+    )
+    assert delivered.status_code == 200
+    cash = client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-cash-received',
+        json={},
+        headers=headers,
+    )
+    assert cash.status_code == 200
+    db.session.refresh(order)
+    assert order.payment_status == PaymentStatus.PAID.value
+    assert order.status == OrderStatus.COMPLETED.value
+
+
+def test_mark_cash_received_rejects_card_order(app):
+    staff = _fulfillment()
+    order = _order(
+        _user('+10000000131', 'CardNo'),
+        _deal('preparing'),
+        _product(),
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+    )
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+    res = app.test_client().post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-cash-received',
+        json={},
+        headers=_headers(staff),
+    )
+    assert res.status_code == 400
+
+
 def test_save_delivery_photo_persists_and_can_retake(app):
     staff = _fulfillment()
     customer = _user('+10000000119', 'PhotoCust')

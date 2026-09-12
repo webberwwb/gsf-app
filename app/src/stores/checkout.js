@@ -10,11 +10,6 @@ export const useCheckoutStore = defineStore('checkout', {
     // Selected order items from GroupDealDetail
     orderItems: [],
     
-    // Existing order information (for updates)
-    existingOrderId: null,
-    existingOrderData: null,
-    existingOrderStatus: null, // Store order status to check if completed
-    
     // Checkout form data
     paymentMethod: 'cash',
     deliveryMethod: 'pickup',
@@ -37,7 +32,10 @@ export const useCheckoutStore = defineStore('checkout', {
         product: {
           counts_toward_free_shipping: item.counts_toward_free_shipping !== false
         },
-        total_price: parseFloat(item.estimated_price || 0)
+        total_price: parseFloat(item.estimated_price || 0),
+        quantity: item.quantity,
+        cutting: !!item.cutting,
+        cutting_fee: item.cutting_fee || 0
       }))
     },
 
@@ -48,7 +46,10 @@ export const useCheckoutStore = defineStore('checkout', {
           product: {
             counts_toward_free_shipping: item.counts_toward_free_shipping !== false
           },
-          total_price: parseFloat(item.estimated_price || 0)
+          total_price: parseFloat(item.estimated_price || 0),
+          quantity: item.quantity,
+          cutting: !!item.cutting,
+          cutting_fee: item.cutting_fee || 0
         })),
         deliveryMethod: state.deliveryMethod,
         storeCredit: credit,
@@ -62,15 +63,7 @@ export const useCheckoutStore = defineStore('checkout', {
     },
     
     hasEstimatedTotal: (state) => {
-      // If order is completed, don't show estimated total
-      if (state.existingOrderStatus === 'completed') {
-        return false
-      }
       return state.orderItems.some(item => item.is_estimated)
-    },
-    
-    isOrderCompleted: (state) => {
-      return state.existingOrderStatus === 'completed'
     },
     
     shippingFee(state) {
@@ -112,39 +105,6 @@ export const useCheckoutStore = defineStore('checkout', {
      */
     setOrderItems(items) {
       this.orderItems = items
-    },
-    
-    /**
-     * Set existing order information (for updates)
-     */
-    setExistingOrder(orderId, orderData, orderStatus = null) {
-      this.existingOrderId = orderId
-      this.existingOrderData = orderData
-      this.existingOrderStatus = orderStatus
-      
-      // Restore saved preferences if available
-      if (orderData) {
-        if (orderData.paymentMethod) {
-          this.paymentMethod = orderData.paymentMethod
-        }
-        if (orderData.deliveryMethod) {
-          this.deliveryMethod = orderData.deliveryMethod
-        }
-        if (orderData.pickupLocation) {
-          this.selectedPickupLocation = orderData.pickupLocation
-        }
-        if (orderData.addressId) {
-          this.selectedAddressId = orderData.addressId
-        }
-        if (orderData.notes) {
-          this.notes = orderData.notes
-        }
-        if (this.deliveryMethod === 'pickup' && this.paymentMethod === 'card') {
-          this.paymentMethod = orderData.paymentMethod && orderData.paymentMethod !== 'card'
-            ? orderData.paymentMethod
-            : 'cash'
-        }
-      }
     },
     
     /**
@@ -191,9 +151,6 @@ export const useCheckoutStore = defineStore('checkout', {
     clearCheckout() {
       this.deal = null
       this.orderItems = []
-      this.existingOrderId = null
-      this.existingOrderData = null
-      this.existingOrderStatus = null
       this.paymentMethod = 'cash'
       this.deliveryMethod = 'pickup'
       this.selectedPickupLocation = 'markham'
@@ -212,7 +169,8 @@ export const useCheckoutStore = defineStore('checkout', {
           quantity: item.quantity,
           pricing_type: item.pricing_type,
           variant_id: item.variant_id ?? undefined,
-          accept_substitute: item.accept_substitute
+          accept_substitute: item.accept_substitute,
+          cutting: !!item.cutting
         })),
         payment_method: this.paymentMethod,
         delivery_method: this.deliveryMethod,

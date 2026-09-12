@@ -1,9 +1,9 @@
 /** Mirror of backend/utils/order_business_rules.py — keep in sync via test_order_business_rules_parity.py */
 
-export const RULES_VERSION = '2026-08-25-deal'
+export const RULES_VERSION = '2026-09-12-cutting'
 
 export const ORDER_PRICING_AND_POINTS_RULES = `
-ORDER PRICING AND POINTS RULES (v2026-08-24)
+ORDER PRICING AND POINTS RULES (v2026-09-12)
 ============================================
 
 Change this text and RULES_VERSION when business rules change. Update tests and
@@ -23,12 +23,15 @@ ORDER BREAKDOWN (display and calculation order)
 5. amount_due         = max(0, subtotal - credit + adjustment + shipping)
 
 adjustment_discount = min(adjustment_amount, 0)   (negative admin discount only)
-shipping_tier_base = max(0, subtotal - store_credit_applied + adjustment_discount)
+cutting_fees_total = sum(line.cutting_fee * quantity) for lines with cutting=true
+shipping_tier_base = max(0, subtotal - cutting_fees_total - store_credit_applied + adjustment_discount)
 Admin penalties (positive adjustment) do not reduce shipping tier base.
 Admin discounts (negative adjustment) reduce shipping tier base.
 
 Free-shipping tiers use shipping_tier_base allocated proportionally across lines.
 Products with counts_toward_free_shipping=False are excluded from tier subtotal only.
+切分 fees are paid (in line.total_price / subtotal / amount_due) but excluded from
+the tier base and from each line's allocated product amount.
 
 Stored order.total = subtotal + shipping_fee + adjustment_amount (before credit).
 amount_due = total - store_credit_applied (equivalent to formula above).
@@ -36,9 +39,16 @@ amount_due = total - store_credit_applied (equivalent to formula above).
 POINTS
 ------
 1 point = $0.01 (cent). Award when admin marks order paid.
-points = max(0, subtotal - store_credit_applied + adjustment_discount) * 100
+points = max(0, subtotal - cutting_fees_total - store_credit_applied + adjustment_discount) * 100
 Admin discounts (negative adjustment) reduce points; surcharges do not add points.
-Shipping does not affect points. Do not backfill historical points balances.
+Shipping and 切分 fees do not affect points. Do not backfill historical points balances.
+
+CUTTING (切分)
+--------------
+Optional per-product service (cutting_enabled + cutting_fee). Not a variant layer.
+Fee is flat per piece / per line quantity, added after variant / sale / influencer math.
+Do not add cutting_fee to $/lb rates. Snapshot cutting + cutting_fee on the order line.
+Line identity is (product_id, variant_id, cutting).
 
 LINE PRICING TYPES
 ------------------

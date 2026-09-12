@@ -439,6 +439,22 @@
           </template>
         </div>
 
+        <!-- Cutting service -->
+        <div class="form-section">
+          <h3 class="section-title">切分服务</h3>
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="formData.cutting_enabled" class="checkbox-input" />
+            <span>提供切分</span>
+          </label>
+          <template v-if="formData.cutting_enabled">
+            <div class="form-group">
+              <label>切分费用 ($/件)</label>
+              <input v-model.number="formData.cutting_fee" type="number" step="0.01" min="0" class="form-input" />
+              <small class="form-hint">按件收取。不计入免运费门槛，不产生积分。填 0 表示免费切分。</small>
+            </div>
+          </template>
+        </div>
+
         <!-- Supplier -->
         <div class="form-group">
           <label for="supplier_id">供应商</label>
@@ -573,7 +589,9 @@ export default {
           unit: 'lb',
           min_weight: null,
           max_weight: null
-        }
+        },
+        cutting_enabled: false,
+        cutting_fee: 0
       },
       suppliers: [],
       categories: [],
@@ -663,7 +681,9 @@ export default {
         substitute_name: '',
         substitute_description: '',
         substitute_images: [],
-        substitute_pricing_data: this.defaultSubstitutePricingData('per_item')
+        substitute_pricing_data: this.defaultSubstitutePricingData('per_item'),
+        cutting_enabled: false,
+        cutting_fee: 0
       }
       this.imagePreviews = []
       this.substituteImagePreviews = []
@@ -742,7 +762,9 @@ export default {
           substitute_name: this.product.substitute?.name || this.product.substitute_name || '',
           substitute_description: this.product.substitute?.description || this.product.substitute_description || '',
           substitute_images: this.product.substitute?.images || this.product.substitute_images || [],
-          substitute_pricing_data: this.normalizeSubstitutePricingData(pricingType, this.product)
+          substitute_pricing_data: this.normalizeSubstitutePricingData(pricingType, this.product),
+          cutting_enabled: !!this.product.cutting_enabled,
+          cutting_fee: this.product.cutting_fee != null ? Number(this.product.cutting_fee) : 0
         }
         this.imagePreviews = [...images]
         this.substituteImagePreviews = [...(this.formData.substitute_images || [])]
@@ -1091,6 +1113,11 @@ export default {
         } else {
           data.substitute_enabled = false
         }
+
+        data.cutting_enabled = !!this.formData.cutting_enabled
+        data.cutting_fee = data.cutting_enabled
+          ? Math.max(0, parseFloat(this.formData.cutting_fee) || 0)
+          : 0
 
         if (this.editingProduct) {
           // Update product

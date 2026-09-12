@@ -66,6 +66,7 @@ export default {
     detailTags() {
       const tags = []
       if (this.variantLabel) tags.push(this.variantLabel)
+      if (this.item.cutting) tags.push('切分')
       const sub = this.substitutePreferenceLabel
       if (sub) tags.push(sub)
       const w = this.weightLabel

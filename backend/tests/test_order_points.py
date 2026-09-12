@@ -4,12 +4,21 @@ from decimal import Decimal
 from utils.order_points import calculate_order_points
 
 
+class FakeLine:
+    def __init__(self, total_price, quantity=1, cutting=False, cutting_fee=0):
+        self.total_price = Decimal(str(total_price))
+        self.quantity = quantity
+        self.cutting = cutting
+        self.cutting_fee = Decimal(str(cutting_fee)) if cutting else None
+
+
 class FakeOrder:
-    def __init__(self, subtotal, store_credit_applied=0, shipping_fee=0, adjustment_amount=0):
+    def __init__(self, subtotal, store_credit_applied=0, shipping_fee=0, adjustment_amount=0, items=None):
         self.subtotal = Decimal(str(subtotal))
         self.store_credit_applied = Decimal(str(store_credit_applied))
         self.shipping_fee = Decimal(str(shipping_fee))
         self.adjustment_amount = Decimal(str(adjustment_amount))
+        self.items = items
 
 
 def test_points_from_subtotal_only():
@@ -48,3 +57,12 @@ def test_points_use_paid_product_dollars_after_quantity_break():
 def test_points_use_sale_price_not_list_price():
     """2 items at sale $8 (list $10) earn points on $16, not $20."""
     assert calculate_order_points(FakeOrder(16.00)) == 1600
+
+
+def test_points_exclude_cutting_fee():
+    """$148 product + $3 切分 earns points on $148."""
+    order = FakeOrder(
+        151.00,
+        items=[FakeLine(151, quantity=1, cutting=True, cutting_fee=3)],
+    )
+    assert calculate_order_points(order) == 14800

@@ -18,8 +18,11 @@
     <div v-else class="deals-list">
       <div v-for="deal in groupDeals" :key="deal.id" class="deal-card" @click="viewDealDetail(deal.id)">
         <div class="deal-header">
+          <h3 class="deal-title">{{ deal.title }}</h3>
+          <span class="products-count">包含 {{ deal.products?.length || 0 }} 个产品</span>
+        </div>
+        <div class="deal-meta">
           <div class="deal-title-section">
-            <h3>{{ deal.title }}</h3>
             <span :class="['status-badge', deal.status]">
               {{ getStatusLabel(deal.status) }}
             </span>
@@ -49,30 +52,6 @@
                 <span class="date-value">{{ formatPickupDate(deal.pickup_date) }}</span>
               </div>
             </div>
-        
-        <div v-if="deal.products && deal.products.length > 0" class="deal-products">
-          <div class="products-header">
-            <span class="products-count">包含 {{ deal.products.length }} 个商品</span>
-          </div>
-          <div class="products-grid">
-            <div v-for="product in deal.products" :key="product.id" class="product-mini-card">
-              <div class="product-mini-image">
-                <img v-if="product.image" :src="product.image" :alt="product.name" />
-                <div v-else class="image-placeholder">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                  </svg>
-                </div>
-              </div>
-              <div class="product-mini-info">
-                <div class="product-mini-name">{{ product.name }}</div>
-                <div class="product-mini-price">
-                  <span class="deal-price">${{ formatDealProductPrice(product) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -103,8 +82,6 @@ import CopyGroupDealModal from '../components/CopyGroupDealModal.vue'
 import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import { isFulfillmentOnly } from '../utils/auth'
-import { formatProductListPrice } from '../utils/productPriceDisplay'
-
 export default {
   name: 'GroupDeals',
   components: {
@@ -217,9 +194,6 @@ export default {
     formatPickupDate(dateString) {
       return formatPickupDateTime_CN(dateString) || 'N/A'
     },
-    formatDealProductPrice(product) {
-      return formatProductListPrice(product)
-    },
     viewDealDetail(dealId) {
       this.$router.push(`/group-deals/${dealId}`)
     }
@@ -315,23 +289,40 @@ export default {
 .deal-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--md-spacing-md);
-}
-
-.deal-title-section {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: baseline;
   gap: var(--md-spacing-md);
+  margin-bottom: var(--md-spacing-sm);
 }
 
-.deal-title-section h3 {
+.deal-title {
   font-size: var(--md-headline-size);
   color: var(--md-on-surface);
   font-weight: 500;
   margin: 0;
+  min-width: 0;
+}
+
+.products-count {
+  flex-shrink: 0;
+  font-size: var(--md-label-size);
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.deal-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--md-spacing-md);
+  margin-bottom: var(--md-spacing-md);
+}
+
+.deal-title-section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-spacing-sm);
 }
 
 .status-badge {
@@ -449,115 +440,6 @@ export default {
   color: var(--md-on-surface);
 }
 
-.deal-products {
-  margin-top: var(--md-spacing-md);
-  padding-top: var(--md-spacing-md);
-  border-top: 1px solid var(--md-surface-variant);
-}
-
-.products-header {
-  margin-bottom: var(--md-spacing-md);
-}
-
-.products-count {
-  font-size: var(--md-label-size);
-  color: var(--md-on-surface-variant);
-  font-weight: 500;
-}
-
-.products-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--md-spacing-md);
-}
-
-.product-mini-card {
-  background: var(--md-surface-variant);
-  border-radius: var(--md-radius-md);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.product-mini-card:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
-
-.product-mini-image {
-  width: 100%;
-  height: 100px;
-  background: var(--md-surface);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.product-mini-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.image-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.3;
-  color: var(--md-on-surface-variant);
-}
-
-.image-placeholder svg {
-  width: 32px;
-  height: 32px;
-}
-
-.product-mini-info {
-  padding: var(--md-spacing-sm);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.product-mini-name {
-  font-size: var(--md-label-size);
-  color: var(--md-on-surface);
-  margin-bottom: var(--md-spacing-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  line-height: 1.3;
-  word-break: break-word;
-}
-
-.product-mini-price {
-  display: flex;
-  align-items: center;
-  gap: var(--md-spacing-xs);
-  margin-top: var(--md-spacing-xs);
-  flex-shrink: 0;
-}
-
-.deal-price {
-  font-size: var(--md-body-size);
-  color: #FF4444;
-  font-weight: 600;
-}
-
-.original-price {
-  font-size: var(--md-label-size);
-  color: var(--md-outline);
-  text-decoration: line-through;
-}
-
 /* Laptop Responsive Styles */
 @media (max-width: 1366px) {
   .page-header-actions {
@@ -586,15 +468,6 @@ export default {
     padding: 6px 12px;
     font-size: 0.8125rem;
   }
-  
-  .deal-products {
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: var(--md-spacing-sm);
-  }
-  
-  .product-mini-card {
-    min-height: 120px;
-  }
 }
 
 /* Mobile Responsive Styles */
@@ -621,20 +494,12 @@ export default {
     padding: var(--md-spacing-md);
   }
   
-  .deal-header {
-    flex-direction: column;
-    gap: var(--md-spacing-sm);
-  }
-  
-  .deal-title-section {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--md-spacing-sm);
-    width: 100%;
-  }
-  
-  .deal-title-section h3 {
+  .deal-title {
     font-size: 1.125rem;
+  }
+
+  .deal-meta {
+    flex-wrap: wrap;
   }
   
   .deal-actions {
@@ -664,51 +529,11 @@ export default {
   .date-value {
     font-size: 0.875rem;
   }
-  
-  .products-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--md-spacing-sm);
-  }
-  
-  .product-mini-image {
-    height: 80px;
-  }
-  
-  .product-mini-info {
-    padding: var(--md-spacing-xs);
-  }
-  
-  .product-mini-name {
-    font-size: 0.75rem;
-  }
-  
-  .deal-price {
-    font-size: 0.875rem;
-  }
-  
-  .product-stat-item {
-    padding: var(--md-spacing-sm);
-    min-height: 60px;
-    align-items: flex-start;
-  }
-  
-  .product-stat-name {
-    font-size: 0.75rem;
-    line-height: 1.4;
-  }
-  
-  .product-stat-value {
-    font-size: 0.8125rem;
-  }
 }
 
 /* Extra small mobile */
 @media (max-width: 360px) {
-  .products-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .deal-title-section h3 {
+  .deal-title {
     font-size: 1rem;
   }
 }

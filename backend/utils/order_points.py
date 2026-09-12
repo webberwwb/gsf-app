@@ -4,19 +4,21 @@ from decimal import Decimal
 
 from utils.order_business_rules import ORDER_PRICING_AND_POINTS_RULES
 from utils.money import round_money
+from utils.cutting import order_cutting_fees_total
 
 
 def calculate_order_points(order) -> int:
     """
     Points in cents: 1 point = $0.01 of product paid after credit and admin discount.
-    Excludes shipping and credit-covered amounts. Admin discounts (negative
+    Excludes shipping, 切分 fees, and credit-covered amounts. Admin discounts (negative
     adjustment) reduce points; surcharges (positive adjustment) do not add points.
     """
     subtotal = Decimal(str(order.subtotal or 0))
+    cutting = order_cutting_fees_total(order)
     credit = Decimal(str(order.store_credit_applied or 0))
     adjustment = Decimal(str(order.adjustment_amount or 0))
     discount = min(adjustment, Decimal('0'))
-    dollars = round_money(max(Decimal('0'), subtotal - credit + discount))
+    dollars = round_money(max(Decimal('0'), subtotal - cutting - credit + discount))
     return int(dollars * 100)
 
 

@@ -4,13 +4,19 @@ import {
   lookupBreakPrice,
   resolvePerItemUnit,
   estimateLinePrice,
+  estimateAdminLinePrice,
+  applyInfluencerDiscountToProduct,
   getSelectionQuantity,
   getVariantQuantity,
   setVariantQuantity,
   isSelectionComplete,
   buildPreviewLinesFromSelection,
   selectionsFromOrderItems,
-  isOrderLinePriceEstimated
+  isOrderLinePriceEstimated,
+  orderItemSelectionChanged,
+  setCuttingQuantity,
+  splitSelectionIntoOrderLines,
+  cuttingFeesTotal
 } from './orderItemPricing.js'
 
 describe('quantity breaks', () => {
@@ -76,6 +82,25 @@ describe('sale price', () => {
     }
     const { unitPrice } = resolvePerItemUnit(product, null, 1)
     assert.equal(unitPrice, 10)
+  })
+
+  it('applies influencer per_item on top of deal sale without double-counting', () => {
+    const deal = {
+      pricing_type: 'per_item',
+      is_discount: true,
+      pricing_data: { price: 16.99, sale_price: 14.99 }
+    }
+    const paid = applyInfluencerDiscountToProduct(deal, {
+      commission_type: 'per_item',
+      amount: 0.25
+    })
+    assert.equal(paid.influencer_discount, true)
+    assert.equal(estimateAdminLinePrice(paid, { quantity: 1 }).unitPrice, 14.74)
+    const again = applyInfluencerDiscountToProduct(paid, {
+      commission_type: 'per_item',
+      amount: 0.25
+    })
+    assert.equal(estimateAdminLinePrice(again, { quantity: 1 }).unitPrice, 14.74)
   })
 
   it('lets quantity breaks override the sale base', () => {
@@ -144,6 +169,32 @@ describe('mixed variant selection', () => {
   })
 })
 
+describe('orderItemSelectionChanged', () => {
+  it('treats pooled weight qty as unchanged vs N qty-1 lines', () => {
+    assert.equal(
+      orderItemSelectionChanged(
+        [
+          { product_id: 5, quantity: 1 },
+          { product_id: 5, quantity: 1 },
+          { product_id: 5, quantity: 1 }
+        ],
+        [{ product_id: 5, quantity: 3 }]
+      ),
+      false
+    )
+  })
+
+  it('detects a real quantity change', () => {
+    assert.equal(
+      orderItemSelectionChanged(
+        [{ product_id: 5, quantity: 2 }],
+        [{ product_id: 5, quantity: 3 }]
+      ),
+      true
+    )
+  })
+})
+
 describe('selectionsFromOrderItems', () => {
   it('restores quantity for products without variants', () => {
     const next = selectionsFromOrderItems(
@@ -186,6 +237,64 @@ describe('selectionsFromOrderItems', () => {
     ])
     assert.equal(next[7].weight, 8.5)
     assert.equal(next[7].accept_substitute, true)
+  })
+})
+
+describe('cutting service', () => {
+  const product = {
+    id: 3,
+    pricing_type: 'per_item',
+    cutting_enabled: true,
+    cutting_fee: 2,
+    pricing_data: { price: 10 },
+    variants: [
+      { id: 1, name: '大', price_delta: 0 },
+      { id: 2, name: '小', price_delta: 0 }
+    ]
+  }
+
+  it('adds a flat per-piece fee, not to the variant rate', () => {
+    const { unitPrice, totalPrice } = estimateLinePrice(product, {
+      quantity: 2,
+      variant_id: 1,
+      cutting: true
+    })
+    assert.equal(unitPrice, 12)
+    assert.equal(totalPrice, 24)
+  })
+
+  it('splits mixed cut / uncut qty into two lines', () => {
+    let sel = setVariantQuantity({}, 1, 3)
+    sel = setCuttingQuantity(sel, 1, 1)
+    const lines = splitSelectionIntoOrderLines(product, sel)
+    assert.equal(lines.length, 2)
+    assert.deepEqual(
+      lines.map((l) => ({ qty: l.quantity, cutting: l.cutting })),
+      [
+        { qty: 2, cutting: false },
+        { qty: 1, cutting: true }
+      ]
+    )
+  })
+
+  it('does not offer cutting when the product flag is off', () => {
+    const off = { ...product, cutting_enabled: false }
+    let sel = setVariantQuantity({}, 1, 2)
+    sel = setCuttingQuantity(sel, 2, 1)
+    const lines = splitSelectionIntoOrderLines(off, sel)
+    assert.equal(lines.length, 1)
+    assert.equal(lines[0].cutting, false)
+    assert.equal(lines[0].quantity, 2)
+  })
+
+  it('sums cutting fees for shipping/points exclusion', () => {
+    assert.equal(
+      cuttingFeesTotal([
+        { cutting: true, cutting_fee: 2, quantity: 3, total_price: 36 },
+        { cutting: false, cutting_fee: 2, quantity: 1, total_price: 10 }
+      ]),
+      6
+    )
   })
 })
 

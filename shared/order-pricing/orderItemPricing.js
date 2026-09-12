@@ -74,6 +74,99 @@ export function paidPricingData(product, pricingData = null) {
   return pd
 }
 
+function floorMoney(value, amount) {
+  return roundMoney(Math.max(0, (parseFloat(value) || 0) - (parseFloat(amount) || 0)))
+}
+
+/**
+ * Overlay a 推荐官 rate on a deal/catalog product (same as Python
+ * apply_influencer_discount_to_product_payload). Skips if already applied.
+ * `rate` is { commission_type: 'per_item'|'per_weight', amount }.
+ */
+export function applyInfluencerDiscountToProduct(product, rate) {
+  if (!product || !rate) return product
+  if (product.influencer_discount) return product
+  const commissionType = rate.commission_type
+  const amount = parseFloat(rate.amount)
+  if (!Number.isFinite(amount) || amount <= 0) return product
+
+  const data = {
+    ...product,
+    pricing_data: { ...(product.pricing_data || {}) },
+    variants: (product.variants || []).map((v) => ({ ...v }))
+  }
+  const pd = { ...data.pricing_data }
+  if (Array.isArray(pd.ranges)) pd.ranges = pd.ranges.map((row) => ({ ...row }))
+  if (Array.isArray(pd.quantity_breaks)) {
+    pd.quantity_breaks = pd.quantity_breaks.map((row) => ({ ...row }))
+  }
+  const pt = data.pricing_type
+  const onSale = !!data.is_discount
+
+  if (pt === 'unit_weight' || pt === 'bundled_weight') {
+    const listUnit = pd.price_per_unit
+    const paidUnit = onSale && pd.sale_price_per_unit != null ? pd.sale_price_per_unit : listUnit
+    if (commissionType === 'per_weight' && paidUnit != null) {
+      pd.sale_price_per_unit = floorMoney(paidUnit, amount)
+      data.sale_price = pd.sale_price_per_unit
+      data.display_price = pd.sale_price_per_unit
+      data.price = pd.sale_price_per_unit
+      if (data.original_price == null) {
+        data.original_price = listUnit != null ? parseFloat(listUnit) : null
+      }
+    }
+  } else {
+    const listPrice = pd.price
+    const paid = onSale && pd.sale_price != null ? pd.sale_price : listPrice
+    if (paid != null) {
+      const discounted = floorMoney(paid, amount)
+      pd.sale_price = discounted
+      data.sale_price = discounted
+      data.display_price = discounted
+      data.price = discounted
+      if (data.original_price == null) {
+        data.original_price = listPrice != null ? parseFloat(listPrice) : null
+      }
+    }
+    if (pd.ranges) {
+      pd.ranges = pd.ranges.map((row) => ({ ...row, price: floorMoney(row.price, amount) }))
+    }
+    if (pd.quantity_breaks) {
+      pd.quantity_breaks = pd.quantity_breaks.map((row) => ({
+        ...row,
+        price: floorMoney(row.price, amount)
+      }))
+    }
+    if (commissionType !== 'per_weight') {
+      for (const variant of data.variants) {
+        const base = onSale && variant.sale_price != null ? variant.sale_price : variant.price
+        if (base != null) variant.sale_price = floorMoney(base, amount)
+      }
+    }
+  }
+
+  data.pricing_data = pd
+  data.influencer_discount = true
+  data.influencer_commission_type = commissionType
+  data.influencer_commission_amount = amount
+  return data
+}
+
+/** per_item commission on $/lb lines reduces the line total only (mirrors Python). */
+function applyInfluencerLineDiscount(product, unitPrice, totalPrice, quantity) {
+  if (product?.influencer_commission_type !== 'per_item') {
+    return { unitPrice, totalPrice }
+  }
+  const amount = parseFloat(product.influencer_commission_amount)
+  if (!Number.isFinite(amount) || amount <= 0) return { unitPrice, totalPrice }
+  const pt = product.pricing_type
+  if (pt === 'unit_weight' || pt === 'bundled_weight') {
+    const qty = Math.max(parseInt(quantity, 10) || 0, 0)
+    return { unitPrice, totalPrice: floorMoney(totalPrice, amount * qty) }
+  }
+  return { unitPrice, totalPrice }
+}
+
 function paidPerItemBase(product, variant = null) {
   const pd = product?.pricing_data || {}
   const listPrice = parseFloat(pd.price ?? 0)
@@ -109,7 +202,127 @@ export function resolvePerItemUnit(product, variant, productQty = 1) {
 }
 
 export function emptyProductSelection() {
-  return { quantity: 0, variant_id: null, variant_quantities: {}, accept_substitute: null }
+  return {
+    quantity: 0,
+    variant_id: null,
+    variant_quantities: {},
+    accept_substitute: null,
+    cutting_qty: 0,
+    cutting_quantities: {}
+  }
+}
+
+export function productOffersCutting(product) {
+  return !!(product && product.cutting_enabled)
+}
+
+export function catalogCuttingFee(product) {
+  if (!productOffersCutting(product)) return 0
+  const n = parseFloat(product.cutting_fee)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+export function getCuttingQuantity(selection = {}, variantId = null) {
+  if (variantId != null) {
+    const cq = selection.cutting_quantities
+    if (cq && typeof cq === 'object') {
+      return Math.max(0, parseInt(cq[variantId] ?? cq[String(variantId)], 10) || 0)
+    }
+    return 0
+  }
+  return Math.max(0, parseInt(selection.cutting_qty, 10) || 0)
+}
+
+export function setCuttingQuantity(selection = {}, qty, variantId = null) {
+  const next = {
+    ...emptyProductSelection(),
+    ...selection,
+    variant_quantities: { ...(selection.variant_quantities || {}) },
+    cutting_quantities: { ...(selection.cutting_quantities || {}) }
+  }
+  const n = Math.max(0, parseInt(qty, 10) || 0)
+  if (variantId != null) {
+    const max = getVariantQuantity(next, variantId)
+    const clamped = Math.min(n, max)
+    if (clamped > 0) next.cutting_quantities[variantId] = clamped
+    else delete next.cutting_quantities[variantId]
+  } else {
+    next.cutting_qty = Math.min(n, getSelectionQuantity(next))
+  }
+  return next
+}
+
+export function clampCuttingQuantities(selection = {}) {
+  const next = {
+    ...emptyProductSelection(),
+    ...selection,
+    variant_quantities: { ...(selection.variant_quantities || {}) },
+    cutting_quantities: { ...(selection.cutting_quantities || {}) }
+  }
+  const vq = next.variant_quantities
+  if (vq && Object.keys(vq).length) {
+    for (const key of Object.keys(next.cutting_quantities)) {
+      const max = getVariantQuantity(next, key)
+      const cut = Math.min(getCuttingQuantity(next, key), max)
+      if (cut > 0) next.cutting_quantities[key] = cut
+      else delete next.cutting_quantities[key]
+    }
+  } else {
+    next.cutting_qty = Math.min(getCuttingQuantity(next), getSelectionQuantity(next))
+  }
+  return next
+}
+
+export function splitSelectionIntoOrderLines(product, selection = {}) {
+  const lines = []
+  const variants = product?.variants || []
+  const accept = selection.accept_substitute
+  const offers = productOffersCutting(product)
+  const push = (qty, variantId, cutting) => {
+    if (qty <= 0) return
+    lines.push({
+      quantity: qty,
+      variant_id: variantId || null,
+      cutting: !!cutting,
+      accept_substitute: accept
+    })
+  }
+  if (variants.length) {
+    for (const variant of variants) {
+      const qty = getVariantQuantity(selection, variant.id)
+      if (qty <= 0) continue
+      const cut = offers ? Math.min(qty, getCuttingQuantity(selection, variant.id)) : 0
+      push(qty - cut, variant.id, false)
+      push(cut, variant.id, true)
+    }
+  } else {
+    const qty = getSelectionQuantity(selection)
+    const cut = offers ? Math.min(qty, getCuttingQuantity(selection, null)) : 0
+    push(qty - cut, selection.variant_id, false)
+    push(cut, selection.variant_id, true)
+  }
+  return lines
+}
+
+export function lineCuttingFeeTotal(item) {
+  if (!item || !item.cutting) return 0
+  const fee = parseFloat(item.cutting_fee)
+  const qty = Math.max(0, parseInt(item.quantity, 10) || 0)
+  if (!Number.isFinite(fee) || fee <= 0 || qty <= 0) return 0
+  return roundMoney(fee * qty)
+}
+
+export function cuttingFeesTotal(items = []) {
+  return roundMoney(items.reduce((sum, item) => sum + lineCuttingFeeTotal(item), 0))
+}
+
+export function lineProductAmount(item) {
+  return roundMoney(Math.max(0, resolveOrderLineTotal(item) - lineCuttingFeeTotal(item)))
+}
+
+export function formatCuttingLabel(item) {
+  if (!item || !item.cutting) return null
+  return '切分'
 }
 
 export function getVariantQuantity(selection = {}, variantId) {
@@ -155,6 +368,8 @@ export function selectionsFromOrderItems(items, existing = {}) {
     if (!reset.has(productId)) {
       sel.variant_quantities = {}
       sel.item_ids = {}
+      sel.cutting_quantities = {}
+      sel.cutting_qty = 0
       sel.quantity = 0
       sel.variant_id = null
       reset.add(productId)
@@ -166,8 +381,12 @@ export function selectionsFromOrderItems(items, existing = {}) {
       sel.variant_quantities[vid] = (sel.variant_quantities[vid] || 0) + qty
       if (item.id != null) sel.item_ids[vid] = item.id
       sel.variant_id = vid
+      if (item.cutting) {
+        sel.cutting_quantities[vid] = (sel.cutting_quantities[vid] || 0) + qty
+      }
     } else {
       sel.quantity = (sel.quantity || 0) + qty
+      if (item.cutting) sel.cutting_qty = (sel.cutting_qty || 0) + qty
     }
 
     sel.quantity = getSelectionQuantity(sel)
@@ -181,6 +400,48 @@ export function selectionsFromOrderItems(items, existing = {}) {
     next[productId] = sel
   }
   return next
+}
+
+function lineIdentityKey(item) {
+  const vid = item.variant_id == null ? '' : String(item.variant_id)
+  const cut = item.cutting ? '1' : '0'
+  return `${item.product_id}:${vid}:${cut}`
+}
+
+function sameSubstitute(a, b) {
+  const left = a == null ? null : a
+  const right = b == null ? null : b
+  return left === right
+}
+
+export function summarizeOrderItemLines(items) {
+  const map = {}
+  for (const item of items || []) {
+    if (item == null || item.product_id == null) continue
+    const qty = Math.max(0, parseInt(item.quantity, 10) || 0)
+    if (qty <= 0) continue
+    const key = lineIdentityKey(item)
+    if (!map[key]) {
+      map[key] = { quantity: 0, accept_substitute: item.accept_substitute }
+    }
+    map[key].quantity += qty
+    if (item.accept_substitute !== undefined) {
+      map[key].accept_substitute = item.accept_substitute
+    }
+  }
+  return map
+}
+
+export function orderItemSelectionChanged(currentItems, nextItems) {
+  const current = summarizeOrderItemLines(currentItems)
+  const next = summarizeOrderItemLines(nextItems)
+  const keys = new Set([...Object.keys(current), ...Object.keys(next)])
+  for (const key of keys) {
+    if (!current[key] || !next[key]) return true
+    if (current[key].quantity !== next[key].quantity) return true
+    if (!sameSubstitute(current[key].accept_substitute, next[key].accept_substitute)) return true
+  }
+  return false
 }
 
 function variantQuantitiesTotal(variantQuantities = {}) {
@@ -203,7 +464,7 @@ export function setVariantQuantity(selection = {}, variantId, qty) {
     const first = Object.keys(next.variant_quantities)[0]
     next.variant_id = first != null ? Number(first) || first : null
   }
-  return next
+  return clampCuttingQuantities(next)
 }
 
 export function computeBasePrice(product, quantity = 1, finalWeight = null) {
@@ -270,12 +531,29 @@ export function applyVariantDelta(unitPrice, totalPrice, delta, pricingType, qua
   return { unitPrice: roundMoney(unitPrice), totalPrice: roundMoney(totalPrice) }
 }
 
+function applyCuttingToEstimate(product, unitPrice, totalPrice, quantity, cutting) {
+  if (!cutting) return { unitPrice, totalPrice, cuttingFee: 0 }
+  const fee = catalogCuttingFee(product)
+  const qty = parseInt(quantity, 10) || 1
+  const extra = roundMoney(fee * qty)
+  const pt = product.pricing_type || 'per_item'
+  if (pt === 'per_item') {
+    return {
+      unitPrice: roundMoney(unitPrice + fee),
+      totalPrice: roundMoney(totalPrice + extra),
+      cuttingFee: fee
+    }
+  }
+  return { unitPrice, totalPrice: roundMoney(totalPrice + extra), cuttingFee: fee }
+}
+
 export function estimateLinePrice(product, selection = {}) {
   const {
     quantity = 1,
     final_weight: finalWeight = null,
     variant_id: variantId = null,
-    product_qty: productQty = null
+    product_qty: productQty = null,
+    cutting = false
   } = selection
   const variant = (product.variants || []).find(
     (v) => v.id === variantId || String(v.id) === String(variantId)
@@ -283,24 +561,37 @@ export function estimateLinePrice(product, selection = {}) {
   const pooled = productQty != null ? productQty : quantity
   const pt = product.pricing_type || 'per_item'
 
+  let unitPrice
+  let totalPrice
   if (pt === 'per_item') {
-    const { unitPrice } = resolvePerItemUnit(product, variant, pooled)
-    const totalPrice = roundMoney(unitPrice * (parseInt(quantity, 10) || 1))
-    return { unitPrice: roundMoney(unitPrice), totalPrice, variant }
+    ;({ unitPrice } = resolvePerItemUnit(product, variant, pooled))
+    totalPrice = roundMoney(unitPrice * (parseInt(quantity, 10) || 1))
+  } else {
+    const delta = variant ? parseFloat(variant.price_delta || 0) : 0
+    ;({ unitPrice, totalPrice } = computeBasePrice(product, quantity, finalWeight))
+    ;({ unitPrice, totalPrice } = applyVariantDelta(
+      unitPrice,
+      totalPrice,
+      delta,
+      pt,
+      quantity,
+      finalWeight,
+      product
+    ))
   }
-
-  const delta = variant ? parseFloat(variant.price_delta || 0) : 0
-  let { unitPrice, totalPrice } = computeBasePrice(product, quantity, finalWeight)
-  ;({ unitPrice, totalPrice } = applyVariantDelta(
+  ;({ unitPrice, totalPrice } = applyInfluencerLineDiscount(
+    product,
     unitPrice,
     totalPrice,
-    delta,
-    pt,
-    quantity,
-    finalWeight,
-    product
+    quantity
   ))
-  return { unitPrice: roundMoney(unitPrice), totalPrice: roundMoney(totalPrice), variant }
+  const cut = applyCuttingToEstimate(product, unitPrice, totalPrice, quantity, cutting)
+  return {
+    unitPrice: roundMoney(cut.unitPrice),
+    totalPrice: roundMoney(cut.totalPrice),
+    variant,
+    cuttingFee: cut.cuttingFee
+  }
 }
 
 export function getDisplayPriceFromConfig(pricingType, pricingData = {}) {
@@ -448,6 +739,17 @@ export function estimateAdminLinePrice(product, opts = {}) {
     finalWeight,
     !!opts.cannot_fulfill
   ))
+  ;({ unitPrice, totalPrice } = applyInfluencerLineDiscount(
+    product,
+    unitPrice,
+    totalPrice,
+    quantity
+  ))
+  if (!opts.cannot_fulfill) {
+    const cut = applyCuttingToEstimate(product, unitPrice, totalPrice, quantity, !!opts.cutting)
+    unitPrice = cut.unitPrice
+    totalPrice = cut.totalPrice
+  }
   return { unitPrice: roundMoney(unitPrice), totalPrice: roundMoney(totalPrice) }
 }
 
@@ -517,7 +819,8 @@ export function resolveOrderLineTotal(item) {
     variant_price_delta: item.variant_price_delta,
     accept_substitute: item.accept_substitute,
     is_unavailable: item.is_unavailable,
-    cannot_fulfill: item.cannot_fulfill
+    cannot_fulfill: item.cannot_fulfill,
+    cutting: !!item.cutting
   })
   return roundMoney(totalPrice)
 }
@@ -575,7 +878,8 @@ export function estimateSelectionTotal(product, quantity, selection = {}) {
         quantity: 1,
         final_weight: selection.final_weight ?? refWeight,
         variant_id: selection.variant_id,
-        product_qty: pooled
+        product_qty: pooled,
+        cutting: selection.cutting
       })
       sum += totalPrice
     }
@@ -585,7 +889,8 @@ export function estimateSelectionTotal(product, quantity, selection = {}) {
     quantity: qty,
     final_weight: selection.final_weight ?? null,
     variant_id: selection.variant_id,
-    product_qty: pooled
+    product_qty: pooled,
+    cutting: selection.cutting
   })
   return roundMoney(totalPrice)
 }
@@ -599,34 +904,20 @@ export function buildPreviewLinesFromSelection(products = [], selectedItems = {}
     const pooled = getSelectionQuantity(selection)
     if (pooled <= 0) continue
     const variants = product.variants || []
-    if (variants.length) {
-      for (const variant of variants) {
-        const qty = getVariantQuantity(selection, variant.id)
-        if (qty <= 0) continue
-        const totalPrice = estimateSelectionTotal(product, qty, {
-          variant_id: variant.id,
-          final_weight: selection.weight,
-          product_qty: pooled
-        })
-        lines.push({
-          product,
-          product_id: product.id,
-          quantity: qty,
-          variant_id: variant.id,
-          total_price: totalPrice
-        })
-      }
-    } else {
-      const totalPrice = estimateSelectionTotal(product, pooled, {
-        variant_id: selection.variant_id,
+    for (const part of splitSelectionIntoOrderLines(product, selection)) {
+      const totalPrice = estimateSelectionTotal(product, part.quantity, {
+        variant_id: part.variant_id,
         final_weight: selection.weight,
-        product_qty: pooled
+        product_qty: pooled,
+        cutting: part.cutting
       })
       lines.push({
         product,
         product_id: product.id,
-        quantity: pooled,
-        variant_id: selection.variant_id,
+        quantity: part.quantity,
+        variant_id: part.variant_id,
+        cutting: part.cutting,
+        cutting_fee: part.cutting ? catalogCuttingFee(product) : 0,
         total_price: totalPrice
       })
     }

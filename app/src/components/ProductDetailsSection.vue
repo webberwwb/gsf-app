@@ -90,6 +90,76 @@
       </div>
     </div>
 
+    <!-- Cutting: 切分服务 -->
+    <div v-if="offersCutting" class="cutting-section">
+      <div class="details-head">
+        <span class="details-title">切分服务</span>
+        <span v-if="cuttingFeeLabel" class="chip-extra">{{ cuttingFeeLabel }}</span>
+      </div>
+      <template v-if="variants.length">
+        <div
+          v-for="v in variants"
+          :key="'cut-' + v.id"
+          class="variant-qty-row"
+        >
+          <div class="variant-qty-info">
+            <span class="variant-qty-name">{{ v.name }} 切分</span>
+          </div>
+          <div class="variant-qty-control">
+            <button
+              type="button"
+              class="vq-btn"
+              :disabled="disabled || cuttingQtyFor(v.id) === 0 || variantQty(v.id) === 0"
+              @click="$emit('change-cutting-qty', v.id, cuttingQtyFor(v.id) - 1)"
+            >-</button>
+            <input
+              type="number"
+              class="vq-input"
+              min="0"
+              :max="variantQty(v.id)"
+              :value="cuttingQtyFor(v.id)"
+              :disabled="disabled || variantQty(v.id) === 0"
+              @input="$emit('change-cutting-qty', v.id, $event.target.value)"
+            />
+            <button
+              type="button"
+              class="vq-btn"
+              :disabled="disabled || cuttingQtyFor(v.id) >= variantQty(v.id)"
+              @click="$emit('change-cutting-qty', v.id, cuttingQtyFor(v.id) + 1)"
+            >+</button>
+          </div>
+        </div>
+      </template>
+      <div v-else class="variant-qty-row">
+        <div class="variant-qty-info">
+          <span class="variant-qty-name">切分</span>
+        </div>
+        <div class="variant-qty-control">
+          <button
+            type="button"
+            class="vq-btn"
+            :disabled="disabled || cuttingQty === 0 || quantity === 0"
+            @click="$emit('change-cutting-qty', null, cuttingQty - 1)"
+          >-</button>
+          <input
+            type="number"
+            class="vq-input"
+            min="0"
+            :max="quantity"
+            :value="cuttingQty"
+            :disabled="disabled || quantity === 0"
+            @input="$emit('change-cutting-qty', null, $event.target.value)"
+          />
+          <button
+            type="button"
+            class="vq-btn"
+            :disabled="disabled || cuttingQty >= quantity"
+            @click="$emit('change-cutting-qty', null, cuttingQty + 1)"
+          >+</button>
+        </div>
+      </div>
+    </div>
+
     <Modal
       :show="showSubstituteInfo"
       type="info"
@@ -129,9 +199,12 @@ export default {
     variantId: { type: [Number, null], default: null },
     variantQuantities: { type: Object, default: () => ({}) },
     acceptSubstitute: { type: [Boolean, null], default: null },
+    quantity: { type: Number, default: 0 },
+    cuttingQty: { type: Number, default: 0 },
+    cuttingQuantities: { type: Object, default: () => ({}) },
     disabled: { type: Boolean, default: false }
   },
-  emits: ['update:variantId', 'update:acceptSubstitute', 'change-variant-qty'],
+  emits: ['update:variantId', 'update:acceptSubstitute', 'change-variant-qty', 'change-cutting-qty'],
   data() {
     return {
       showSubstituteInfo: false,
@@ -140,7 +213,16 @@ export default {
   },
   computed: {
     hasContent() {
-      return (this.variants && this.variants.length > 0) || !!this.substitute
+      return (this.variants && this.variants.length > 0) || !!this.substitute || this.offersCutting
+    },
+    offersCutting() {
+      return !!(this.product && this.product.cutting_enabled)
+    },
+    cuttingFeeLabel() {
+      if (!this.offersCutting) return null
+      const fee = parseFloat(this.product.cutting_fee)
+      if (!Number.isFinite(fee) || fee <= 0) return '免费'
+      return `+$${fee.toFixed(2)}/件`
     },
     substituteImage() {
       if (!this.substitute) return null
@@ -160,6 +242,10 @@ export default {
     },
     variantPriceLabel(v) {
       return formatVariantPriceLabel(this.product, v)
+    },
+    cuttingQtyFor(variantId) {
+      const raw = this.cuttingQuantities[variantId] ?? this.cuttingQuantities[String(variantId)]
+      return Math.max(0, parseInt(raw, 10) || 0)
     }
   }
 }
@@ -167,7 +253,8 @@ export default {
 
 <style scoped>
 .product-details,
-.substitute-section {
+.substitute-section,
+.cutting-section {
   margin: 0.25rem 0 0.5rem;
   padding: 0.5rem 0.75rem;
   border-radius: 12px;
@@ -183,7 +270,8 @@ export default {
     inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
-.substitute-section {
+.substitute-section,
+.cutting-section {
   background: linear-gradient(
     145deg,
     rgba(0, 0, 0, 0.02) 0%,

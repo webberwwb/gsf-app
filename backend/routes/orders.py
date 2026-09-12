@@ -11,19 +11,18 @@ from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, P
 from schemas.order import CreateOrderSchema, UpdateOrderSchema
 from schemas.utils import validate_request
 from decimal import Decimal
-from utils.stock_management import check_and_reserve_stock, restore_stock, update_stock_after_order_modification
+from utils.stock_management import check_and_reserve_stock, restore_stock
 from utils.sales_stats import update_product_sales_stats
+from utils.order_item_delta import apply_customer_item_delta
 from utils.order_item_pricing import (
     enrich_order_items,
     priced_items_from_request,
     create_order_item_rows,
-    restore_existing_line_weights,
 )
 from utils.query_batch import order_storefront_eager_options
 from utils.order_audit import (
     EVENT_CUSTOMER_ITEMS_REPLACE,
     active_items_for_order,
-    apply_item_sources_from_request,
     item_snapshot,
     record_order_audit,
 )
@@ -103,11 +102,23 @@ def _serialize_customer_order(order):
             'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
             'status': group_deal.status
         }
-        order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
+        order_dict.update(_customer_edit_flags(order, group_deal))
+    else:
+        order_dict.update(_customer_edit_flags(order, None))
     order_dict['items'] = enrich_order_items(order.items)
     if order.address:
         order_dict['address'] = order.address.to_dict()
     return order_dict
+
+
+def _customer_edit_flags(order, group_deal):
+    can_settings = OrderStatus.can_user_edit_settings(order.status)
+    can_products = OrderStatus.can_user_edit_products(order.status, group_deal)
+    return {
+        'can_edit_settings': can_settings,
+        'can_edit_products': can_products,
+        'is_editable': can_settings,
+    }
 
 
 @orders_bp.route('/orders', methods=['GET'])
@@ -221,7 +232,7 @@ def generate_order_number():
 
 @orders_bp.route('/orders', methods=['POST'])
 def create_order():
-    """Create a new order or update existing order for the same group deal"""
+    """Create a new order. Same user may have multiple orders on one deal."""
     user_id, error_response, status_code = require_auth()
     if error_response:
         return error_response, status_code
@@ -427,25 +438,8 @@ def cancel_order(order_id):
         
         current_app.logger.info(f'Order {order_id} cancelled by user {user_id}')
         
-        # Return updated order
-        order_dict = order.to_dict()
-        
-        # Get group deal info
-        order_dict['group_deal'] = {
-            'id': group_deal.id,
-            'title': group_deal.title,
-            'description': group_deal.description,
-            'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
-            'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
-            'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None
-        }
-        order_dict['is_editable'] = False  # Cancelled orders are not editable
-        
-        # Get order items with product details
-        order_dict['items'] = enrich_order_items(order.items)
-        
         return jsonify({
-            'order': order_dict,
+            'order': _serialize_customer_order(order),
             'message': 'Order cancelled successfully'
         }), 200
         
@@ -509,26 +503,8 @@ def reactivate_order(order_id):
         
         current_app.logger.info(f'Order {order_id} reactivated by user {user_id}')
         
-        # Return updated order
-        order_dict = order.to_dict()
-        
-        # Get group deal info
-        order_dict['group_deal'] = {
-            'id': group_deal.id,
-            'title': group_deal.title,
-            'description': group_deal.description,
-            'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
-            'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
-            'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
-            'status': group_deal.status
-        }
-        order_dict['is_editable'] = True  # Reactivated orders are editable
-        
-        # Get order items with product details
-        order_dict['items'] = enrich_order_items(order.items)
-        
         return jsonify({
-            'order': order_dict,
+            'order': _serialize_customer_order(order),
             'message': '订单已重新激活'
         }), 200
         
@@ -542,23 +518,20 @@ def reactivate_order(order_id):
 
 @orders_bp.route('/orders/<int:order_id>', methods=['PATCH'])
 def update_order(order_id):
-    """Update an existing order (only if still within order window)"""
+    """Customer update: settings-only omits items; item payload is an in-place delta."""
     user_id, error_response, status_code = require_auth()
     if error_response:
         return error_response, status_code
     
     try:
-        # Get the order
         order = Order.query.filter(Order.id == order_id).filter(Order.deleted_at.is_(None)).first()
         
         if not order:
             return jsonify({'error': 'Order not found'}), 404
         
-        # Check if user can access this order
         if not can_access_order(user_id, order):
             return jsonify({'error': 'Access denied'}), 403
         
-        # Get group deal for validation (excluding soft-deleted)
         group_deal = GroupDeal.query.filter(
             GroupDeal.id == order.group_deal_id,
             GroupDeal.deleted_at.is_(None)
@@ -566,21 +539,39 @@ def update_order(order_id):
         if not group_deal:
             return jsonify({'error': 'Group deal not found'}), 404
         
-        # Validate request data using schema
         validated_data, error_response, status_code = validate_request(UpdateOrderSchema)
         if error_response:
             return error_response, status_code
         
-        items = validated_data['items']
-        restore_existing_line_weights(items, order.items)
-        delivery_method = validated_data['delivery_method']
+        items = validated_data.get('items') or None
+        if items is not None and len(items) == 0:
+            items = None
+        wants_item_edit = items is not None
+
+        if wants_item_edit:
+            if not OrderStatus.can_user_edit_products(order.status, group_deal):
+                if order.status != OrderStatus.SUBMITTED.value:
+                    return jsonify({'error': '订单已确认，不可修改商品'}), 400
+                return jsonify({'error': '团购已截单，无法修改商品'}), 400
+        elif not OrderStatus.can_user_edit_settings(order.status):
+            if order.status == OrderStatus.CANCELLED.value:
+                return jsonify({'error': '订单已取消，无法修改'}), 400
+            if order.status == OrderStatus.COMPLETED.value:
+                return jsonify({'error': '订单已完成，无法修改'}), 400
+            return jsonify({'error': '订单无法修改'}), 400
+
+        delivery_method = validated_data.get('delivery_method') or order.delivery_method or DeliveryMethod.PICKUP.value
         address_id = validated_data.get('address_id')
+        if 'address_id' not in validated_data:
+            address_id = order.address_id
         pickup_location = validated_data.get('pickup_location')
         payment_method = validated_data.get('payment_method')
-        notes = validated_data.get('notes')  # User custom notes
+        notes = validated_data.get('notes')
         
         referral_raw = validated_data.get('referral_code')
         store_credit_raw = validated_data.get('store_credit_to_apply')
+        if store_credit_raw is None:
+            store_credit_raw = order.store_credit_applied
         
         user_row = User.query.filter_by(id=user_id).with_for_update().first()
         if not user_row:
@@ -592,57 +583,11 @@ def update_order(order_id):
                 db.session.rollback()
                 return jsonify({'error': err}), 400
         db.session.refresh(user_row)
-        
-        # Check if items are being changed by comparing with existing order items
-        existing_items = {(item.product_id, item.quantity) for item in order.items}
-        new_items = {(item_data['product_id'], item_data['quantity']) for item_data in items}
-        items_changed = existing_items != new_items
-        
-        # If items are being changed, we need to update stock
-        if items_changed:
-            # Prepare items lists for stock management
-            old_items_list = [{'product_id': item.product_id, 'quantity': item.quantity} for item in order.items]
-            new_items_list = [{'product_id': item_data['product_id'], 'quantity': item_data['quantity']} for item_data in items]
-            
-            # Check and update stock (with row-level locking for concurrency safety)
-            stock_available, error_msg = update_stock_after_order_modification(
-                order.group_deal_id, old_items_list, new_items_list
-            )
-            if not stock_available:
-                return jsonify({'error': error_msg}), 400
-        
-        # Check if delivery method is being changed
-        current_delivery_method = order.delivery_method or DeliveryMethod.PICKUP.value
-        delivery_method_changed = delivery_method != current_delivery_method
-        
-        # If items are being changed, enforce normal restrictions
-        if items_changed:
-            # User can only edit items if order status is 'submitted'
-            # Confirmed orders (including when group deal is closed) cannot edit products
-            if order.status != 'submitted':
-                return jsonify({'error': '订单已确认，不可修改商品'}), 400
-            
-            # Check if still within order window
-            now = utc_now()
-            if group_deal.order_end_date and group_deal.order_end_date < now:
-                return jsonify({'error': '团购已截单，无法修改商品'}), 400
-        
-        # If only delivery method or payment method is being changed, allow it even after deadline
-        # But still check order status - can't change if order is cancelled or completed
-        # Confirmed orders (including when group deal is closed) can still edit pickup/payment method
-        if (delivery_method_changed or payment_method) and not items_changed:
-            if order.status == 'cancelled':
-                return jsonify({'error': '订单已取消，无法修改'}), 400
-            if order.status == 'completed':
-                return jsonify({'error': '订单已完成，无法修改'}), 400
-            # Allow delivery/payment method update even after order_end_date or for confirmed orders
-        
-        # Verify address belongs to user if delivery method is selected
+
         if delivery_method == DeliveryMethod.DELIVERY.value:
             address = Address.query.filter_by(id=address_id, user_id=user_id).first()
             if not address:
                 return jsonify({'error': 'Address not found or does not belong to user'}), 404
-        user_row = User.query.get(user_id)
         already_delivery = order.delivery_method == DeliveryMethod.DELIVERY.value
         pay_err = payment_method_error(
             delivery_method,
@@ -652,22 +597,34 @@ def update_order(order_id):
             delivery_consented=bool(validated_data.get('delivery_consent')) or already_delivery,
         )
         if pay_err:
+            db.session.rollback()
             return jsonify({'error': pay_err}), 400
-        
-        unavailable_by_item_id = {item.id: item.is_unavailable for item in order.items}
-        try:
-            new_order_items, subtotal = priced_items_from_request(
-                items, unavailable_by_item_id, group_deal_id=order.group_deal_id, buyer_user_id=user_id
+
+        items_changed = False
+        if wants_item_edit:
+            items_before = [
+                item_snapshot(i, order.order_number) for i in active_items_for_order(order.id)
+            ]
+            items_changed, item_err = apply_customer_item_delta(
+                order, items, buyer_user_id=user_id
             )
-        except ValueError as e:
-            return jsonify({'error': str(e)}), 400
-
-        items_before = [
-            item_snapshot(i, order.order_number) for i in active_items_for_order(order.id)
-        ]
-        apply_item_sources_from_request(new_order_items, order.id, items)
-
-        OrderItem.soft_delete_for_order(order.id, db.session)
+            if item_err:
+                db.session.rollback()
+                return jsonify({'error': item_err}), 400
+            if items_changed:
+                items_after = [
+                    item_snapshot(i, order.order_number) for i in active_items_for_order(order.id)
+                ]
+                record_order_audit(
+                    order.id,
+                    EVENT_CUSTOMER_ITEMS_REPLACE,
+                    {
+                        'order_number': order.order_number,
+                        'items_before': items_before,
+                        'items_after': items_after,
+                    },
+                    actor_user_id=user_id,
+                )
 
         order.delivery_method = delivery_method
         order.address_id = address_id
@@ -681,62 +638,23 @@ def update_order(order_id):
             copy_user_card_to_order(order, user_row)
         order.updated_at = utc_now()
 
-        create_order_item_rows(order.id, new_order_items, db.session)
-        db.session.flush()
-
-        items_after = [
-            item_snapshot(i, order.order_number) for i in active_items_for_order(order.id)
-        ]
-        record_order_audit(
-            order.id,
-            EVENT_CUSTOMER_ITEMS_REPLACE,
-            {
-                'order_number': order.order_number,
-                'items_before': items_before,
-                'items_after': items_after,
-            },
-            actor_user_id=user_id,
-        )
-
         try:
             _apply_store_credit_and_recalc(order, user_row, store_credit_raw)
         except ValueError as e:
             db.session.rollback()
             return jsonify({'error': str(e)}), 400
         
-        # Commit transaction
         db.session.commit()
-        
-        # Refresh the order from database to ensure we have latest data
         db.session.refresh(order)
         
-        # Update product sales stats
-        try:
-            update_product_sales_stats(order)
-        except Exception as e:
-            current_app.logger.warning(f'Failed to update sales stats: {e}')
-        
-        # Return updated order
-        order_dict = order.to_dict()
-        
-        # Get group deal info
-        order_dict['group_deal'] = {
-            'id': group_deal.id,
-            'title': group_deal.title,
-            'description': group_deal.description,
-            'pickup_date': group_deal.pickup_date.isoformat() if group_deal.pickup_date else None,
-            'order_start_date': group_deal.order_start_date.isoformat() if group_deal.order_start_date else None,
-            'order_end_date': group_deal.order_end_date.isoformat() if group_deal.order_end_date else None,
-            'status': group_deal.status
-        }
-        # User can only edit/cancel when order status is 'submitted'
-        order_dict['is_editable'] = order.status == OrderStatus.SUBMITTED.value
-        
-        # Get order items with product details
-        order_dict['items'] = enrich_order_items(order.items)
+        if items_changed:
+            try:
+                update_product_sales_stats(order)
+            except Exception as e:
+                current_app.logger.warning(f'Failed to update sales stats: {e}')
         
         return jsonify({
-            'order': order_dict,
+            'order': _serialize_customer_order(order),
             'message': 'Order updated successfully'
         }), 200
         

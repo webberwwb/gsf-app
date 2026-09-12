@@ -163,6 +163,8 @@ class CreateProductSchema(Schema):
         validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']),
     )
     substitute_pricing_data = fields.Dict(allow_none=True)
+    cutting_enabled = fields.Boolean(missing=False)
+    cutting_fee = fields.Float(missing=0, validate=validate.Range(min=0))
     
     @validates('variants')
     def validate_variant_names_unique(self, value):
@@ -228,6 +230,8 @@ class UpdateProductSchema(Schema):
         validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']),
     )
     substitute_pricing_data = fields.Dict(allow_none=True)
+    cutting_enabled = fields.Boolean(allow_none=True)
+    cutting_fee = fields.Float(allow_none=True, validate=validate.Range(min=0))
     
     @validates('variants')
     def validate_variant_names_unique(self, value):

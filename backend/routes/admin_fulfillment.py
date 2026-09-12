@@ -7,14 +7,11 @@ from models import db
 from models.groupdeal import GroupDeal
 from models.order import Order
 from models.user import User
-from constants.status_enums import DeliveryHandler, DeliveryMethod, OrderStatus
+from constants.status_enums import OrderStatus, PaymentMethod, PaymentStatus
 from routes.admin import require_admin_auth
 from services import fulfillment_service
-from utils.order_payment import delivery_ship_blocked
-from utils.order_points import award_order_points
+from utils.order_payment import mark_order_paid, maybe_complete_order
 from services import influencer_service, referral_service
-from models.base import utc_now
-from constants.status_enums import PaymentMethod, PaymentStatus
 
 admin_fulfillment_bp = Blueprint('admin_fulfillment', __name__)
 
@@ -168,8 +165,6 @@ def mark_delivered(order_id):
     blocked = fulfillment_service.fulfillment_write_blocked(actor, deal)
     if blocked:
         return jsonify({'error': blocked}), 403
-    if delivery_ship_blocked(order, OrderStatus.COMPLETED.value):
-        return jsonify({'error': '配送订单未付款，不能标记送达'}), 400
     data = request.get_json() or {}
     photo_url = (data.get('photo_url') or '').strip() or None
     try:
@@ -178,18 +173,40 @@ def mark_delivered(order_id):
         return jsonify({'error': str(e)}), 400
 
     old_status = order.status
-    order.status = OrderStatus.COMPLETED.value
-    if (
-        order.delivery_method == DeliveryMethod.PICKUP.value
-        and order.payment_method == PaymentMethod.CASH.value
-        and order.payment_status == PaymentStatus.UNPAID.value
-    ):
-        order.payment_status = PaymentStatus.PAID.value
-        order.payment_date = utc_now()
-        award_order_points(order, order.user)
+    if order.payment_status == PaymentStatus.PAID.value:
+        order.status = OrderStatus.COMPLETED.value
+    else:
+        order.status = OrderStatus.DELIVERED.value
     if order.payment_status == PaymentStatus.PAID.value:
         influencer_service.accrue_for_order(order)
     referral_service.on_order_first_completed(order, old_status)
+    db.session.commit()
+    return jsonify({'order': fulfillment_service._delivery_order_payload(order, actor, deal)}), 200
+
+
+@admin_fulfillment_bp.route('/fulfillment/orders/<int:order_id>/mark-cash-received', methods=['POST'])
+def mark_cash_received(order_id):
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
+    if error_response:
+        return error_response, status_code
+    actor = _user(user_id)
+    order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first()
+    if not order:
+        return jsonify({'error': '订单不存在'}), 404
+    deal = order.group_deal
+    blocked = fulfillment_service.fulfillment_write_blocked(actor, deal)
+    if blocked:
+        return jsonify({'error': blocked}), 403
+    if order.payment_method != PaymentMethod.CASH.value:
+        return jsonify({'error': '仅现金订单可以标记已收款'}), 400
+    if order.payment_status == PaymentStatus.PAID.value:
+        old_status = order.status
+        maybe_complete_order(order)
+        referral_service.on_order_first_completed(order, old_status)
+        influencer_service.accrue_for_order(order)
+        db.session.commit()
+        return jsonify({'order': fulfillment_service._delivery_order_payload(order, actor, deal)}), 200
+    mark_order_paid(order)
     db.session.commit()
     return jsonify({'order': fulfillment_service._delivery_order_payload(order, actor, deal)}), 200
 

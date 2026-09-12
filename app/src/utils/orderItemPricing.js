@@ -24,6 +24,7 @@ export function toCheckoutLineDisplay(item, product) {
     variant_name: variantName,
     variant: variantName ? { name: variantName } : null,
     accept_substitute: item.accept_substitute,
+    cutting: !!item.cutting,
     show_substitute_preference: productRequiresSubstituteChoice(product || {}),
     substitute_name: product?.substitute?.name,
     price_display: priceDisplay,

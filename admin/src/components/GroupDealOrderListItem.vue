@@ -204,6 +204,7 @@ export default {
         'ready_for_pickup': '可取货',
         'out_for_delivery': '配送中',
         'delivering': '配送中',
+        'delivered': '已送达',
         'completed': '已完成',
         'cancelled': '已取消'
       }
@@ -389,6 +390,7 @@ export default {
   color: #2E7D32;
 }
 
+.status-delivered,
 .status-delivering,
 .status-out_for_delivery {
   background: #E1F5FE;

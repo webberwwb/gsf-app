@@ -191,6 +191,7 @@ const ORDER_STATUS_LABELS = {
   ready_for_pickup: '可以取货',
   out_for_delivery: '正在配送',
   delivering: '正在配送',
+  delivered: '已送达',
   completed: '订单完成',
   cancelled: '已取消'
 }

@@ -39,7 +39,8 @@
           <option value="preparing">正在配货</option>
           <option value="packing_complete">配货完成</option>
           <option value="ready_for_pickup">可以取货</option>
-          <option value="delivering">正在配送</option>
+          <option value="out_for_delivery">正在配送</option>
+          <option value="delivered">已送达</option>
           <option value="completed">订单完成</option>
           <option value="cancelled">已取消</option>
         </select>
@@ -427,6 +428,7 @@ export default {
         this.selectedOrder = updatedOrder
         
         await this.success('订单已更新')
+        await this.loadAvailableProducts()
         
         // Close the modal
         this.closeOrderDetail()
@@ -828,6 +830,7 @@ export default {
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
         'delivering': '正在配送', // Legacy fallback
+        'delivered': '已送达',
         'completed': '订单完成',
         'cancelled': '已取消'
       }
@@ -1237,6 +1240,7 @@ export default {
   color: #2E7D32;
 }
 
+.status-delivered,
 .status-delivering {
   background: #E1F5FE;
   color: #0277BD;

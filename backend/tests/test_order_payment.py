@@ -174,6 +174,10 @@ def test_mark_order_paid_awards_points_and_completes(app, db_session):
     db_session.flush()
 
     assert order.payment_status == PaymentStatus.PAID.value
+    assert order.status == OrderStatus.PREPARING.value
+    order.status = OrderStatus.DELIVERED.value
+    from utils.order_payment import maybe_complete_order
+    maybe_complete_order(order)
     assert order.status == OrderStatus.COMPLETED.value
     assert order.payment_transaction_id == 'pi_test'
     assert order.stripe_amount_charged == Decimal('20.00')

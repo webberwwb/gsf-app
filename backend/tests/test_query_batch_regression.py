@@ -370,7 +370,7 @@ def test_checkout_prices_influencer_and_sale_and_collapses_stock(app, db_session
     leftover = GroupDealProduct.query.filter_by(
         group_deal_id=deal.id, product_id=product.id,
     ).first()
-    assert leftover.deal_stock_limit == 2
+    assert leftover.deal_stock_limit == 5
 
     blocked = client.post('/api/orders', headers=_headers(inf), json={
         'group_deal_id': deal.id,

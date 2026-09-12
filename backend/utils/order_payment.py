@@ -7,15 +7,40 @@ from utils.order_points import award_order_points
 from services import referral_service, influencer_service
 
 
+def order_was_delivered(order):
+    """True after the driver marked 已送达 (or the order already completed)."""
+    if getattr(order, 'delivered_at', None):
+        return True
+    return getattr(order, 'status', None) in (
+        OrderStatus.DELIVERED.value,
+        OrderStatus.COMPLETED.value,
+    )
+
+
+def maybe_complete_order(order):
+    """Complete only when payment is in and fulfillment is done.
+
+    Delivery: 已送达 + paid (cash received or already paid online).
+    Pickup: paid is enough (existing checkout / counter flow).
+    """
+    if getattr(order, 'payment_status', None) != PaymentStatus.PAID.value:
+        return False
+    if getattr(order, 'delivery_method', None) == DeliveryMethod.DELIVERY.value:
+        if not order_was_delivered(order):
+            return False
+    order.status = OrderStatus.COMPLETED.value
+    return True
+
+
 def mark_order_paid(order, transaction_id=None, amount_charged=None):
-    """Flip unpaid → paid, award points, complete the order. Idempotent if already paid."""
+    """Flip unpaid → paid and award points. Completes only when also fulfilled."""
     old_status = order.status
     if order.payment_status != PaymentStatus.PAID.value:
         user = User.query.get(order.user_id)
         award_order_points(order, user)
         order.payment_status = PaymentStatus.PAID.value
         order.payment_date = utc_now()
-        order.status = OrderStatus.COMPLETED.value
+        maybe_complete_order(order)
     if transaction_id:
         order.payment_transaction_id = transaction_id
     if amount_charged is not None:

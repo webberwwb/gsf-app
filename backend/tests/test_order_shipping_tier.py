@@ -24,6 +24,11 @@ def test_shipping_tier_base_credit_and_discount():
     assert base == Decimal('70.00')
 
 
+def test_shipping_tier_base_excludes_cutting_fees():
+    base = shipping_tier_base_from_parts(151, credit=0, adjustment=0, cutting_fees=3)
+    assert base == Decimal('148.00')
+
+
 def test_shipping_tier_base_ignores_penalty():
     base = shipping_tier_base_from_parts(100, credit=0, adjustment=15)
     assert base == Decimal('100.00')

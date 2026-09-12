@@ -3,6 +3,7 @@ Shipping fee calculation utilities
 """
 from decimal import Decimal
 from utils.money import round_money
+from utils.cutting import line_product_amount
 
 
 def get_delivery_fee_config():
@@ -65,12 +66,13 @@ def adjustment_discount(adjustment) -> Decimal:
     return min(adj, Decimal('0'))
 
 
-def shipping_tier_base_from_parts(subtotal, credit=0, adjustment=0) -> Decimal:
-    """max(0, subtotal - credit + adjustment_discount)."""
+def shipping_tier_base_from_parts(subtotal, credit=0, adjustment=0, cutting_fees=0) -> Decimal:
+    """max(0, subtotal - cutting_fees - credit + adjustment_discount)."""
     sub = Decimal(str(subtotal or 0))
+    cut = Decimal(str(cutting_fees or 0))
     cr = Decimal(str(credit or 0))
     disc = adjustment_discount(adjustment)
-    return round_money(max(Decimal('0'), sub - cr + disc))
+    return round_money(max(Decimal('0'), sub - cut - cr + disc))
 
 
 def _line_total_price(item) -> Decimal:
@@ -108,7 +110,7 @@ def eligible_tier_subtotal_from_items(order_items, tier_base) -> Decimal:
 
     gross = Decimal('0')
     for item in order_items:
-        gross += _line_total_price(item)
+        gross += line_product_amount(item, _line_total_price(item))
     if gross <= 0:
         return Decimal('0')
 
@@ -118,7 +120,7 @@ def eligible_tier_subtotal_from_items(order_items, tier_base) -> Decimal:
         product = _product_for_item(item)
         if product is not None and not product.counts_toward_free_shipping:
             continue
-        line = _line_total_price(item)
+        line = line_product_amount(item, _line_total_price(item))
         eligible += (line / gross) * base
     return round_money(eligible)
 

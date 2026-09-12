@@ -1,4 +1,4 @@
-import { formatOrderMoney2, orderAmountDueNumber } from './orderPricing'
+import { deliveryPayKind, deliveryPayText, shouldCollectCash } from './deliveryPay'
 import { routeSeqLabel, sortSelfDeliveryOrders } from './deliveryRoute'
 
 const LABELS_PER_PAGE = 18
@@ -32,22 +32,14 @@ function addressLines(address) {
   return lines.length ? lines : ['无地址']
 }
 
-function collectCash(order) {
-  return order?.payment_method === 'cash' && order?.payment_status !== 'paid'
-}
-
 function renderLabel(order, index, date, logoUrl) {
   const seq = routeSeqLabel(order, index)
-  const cash = collectCash(order)
-  const due = formatOrderMoney2(orderAmountDueNumber(order))
+  const cash = shouldCollectCash(order)
   const phone = order?.address?.phone || ''
   const lines = addressLines(order?.address)
     .map((line) => `<div class="addr">${escapeHtml(line)}</div>`)
     .join('')
-  const prepaidLabel = order?.payment_method === 'cash' ? '不用收' : '线上支付'
-  const payRow = cash
-    ? `<div class="pay-bar cash">收现金 $${escapeHtml(due)}</div>`
-    : `<div class="pay-bar prepaid">${prepaidLabel}</div>`
+  const payRow = `<div class="pay-bar ${deliveryPayKind(order)}">${escapeHtml(deliveryPayText(order))}</div>`
 
   return `<article class="label ${cash ? 'cash' : 'prepaid'}">
     <header class="row brand-row">

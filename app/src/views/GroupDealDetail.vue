@@ -369,7 +369,7 @@
                 </div>
                 <template v-else>
                 <ProductDetailsSection
-                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
+                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled || product.cutting_enabled"
                   :product="product"
                   :product-id="product.id"
                   :variants="product.variants || []"
@@ -386,9 +386,13 @@
                   :variant-id="getSelection(product).variant_id"
                   :variant-quantities="getSelection(product).variant_quantities || {}"
                   :accept-substitute="getSelection(product).accept_substitute"
+                  :quantity="getQuantity(product)"
+                  :cutting-qty="getSelection(product).cutting_qty || 0"
+                  :cutting-quantities="getSelection(product).cutting_quantities || {}"
                   :disabled="!isOrderEditable || isOutOfStock(product)"
                   @update:accept-substitute="(v) => setAcceptSubstitute(product, v)"
                   @change-variant-qty="(variantId, qty) => setVariantQuantity(product, variantId, qty)"
+                  @change-cutting-qty="(variantId, qty) => setCuttingQuantity(product, variantId, qty)"
                 />
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
@@ -499,9 +503,9 @@
     <!-- Fixed Bottom Bar -->
     <div v-if="deal && hasSelectedItems()" class="bottom-bar">
       <div class="total-info">
-        <span class="total-label">{{ isOrderCompleted ? '最终价格' : (hasEstimatedTotal() ? '预估总计' : '总计') }}:</span>
+        <span class="total-label">{{ hasEstimatedTotal() ? '预估总计' : '总计' }}:</span>
         <span class="total-amount">${{ calculateTotal().total }}</span>
-        <span v-if="hasEstimatedTotal() && !isOrderCompleted" class="estimated-note">(估算)</span>
+        <span v-if="hasEstimatedTotal()" class="estimated-note">(估算)</span>
       </div>
       <button @click="goToCheckout" class="confirm-order-btn" :disabled="!isOrderEditable">
         <span class="btn-main">去结算</span>
@@ -549,6 +553,9 @@ import {
   getSelectionQuantity,
   getVariantQuantity,
   setVariantQuantity as applyVariantQuantity,
+  setCuttingQuantity as applyCuttingQuantity,
+  catalogCuttingFee,
+  splitSelectionIntoOrderLines,
   emptyProductSelection,
   productRequiresSubstituteChoice
 } from '../utils/orderItemPricing'
@@ -1051,9 +1058,6 @@ export default {
     getStatusLabel(status) {
       return getGroupDealStatusLabel(status)
     },
-    isOrderCompleted() {
-      return false // This is for the deal detail page, not order completion
-    },
     getQuantity(product) {
       return getSelectionQuantity(this.getSelection(product))
     },
@@ -1076,6 +1080,7 @@ export default {
 
       const sel = this.getSelection(product)
       sel.quantity = finalQty
+      this.selectedItems[product.id] = applyCuttingQuantity(sel, sel.cutting_qty, null)
     },
     increaseQuantity(product) {
       if (this.isOutOfStock(product)) {
@@ -1129,44 +1134,40 @@ export default {
     setAcceptSubstitute(product, value) {
       this.getSelection(product).accept_substitute = value
     },
+    setCuttingQuantity(product, variantId, qty) {
+      if (this.isOutOfStock(product)) return
+      const sel = this.getSelection(product)
+      this.selectedItems[product.id] = applyCuttingQuantity(sel, qty, variantId)
+    },
     quantityBreakHint(product) {
       return formatQuantityBreakHint(product)
     },
     calculateItemTotal(product) {
       const sel = this.getSelection(product)
-      const variants = product.variants || []
-      if (variants.length) {
-        let pooled = 0
-        for (const v of variants) pooled += getVariantQuantity(sel, v.id)
-        if (pooled === 0) return '0.00'
-        let total = 0
-        for (const v of variants) {
-          const qty = getVariantQuantity(sel, v.id)
-          if (qty <= 0) continue
-          total += estimateSelectionTotal(product, qty, {
-            variant_id: v.id,
-            product_qty: pooled
-          })
-        }
-        return formatMoney(total)
-      }
       const pooled = getSelectionQuantity(sel)
       if (pooled === 0) return '0.00'
-      const { totalPrice } = estimateLinePrice(product, {
-        quantity: pooled,
-        variant_id: sel.variant_id,
-        product_qty: pooled
-      })
-      return formatMoney(totalPrice)
+      let total = 0
+      for (const part of splitSelectionIntoOrderLines(product, sel)) {
+        total += estimateSelectionTotal(product, part.quantity, {
+          variant_id: part.variant_id,
+          product_qty: pooled,
+          cutting: part.cutting
+        })
+      }
+      return formatMoney(total)
     },
     calculateBundledItemTotal(product) {
       const sel = this.getSelection(product)
       const pooled = getSelectionQuantity(sel)
       if (pooled === 0) return '$0.00'
-      const total = estimateSelectionTotal(product, pooled, {
-        variant_id: sel.variant_id,
-        product_qty: pooled
-      })
+      let total = 0
+      for (const part of splitSelectionIntoOrderLines(product, sel)) {
+        total += estimateSelectionTotal(product, part.quantity, {
+          variant_id: part.variant_id,
+          product_qty: pooled,
+          cutting: part.cutting
+        })
+      }
       return formatMoneyDisplay(total)
     },
     calculateTotal() {
@@ -1205,33 +1206,27 @@ export default {
 
         const isEstimated = ['weight_range', 'unit_weight', 'bundled_weight'].includes(product.pricing_type)
         const variants = product.variants || []
-        const pushLine = (qty, variantId) => {
-          const variant = variants.find((v) => v.id === variantId)
+        for (const part of splitSelectionIntoOrderLines(product, selection)) {
+          const variant = variants.find((v) => v.id === part.variant_id)
           const { totalPrice } = estimateLinePrice(product, {
-            quantity: qty,
-            variant_id: variantId,
-            product_qty: pooled
+            quantity: part.quantity,
+            variant_id: part.variant_id,
+            product_qty: pooled,
+            cutting: part.cutting
           })
           orderItems.push({
             product_id: product.id,
-            quantity: qty,
+            quantity: part.quantity,
             pricing_type: product.pricing_type,
-            variant_id: variantId || undefined,
+            variant_id: part.variant_id || undefined,
             variant_name: variant?.name || undefined,
             accept_substitute: selection.accept_substitute,
+            cutting: part.cutting,
+            cutting_fee: part.cutting ? catalogCuttingFee(product) : 0,
             estimated_price: formatMoney(totalPrice),
             is_estimated: isEstimated,
             counts_toward_free_shipping: product.counts_toward_free_shipping !== false
           })
-        }
-
-        if (variants.length) {
-          for (const variant of variants) {
-            const qty = getVariantQuantity(selection, variant.id)
-            if (qty > 0) pushLine(qty, variant.id)
-          }
-        } else {
-          pushLine(pooled, selection.variant_id)
         }
       }
       
@@ -1243,11 +1238,6 @@ export default {
       // Store data in Pinia store for checkout page
       this.checkoutStore.setDeal(this.deal)
       this.checkoutStore.setOrderItems(orderItems)
-      
-      // Clear existing order data - always create new order
-      this.checkoutStore.setExistingOrder(null, null, null)
-      
-      // Navigate to checkout page - it will use the store data
       this.$router.push('/checkout')
     },
     openProductModal(product) {

@@ -65,25 +65,26 @@
           <span class="lane-count">{{ plan.third_party.length }}</span>
         </button>
       </div>
+      <div class="mobile-cash-banner" :class="{ due: activeLaneCash.count }">{{ activeLaneCash.text }}</div>
 
       <div class="lane-grid">
         <section class="lane" :class="{ 'is-active': activeLane === 'unassigned' }">
           <div class="lane-header">
             <h3>未分配</h3>
+            <span class="lane-cash" :class="{ due: unassignedCash.count }">{{ unassignedCash.text }}</span>
             <span class="lane-count">{{ plan.unassigned.length }}</span>
           </div>
           <div v-if="!plan.unassigned.length" class="lane-empty">暂无</div>
-          <article v-for="order in plan.unassigned" :key="order.id" class="order-card">
+          <article v-for="order in plan.unassigned" :key="order.id" class="order-card" :class="payCardClass(order)">
             <div class="order-top">
               <h4 class="customer-name">{{ displayName(order) }}</h4>
-              <span class="payment-badge" :class="paymentClass(order)">{{ paymentLabel(order) }}</span>
             </div>
             <AddressDetails class="address" :address="order.address" />
             <p v-if="displayContact(order)" class="contact">
               <a v-if="accountPhone(order)" class="tel-link" :href="`tel:${accountPhone(order)}`">账号 {{ accountPhone(order) }}</a>
               <span v-if="order.user?.wechat">微信 {{ order.user.wechat }}</span>
             </p>
-            <p class="total">${{ formatMoney(order.final_total) }}</p>
+            <DeliveryPayBar :order="order" />
             <p class="items">{{ itemSummary(order) }}</p>
             <div v-if="canEdit" class="card-actions">
               <button class="add-btn compact" @click="assign(order, 'self')">我来送</button>
@@ -95,21 +96,22 @@
         <section class="lane lane-self" :class="{ 'is-active': activeLane === 'self' }">
           <div class="lane-header">
             <h3>我来送</h3>
+            <span class="lane-cash" :class="{ due: selfCash.count }">{{ selfCash.text }}</span>
             <span class="lane-count">{{ plan.self.length }}</span>
           </div>
           <div v-if="!plan.self.length" class="lane-empty">把要自己送的订单点到这里，再调整顺序</div>
-          <article v-for="(order, index) in plan.self" :key="order.id" class="order-card">
+          <article v-for="(order, index) in plan.self" :key="order.id" class="order-card" :class="payCardClass(order)">
             <div class="order-top">
               <span class="route-seq">{{ routeSeqLabel(order, index) }}</span>
               <h4 class="customer-name">{{ displayName(order) }}</h4>
-              <span class="payment-badge" :class="paymentClass(order)">{{ paymentLabel(order) }}</span>
+              <span v-if="orderStatusChip(order)" class="status-chip" :class="order.status">{{ orderStatusChip(order) }}</span>
             </div>
             <AddressDetails class="address" :address="order.address" />
             <p v-if="displayContact(order)" class="contact">
               <a v-if="accountPhone(order)" class="tel-link" :href="`tel:${accountPhone(order)}`">账号 {{ accountPhone(order) }}</a>
               <span v-if="order.user?.wechat">微信 {{ order.user.wechat }}</span>
             </p>
-            <p class="total">${{ formatMoney(order.final_total) }}</p>
+            <DeliveryPayBar :order="order" />
             <p class="items">{{ itemSummary(order) }}</p>
             <div v-if="photoUrl(order)" class="photo-review">
               <button type="button" class="photo-preview" @click="viewingPhoto = photoUrl(order)">
@@ -140,12 +142,21 @@
                 <input type="file" accept="image/*" capture="environment" :disabled="uploadingId === order.id" @change="onPhoto($event, order)" />
               </label>
               <button
-                v-if="canEdit"
+                v-if="canMarkDelivered(order)"
                 class="add-btn compact"
                 :disabled="savingId === order.id"
                 @click="markDelivered(order)"
               >
-                {{ savingId === order.id ? '提交中...' : '已送达' }}
+                {{ savingId === order.id && savingAction === 'delivered' ? '提交中...' : '确认送达' }}
+              </button>
+              <button
+                v-if="canEdit"
+                class="cash-btn"
+                :class="{ placeholder: !canMarkCash(order) }"
+                :disabled="!canMarkCash(order) || savingId === order.id"
+                @click="markCashReceived(order)"
+              >
+                {{ cashButtonLabel(order) }}
               </button>
             </div>
           </article>
@@ -154,20 +165,21 @@
         <section class="lane" :class="{ 'is-active': activeLane === 'third_party' }">
           <div class="lane-header">
             <h3>第三方</h3>
+            <span class="lane-cash" :class="{ due: thirdPartyCash.count }">{{ thirdPartyCash.text }}</span>
             <span class="lane-count">{{ plan.third_party.length }}</span>
           </div>
           <div v-if="!plan.third_party.length" class="lane-empty">远单可交给第三方</div>
-          <article v-for="order in plan.third_party" :key="order.id" class="order-card">
+          <article v-for="order in plan.third_party" :key="order.id" class="order-card" :class="payCardClass(order)">
             <div class="order-top">
               <h4 class="customer-name">{{ displayName(order) }}</h4>
-              <span class="payment-badge" :class="paymentClass(order)">{{ paymentLabel(order) }}</span>
+              <span v-if="orderStatusChip(order)" class="status-chip" :class="order.status">{{ orderStatusChip(order) }}</span>
             </div>
             <AddressDetails class="address" :address="order.address" />
             <p v-if="displayContact(order)" class="contact">
               <a v-if="accountPhone(order)" class="tel-link" :href="`tel:${accountPhone(order)}`">账号 {{ accountPhone(order) }}</a>
               <span v-if="order.user?.wechat">微信 {{ order.user.wechat }}</span>
             </p>
-            <p class="total">${{ formatMoney(order.final_total) }}</p>
+            <DeliveryPayBar :order="order" />
             <p v-if="order.third_party_note" class="note">承运: {{ order.third_party_note }}</p>
             <p class="items">{{ itemSummary(order) }}</p>
             <div v-if="photoUrl(order)" class="photo-review">
@@ -191,8 +203,22 @@
                 {{ photoUrl(order) ? '重拍' : '拍照' }}
                 <input type="file" accept="image/*" capture="environment" :disabled="uploadingId === order.id" @change="onPhoto($event, order)" />
               </label>
-              <button v-if="canEdit" class="add-btn compact" :disabled="savingId === order.id" @click="markDelivered(order)">
-                已送达
+              <button
+                v-if="canMarkDelivered(order)"
+                class="add-btn compact"
+                :disabled="savingId === order.id"
+                @click="markDelivered(order)"
+              >
+                {{ savingId === order.id && savingAction === 'delivered' ? '提交中...' : '确认送达' }}
+              </button>
+              <button
+                v-if="canEdit"
+                class="cash-btn"
+                :class="{ placeholder: !canMarkCash(order) }"
+                :disabled="!canMarkCash(order) || savingId === order.id"
+                @click="markCashReceived(order)"
+              >
+                {{ cashButtonLabel(order) }}
               </button>
             </div>
           </article>
@@ -229,17 +255,19 @@
 
 <script>
 import apiClient from '../api/client'
-import { formatOrderMoney2 } from '../utils/orderPricing'
+import { cashDueSummary, deliveryPayKind, deliveryPayText, shouldCollectCash } from '../utils/deliveryPay'
+import { isOrderPhysicallyDelivered, OrderStatus } from '@shared/status-enums.js'
 import { routeSeqLabel, sortSelfDeliveryOrders } from '../utils/deliveryRoute'
 import { printSelfDeliveryLabels } from '../utils/printDeliveryLabels'
 import { useModal } from '../composables/useModal'
 import PageLoading from '../components/PageLoading.vue'
 import ImageLightbox from '../components/ImageLightbox.vue'
 import AddressDetails from '../components/AddressDetails.vue'
+import DeliveryPayBar from '../components/DeliveryPayBar.vue'
 
 export default {
   name: 'DeliveryPlanning',
-  components: { PageLoading, ImageLightbox, AddressDetails },
+  components: { PageLoading, ImageLightbox, AddressDetails, DeliveryPayBar },
   setup() {
     const { confirm, success, error: showError } = useModal()
     return { confirm, success, showError }
@@ -252,6 +280,7 @@ export default {
       loading: false,
       error: null,
       savingId: null,
+      savingAction: '',
       photoByOrder: {},
       viewingPhoto: '',
       uploadingId: null,
@@ -276,6 +305,20 @@ export default {
     },
     hasLoadedPlan() {
       return Boolean(this.plan.deal)
+    },
+    unassignedCash() {
+      return cashDueSummary(this.plan.unassigned)
+    },
+    selfCash() {
+      return cashDueSummary(this.plan.self)
+    },
+    thirdPartyCash() {
+      return cashDueSummary(this.plan.third_party)
+    },
+    activeLaneCash() {
+      if (this.activeLane === 'self') return this.selfCash
+      if (this.activeLane === 'third_party') return this.thirdPartyCash
+      return this.unassignedCash
     }
   },
   mounted() {
@@ -295,7 +338,8 @@ export default {
         submitted: '已提交',
         confirmed: '已确认',
         packing_complete: '配货完成',
-        out_for_delivery: '正在配送'
+        out_for_delivery: '正在配送',
+        delivered: '已送达'
       }
       return labels[status] || status
     },
@@ -319,21 +363,29 @@ export default {
     displayContact(order) {
       return this.accountPhone(order) || order.user?.wechat || ''
     },
-    formatMoney(value) {
-      return formatOrderMoney2(value || 0)
+    payCardClass(order) {
+      return deliveryPayKind(order)
     },
-    paymentLabel(order) {
-      if (order.payment_status === 'paid') return '已付款'
-      if (order.payment_status === 'refunded') return '已退款'
-      if (order.payment_status === 'failed') return '支付失败'
-      if (order.payment_method === 'card') return '已绑卡'
-      return '未付款'
+    isDelivered(order) {
+      return isOrderPhysicallyDelivered(order)
     },
-    paymentClass(order) {
-      if (order.payment_status === 'paid') return 'paid'
-      if (order.payment_status === 'refunded' || order.payment_status === 'failed') return 'failed'
-      if (order.payment_method === 'card') return 'card'
-      return 'unpaid'
+    isCompleted(order) {
+      return order.status === OrderStatus.COMPLETED
+    },
+    canMarkDelivered(order) {
+      return this.canEdit && !this.isDelivered(order)
+    },
+    canMarkCash(order) {
+      return this.canEdit && shouldCollectCash(order)
+    },
+    cashButtonLabel(order) {
+      if (this.savingId === order.id && this.savingAction === 'cash') return '提交中...'
+      return this.canMarkCash(order) ? '确认收款' : '无需收款'
+    },
+    orderStatusChip(order) {
+      if (this.isCompleted(order)) return '已完成'
+      if (order.status === OrderStatus.DELIVERED || order.delivered_at) return '已送达'
+      return ''
     },
     photoUrl(order) {
       return this.photoByOrder[order.id] || order.delivery_photo_url || ''
@@ -356,7 +408,12 @@ export default {
       if (this.viewingPhoto) this.viewingPhoto = ''
     },
     itemSummary(order) {
-      return (order.items || []).map((i) => `${i.name}${i.variant_name ? ' / ' + i.variant_name : ''} x${i.quantity}`).join('、')
+      return (order.items || []).map((i) => {
+        const bits = [i.name]
+        if (i.variant_name) bits.push(i.variant_name)
+        if (i.cutting) bits.push('切分')
+        return `${bits.join(' / ')} x${i.quantity}`
+      }).join('、')
     },
     async loadDeals() {
       this.loading = true
@@ -518,16 +575,36 @@ export default {
       const ok = await this.confirm('确认该订单已送达？', { type: 'warning' })
       if (!ok) return
       this.savingId = order.id
+      this.savingAction = 'delivered'
       try {
-        await apiClient.post(`/admin/fulfillment/orders/${order.id}/mark-delivered`, {
+        const res = await apiClient.post(`/admin/fulfillment/orders/${order.id}/mark-delivered`, {
           photo_url: photo || null
         })
-        await this.success('已标记送达')
+        const next = res.data?.order || {}
+        await this.success(next.status === OrderStatus.COMPLETED ? '已送达，订单已完成' : '已标记送达')
         await this.loadPlan()
       } catch (e) {
         await this.showError(e.response?.data?.error || '标记失败')
       } finally {
         this.savingId = null
+        this.savingAction = ''
+      }
+    },
+    async markCashReceived(order) {
+      const ok = await this.confirm(`确认已收到现金 ${deliveryPayText(order).replace('收现金 ', '')}？`, { type: 'warning' })
+      if (!ok) return
+      this.savingId = order.id
+      this.savingAction = 'cash'
+      try {
+        const res = await apiClient.post(`/admin/fulfillment/orders/${order.id}/mark-cash-received`)
+        const next = res.data?.order || {}
+        await this.success(next.status === OrderStatus.COMPLETED ? '已收款，订单已完成' : '已标记收款')
+        await this.loadPlan()
+      } catch (e) {
+        await this.showError(e.response?.data?.error || '标记收款失败')
+      } finally {
+        this.savingId = null
+        this.savingAction = ''
       }
     },
     async printLabels() {
@@ -621,6 +698,9 @@ export default {
 .lane-tabs {
   display: none;
 }
+.mobile-cash-banner {
+  display: none;
+}
 .lane-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -645,7 +725,25 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-spacing-sm);
   margin-bottom: var(--md-spacing-md);
+}
+.lane-cash {
+  margin-left: auto;
+  font-size: var(--md-label-size);
+  font-weight: 600;
+  color: #1b5e20;
+  background: #e8f5e9;
+  border: 1px solid #2e7d32;
+  border-radius: var(--md-radius-xl);
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+.lane-cash.due {
+  color: #fff;
+  background: #b71c1c;
+  border-color: #b71c1c;
 }
 .lane-header h3 {
   margin: 0;
@@ -671,6 +769,14 @@ export default {
 }
 .order-card:last-child {
   margin-bottom: 0;
+}
+.order-card.cash {
+  border: 1.5px solid #b71c1c;
+  background: #fff4f2;
+}
+.order-card.prepaid {
+  border: 1px solid #2e7d32;
+  background: #f3f8f3;
 }
 .order-top {
   display: flex;
@@ -700,6 +806,39 @@ export default {
   justify-content: center;
   font-size: 12px;
 }
+.status-chip {
+  flex-shrink: 0;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--md-radius-xl);
+  font-size: 12px;
+  font-weight: 600;
+  background: #FFF3E0;
+  color: #E65100;
+}
+.status-chip.delivered {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+.status-chip.completed {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+.cash-btn {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  border-radius: var(--md-radius-sm);
+  padding: 0.4rem 0.75rem;
+  font-size: var(--md-label-size);
+  font-weight: 600;
+  cursor: pointer;
+}
+.cash-btn.placeholder,
+.cash-btn:disabled.placeholder {
+  background: #e0e0e0;
+  color: #9e9e9e;
+  cursor: not-allowed;
+}
 .address, .contact, .items, .note {
   margin: 0.35rem 0 0;
   color: var(--md-on-surface-variant);
@@ -716,34 +855,6 @@ export default {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-}
-.total {
-  margin: 0.4rem 0 0;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--md-on-surface);
-}
-.payment-badge {
-  display: inline-block;
-  padding: 0.15rem 0.55rem;
-  border-radius: var(--md-radius-xl);
-  font-size: 12px;
-  font-weight: 500;
-  flex-shrink: 0;
-  background: #FFF3E0;
-  color: #E65100;
-}
-.payment-badge.paid {
-  background: #E8F5E9;
-  color: #2E7D32;
-}
-.payment-badge.card {
-  background: #E3F2FD;
-  color: #1565C0;
-}
-.payment-badge.failed {
-  background: #FFEBEE;
-  color: #C62828;
 }
 .tel-link {
   display: inline-flex;
@@ -975,6 +1086,23 @@ export default {
   .lane-header {
     display: none;
   }
+  .mobile-cash-banner {
+    display: block;
+    margin: 0 0 var(--md-spacing-md);
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1b5e20;
+    background: #e8f5e9;
+    border: 1px solid #2e7d32;
+    border-radius: var(--md-radius-md);
+    padding: 0.45rem 0.75rem;
+  }
+  .mobile-cash-banner.due {
+    color: #fff;
+    background: #b71c1c;
+    border-color: #b71c1c;
+  }
   .deal-select {
     max-width: none;
   }
@@ -987,7 +1115,7 @@ export default {
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
   }
-  .add-btn, .ghost-btn, .photo-btn {
+  .add-btn, .ghost-btn, .photo-btn, .cash-btn {
     min-height: 44px;
     width: 100%;
     justify-content: center;

@@ -5,6 +5,7 @@ from utils.image_urls import public_image_url, public_image_urls
 from models.product_variant import ProductVariant
 from models.product import Product
 from models.order import OrderItem
+from utils.cutting import apply_cutting_surcharge, resolve_cutting_choice
 
 
 def _parse_final_weight(final_weight):
@@ -427,6 +428,7 @@ def build_priced_order_item(
     final_weight=None,
     variant_id=None,
     accept_substitute=None,
+    cutting=False,
     is_unavailable=False,
     cannot_fulfill=False,
     require_variant=True,
@@ -444,6 +446,10 @@ def build_priced_order_item(
     err = validate_substitute_preference(product, accept_substitute)
     if err:
         raise ValueError(err)
+
+    want_cut, cutting_fee, cut_err = resolve_cutting_choice(product, cutting)
+    if cut_err:
+        raise ValueError(cut_err)
 
     pricing_type = pricing_type or product.pricing_type
     pooled_qty = int(product_qty) if product_qty is not None else int(quantity or 1)
@@ -477,6 +483,11 @@ def build_priced_order_item(
     unit_price, total_price = apply_influencer_line_discount(
         product, unit_price, total_price, quantity
     )
+    snap_fee = 0.0
+    if not cannot_fulfill:
+        unit_price, total_price, snap_fee = apply_cutting_surcharge(
+            unit_price, total_price, quantity, pricing_type, want_cut, cutting_fee
+        )
 
     return {
         'product_id': product.id,
@@ -488,6 +499,8 @@ def build_priced_order_item(
         'variant_id': variant.id if variant else None,
         'variant_name': variant.name if variant else None,
         'variant_price_delta': variant_delta if variant else None,
+        'cutting': want_cut,
+        'cutting_fee': snap_fee if want_cut else None,
         'accept_substitute': accept_substitute if product.substitute_enabled else None,
         'is_unavailable': bool(is_unavailable),
         'cannot_fulfill': bool(cannot_fulfill),
@@ -547,9 +560,22 @@ def recalculate_existing_item(item, product=None, product_qty=None):
         cannot_fulfill=bool(getattr(item, 'cannot_fulfill', False)),
     )
     from utils.influencer_pricing import apply_influencer_line_discount
+    from utils.cutting import catalog_cutting_fee
     unit_price, total_price = apply_influencer_line_discount(
         product, unit_price, total_price, item.quantity
     )
+    want_cut = bool(getattr(item, 'cutting', False))
+    snap_fee = getattr(item, 'cutting_fee', None)
+    if want_cut and snap_fee is None:
+        snap_fee = catalog_cutting_fee(product)
+    if want_cut and not bool(getattr(item, 'cannot_fulfill', False)):
+        unit_price, total_price, snap_fee = apply_cutting_surcharge(
+            unit_price, total_price, item.quantity, pricing_type, True, snap_fee
+        )
+        if item.cutting_fee is None:
+            item.cutting_fee = snap_fee
+    elif not want_cut:
+        item.cutting_fee = None
     item.unit_price = round_money(unit_price)
     item.total_price = round_money(total_price)
 
@@ -580,6 +606,8 @@ def order_item_fields_for_merge(source_item):
         'variant_id': source_item.variant_id,
         'variant_name': source_item.variant_name,
         'variant_price_delta': source_item.variant_price_delta,
+        'cutting': bool(getattr(source_item, 'cutting', False)),
+        'cutting_fee': getattr(source_item, 'cutting_fee', None),
         'accept_substitute': source_item.accept_substitute,
         'is_unavailable': source_item.is_unavailable,
         'cannot_fulfill': bool(getattr(source_item, 'cannot_fulfill', False)),
@@ -588,7 +616,96 @@ def order_item_fields_for_merge(source_item):
     }
 
 
-def enrich_order_item_dict(item, product=None, source_order=None):
+def _resolve_item_on_sale(item, product, on_sale=None):
+    """Deal sale is per group-deal product, not catalog-wide."""
+    if on_sale is not None:
+        return bool(on_sale)
+    if not product:
+        return False
+    order = getattr(item, 'order', None)
+    deal_id = getattr(order, 'group_deal_id', None) if order else None
+    if not deal_id and getattr(item, 'order_id', None):
+        from models.order import Order
+        order = Order.query.get(item.order_id)
+        deal_id = getattr(order, 'group_deal_id', None) if order else None
+    if not deal_id:
+        return False
+    from models.groupdeal import GroupDealProduct
+    dp = GroupDealProduct.query.filter_by(
+        group_deal_id=deal_id,
+        product_id=product.id,
+    ).first()
+    return bool(dp and dp.is_discount)
+
+
+def _product_sale_fields(product, on_sale):
+    prev = getattr(product, '_deal_is_discount', None)
+    product._deal_is_discount = bool(on_sale)
+    try:
+        display = product.get_display_price()
+        original = product.get_original_price()
+    finally:
+        if prev is None:
+            if hasattr(product, '_deal_is_discount'):
+                delattr(product, '_deal_is_discount')
+        else:
+            product._deal_is_discount = prev
+    return {
+        'is_discount': bool(on_sale),
+        'price': display,
+        'display_price': display,
+        'original_price': original if on_sale else None,
+        'sale_price': display if on_sale else None,
+    }
+
+
+def _deal_sale_by_item(items):
+    """Batch (deal_id, product_id) → is_discount for a set of order lines."""
+    from models.groupdeal import GroupDealProduct
+    from models.order import Order
+    from utils.query_batch import rows_by_id, unique_ids
+
+    orders = {}
+    missing_ids = []
+    for item in items:
+        order = getattr(item, 'order', None)
+        if order is not None and getattr(item, 'order_id', None):
+            orders[item.order_id] = order
+        elif getattr(item, 'order_id', None):
+            missing_ids.append(item.order_id)
+    if missing_ids:
+        orders.update(rows_by_id(Order, missing_ids))
+
+    deal_ids = []
+    product_ids = []
+    for item in items:
+        order = orders.get(getattr(item, 'order_id', None))
+        deal_id = getattr(order, 'group_deal_id', None) if order else None
+        if deal_id and item.product_id:
+            deal_ids.append(deal_id)
+            product_ids.append(item.product_id)
+
+    sale_map = {}
+    deal_ids = unique_ids(deal_ids)
+    product_ids = unique_ids(product_ids)
+    if deal_ids and product_ids:
+        for dp in GroupDealProduct.query.filter(
+            GroupDealProduct.group_deal_id.in_(deal_ids),
+            GroupDealProduct.product_id.in_(product_ids),
+        ).all():
+            sale_map[(dp.group_deal_id, dp.product_id)] = bool(dp.is_discount)
+
+    on_sale_by_item = {}
+    for item in items:
+        order = orders.get(getattr(item, 'order_id', None))
+        deal_id = getattr(order, 'group_deal_id', None) if order else None
+        on_sale_by_item[id(item)] = bool(
+            sale_map.get((deal_id, item.product_id))
+        ) if deal_id else False
+    return on_sale_by_item
+
+
+def enrich_order_item_dict(item, product=None, source_order=None, on_sale=None):
     """Add display fields for API responses."""
     from models.product import Product
 
@@ -608,6 +725,7 @@ def enrich_order_item_dict(item, product=None, source_order=None):
         if not images and product.image:
             images = [product.image]
         images = public_image_urls(images)
+        on_sale = _resolve_item_on_sale(item, product, on_sale)
         item_dict['product'] = {
             'id': product.id,
             'name': product.name,
@@ -619,6 +737,9 @@ def enrich_order_item_dict(item, product=None, source_order=None):
             'substitute_enabled': product.substitute_enabled,
             'substitute': product.get_substitute_dict(),
             'variants': [v.to_dict() for v in product.get_active_variants()],
+            'cutting_enabled': bool(getattr(product, 'cutting_enabled', False)),
+            'cutting_fee': float(product.cutting_fee) if getattr(product, 'cutting_fee', None) is not None else 0.0,
+            **_product_sale_fields(product, on_sale),
         }
 
     if item.variant_id or item.variant_name:
@@ -646,6 +767,8 @@ def enrich_order_item_dict(item, product=None, source_order=None):
         name = product.name if product else ''
         if item.variant_name:
             name = f'{name} ({item.variant_name})'
+        if getattr(item, 'cutting', False):
+            name = f'{name} · 切分' if name else '切分'
         item_dict['display_name'] = name
         if product:
             imgs = product.images if product.images and isinstance(product.images, list) else []
@@ -664,6 +787,39 @@ def enrich_order_item_dict(item, product=None, source_order=None):
     return item_dict
 
 
+def buyer_pricing_dict(user, product_ids):
+    """Rates for live JS estimate (admin/order edit). Empty when not 推荐官."""
+    from services.influencer_service import resolve_rates_for_products
+
+    if not user or not getattr(user, 'is_influencer', False):
+        return {'influencer': False, 'rates': {}}
+    ids = []
+    seen = set()
+    for raw in product_ids or []:
+        if raw is None:
+            continue
+        pid = int(raw)
+        if pid in seen:
+            continue
+        seen.add(pid)
+        ids.append(pid)
+    rates = {}
+    if ids:
+        resolved = resolve_rates_for_products(user.id, ids)
+        for pid, pair in (resolved or {}).items():
+            if not pair:
+                continue
+            commission_type, amount = pair
+            amount_f = float(amount or 0)
+            if amount_f <= 0:
+                continue
+            rates[str(pid)] = {
+                'commission_type': commission_type,
+                'amount': amount_f,
+            }
+    return {'influencer': True, 'rates': rates}
+
+
 def enrich_order_items(items):
     """Serialize many order lines with one product/source-order prefetch."""
     from models.order import Order
@@ -674,11 +830,13 @@ def enrich_order_items(items):
         return []
     products = products_by_ids(item.product_id for item in items)
     source_orders = rows_by_id(Order, (item.source_order_id for item in items))
+    on_sale_by_item = _deal_sale_by_item(items)
     return [
         enrich_order_item_dict(
             item,
             products.get(item.product_id),
             source_order=source_orders.get(item.source_order_id) if item.source_order_id else None,
+            on_sale=on_sale_by_item.get(id(item), False),
         )
         for item in items
     ]
@@ -755,6 +913,8 @@ def restore_existing_line_weights(request_items, existing_items):
             continue
         if src.variant_id != item_data.get('variant_id'):
             continue
+        if bool(getattr(src, 'cutting', False)) != bool(item_data.get('cutting')):
+            continue
         item_data['final_weight'] = float(src.final_weight)
     return request_items
 
@@ -827,6 +987,7 @@ def priced_items_from_request(items, unavailable_by_item_id=None, *, require_var
             final_weight=item_data.get('final_weight'),
             variant_id=item_data.get('variant_id'),
             accept_substitute=item_data.get('accept_substitute'),
+            cutting=bool(item_data.get('cutting')),
             is_unavailable=is_unavailable,
             cannot_fulfill=bool(item_data.get('cannot_fulfill', False)),
             require_variant=require_variant,
@@ -851,6 +1012,8 @@ def create_order_item_rows(order_id, priced_items, db_session):
             variant_id=priced.get('variant_id'),
             variant_name=priced.get('variant_name'),
             variant_price_delta=priced.get('variant_price_delta'),
+            cutting=bool(priced.get('cutting')),
+            cutting_fee=priced.get('cutting_fee'),
             accept_substitute=priced.get('accept_substitute'),
             is_unavailable=priced.get('is_unavailable', False),
             cannot_fulfill=priced.get('cannot_fulfill', False),
@@ -883,6 +1046,16 @@ def apply_product_substitute_fields(product, data):
         product.substitute_price = None
         product.substitute_pricing_type = None
         product.substitute_pricing_data = None
+
+
+def apply_product_cutting_fields(product, data):
+    """Apply 切分 config from validated product payload."""
+    if 'cutting_enabled' in data:
+        product.cutting_enabled = bool(data.get('cutting_enabled'))
+    if 'cutting_fee' in data and data.get('cutting_fee') is not None:
+        product.cutting_fee = data.get('cutting_fee') or 0
+    if not product.cutting_enabled:
+        product.cutting_fee = product.cutting_fee or 0
 
 
 def sync_product_variants(product, variants_data):

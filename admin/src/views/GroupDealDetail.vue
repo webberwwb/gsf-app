@@ -533,7 +533,8 @@
         @status-change="handleOrderStatusChange"
         @payment-method-change="handlePaymentMethodChange"
         @order-updated="handleOrderUpdated"
-      @update-error="(msg) => { this.updateError = msg }"
+        @update-error="(msg) => { this.updateError = msg }"
+        @products-loaded="handleProductsLoaded"
       />
 
       <!-- Duplicates Modal -->
@@ -623,7 +624,7 @@ import { isFulfillmentOnly } from '../utils/auth'
 import { sortSelfDeliveryOrders } from '../utils/deliveryRoute'
 import { printSelfDeliveryLabels } from '../utils/printDeliveryLabels'
 
-const PACKING_COMPLETE_STATUSES = ['packing_complete', 'ready_for_pickup', 'out_for_delivery', 'delivering', 'completed']
+const PACKING_COMPLETE_STATUSES = ['packing_complete', 'ready_for_pickup', 'out_for_delivery', 'delivering', 'delivered', 'completed']
 
 export default {
   name: 'GroupDealDetail',
@@ -985,7 +986,7 @@ export default {
         if (order.delivery_method === 'delivery') {
           totalDelivery++
           // Check if delivery order is shipped
-          if (order.status === 'out_for_delivery' || order.status === 'delivering' || order.status === 'completed') {
+          if (['out_for_delivery', 'delivering', 'delivered', 'completed'].includes(order.status)) {
             totalShippedDelivery++
           }
         } else if (order.delivery_method === 'pickup') {
@@ -1001,7 +1002,7 @@ export default {
         // For pickup: ready_for_pickup or completed
         const isShippedOrPickedUp = 
           (order.delivery_method === 'delivery' && 
-           (order.status === 'out_for_delivery' || order.status === 'delivering' || order.status === 'completed')) ||
+           ['out_for_delivery', 'delivering', 'delivered', 'completed'].includes(order.status)) ||
           (order.delivery_method === 'pickup' && 
            (order.status === 'ready_for_pickup' || order.status === 'completed'))
         
@@ -1020,11 +1021,15 @@ export default {
             const productName = catalogProduct?.name || item.product?.name || 'Unknown Product'
             const hasVariants = ((catalogProduct?.variants || item.product?.variants) || []).length > 0
             const variantId = hasVariants ? (item.variant_id ?? null) : null
-            const statKey = this.productStatKey(productId, variantId, hasVariants)
+            const cutting = !!item.cutting
+            const statKey = this.productStatKey(productId, variantId, hasVariants, cutting)
             const variantName = hasVariants
               ? this.variantLabelForItem(catalogProduct || item.product, item)
               : null
-            const displayName = variantName ? `${productName} · ${variantName}` : productName
+            const parts = [productName]
+            if (variantName) parts.push(variantName)
+            if (cutting) parts.push('切分')
+            const displayName = parts.join(' · ')
             const quantity = item.quantity || 0
             const itemSalesValue = this.computeItemSalesValue(item)
             const supplier = catalogProduct?.supplier
@@ -1039,6 +1044,7 @@ export default {
                 statKey,
                 productId,
                 variantId,
+                cutting,
                 productName,
                 variantName,
                 displayName,
@@ -1058,8 +1064,8 @@ export default {
       const productCounts = Array.from(productCountsMap.values()).sort((a, b) => {
         const nameCmp = a.productName.localeCompare(b.productName)
         if (nameCmp !== 0) return nameCmp
-        const aVar = a.variantName || ''
-        const bVar = b.variantName || ''
+        const aVar = `${a.variantName || ''}${a.cutting ? ' · 切分' : ''}`
+        const bVar = `${b.variantName || ''}${b.cutting ? ' · 切分' : ''}`
         return aVar.localeCompare(bVar)
       })
 
@@ -1247,21 +1253,24 @@ export default {
       const bPaid = b.payment_status === 'paid' ? 1 : 0
       return aPaid - bPaid
     },
-    productStatKey(productId, variantId, hasVariants) {
-      if (!hasVariants) return String(productId)
+    productStatKey(productId, variantId, hasVariants, cutting = false) {
+      const cut = cutting ? 'cut' : 'whole'
+      if (!hasVariants) return `${productId}::${cut}`
       const vid = variantId == null ? 'none' : String(variantId)
-      return `${productId}:${vid}`
+      return `${productId}:${vid}:${cut}`
     },
     parseProductStatKey(statKey) {
       const s = String(statKey)
-      if (!s.includes(':')) {
-        return { productId: s, variantId: null, hasVariants: false }
+      const parts = s.split(':')
+      if (parts.length < 2) {
+        return { productId: s, variantId: null, hasVariants: false, cutting: false }
       }
-      const [productId, variantPart] = s.split(':')
+      const [productId, variantPart, cutPart] = parts
       return {
         productId,
-        variantId: variantPart === 'none' ? null : variantPart,
-        hasVariants: true
+        variantId: !variantPart || variantPart === 'none' ? null : variantPart,
+        hasVariants: !!variantPart,
+        cutting: cutPart === 'cut'
       }
     },
     variantLabelForItem(product, item) {
@@ -1284,6 +1293,7 @@ export default {
       return this.selectedProductFilters.some((statKey) => {
         const parsed = this.parseProductStatKey(statKey)
         if (String(parsed.productId) !== String(productId)) return false
+        if (parsed.cutting !== !!item.cutting) return false
         if (!parsed.hasVariants) return true
         const itemVid = item.variant_id == null ? null : String(item.variant_id)
         const filterVid = parsed.variantId == null ? null : String(parsed.variantId)
@@ -1634,6 +1644,7 @@ export default {
         'ready_for_pickup': '可取货',
         'out_for_delivery': '配送中',
         'delivering': '配送中',
+        'delivered': '已送达',
         'completed': '已完成',
         'cancelled': '已取消'
       }
@@ -1740,7 +1751,7 @@ export default {
           error.response?.data?.message ||
           error.response?.data?.error ||
           'Failed to delete order'
-        await this.error(`删除失败: ${errorMsg}`)
+        await this.showError(`删除失败: ${errorMsg}`)
         console.error('Failed to delete order:', error)
       }
     },
@@ -1757,11 +1768,13 @@ export default {
         this.selectedOrder = updatedOrder
         
         await this.success('订单已更新')
-        
-        // Don't close the modal - keep it open so admin can continue editing
+        await this.loadAvailableProducts()
+        if (this.groupDeal) {
+          this.groupDeal.products = this.availableProducts
+        }
       } catch (error) {
         this.updateError = error.response?.data?.message || error.response?.data?.error || '更新失败'
-        await this.error(`更新失败: ${this.updateError}`)
+        await this.showError(this.updateError)
         console.error('Failed to update order:', error)
       } finally {
         this.updatingOrder = false
@@ -1770,6 +1783,12 @@ export default {
     handleOrderUpdated(order) {
       this.selectedOrder = order
       this.ordersStore.updateOrder(order)
+    },
+    handleProductsLoaded(products) {
+      this.availableProducts = products || []
+      if (this.groupDeal) {
+        this.groupDeal.products = this.availableProducts
+      }
     },
     orderNeedsFinalWeightAttention(order) {
       if (!order) return false
@@ -1815,7 +1834,7 @@ export default {
         await this.success(`订单状态已更新为: ${statusText}`)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
-        await this.error(`更新失败: ${errorMsg}`)
+        await this.showError(`更新失败: ${errorMsg}`)
         console.error('Failed to update order status:', error)
       }
     },
@@ -1926,7 +1945,7 @@ export default {
         await this.success(`订单已标记为已付款（${paymentMethodLabel}）\n积分: ${pointsAwarded} 分已发放\n订单状态: 订单完成`)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
-        await this.error(`更新失败: ${errorMsg}`)
+        await this.showError(`更新失败: ${errorMsg}`)
         console.error('Failed to mark as paid:', error)
       }
     },
@@ -1979,7 +1998,7 @@ export default {
         await this.success(`订单已标记为未付款`)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update payment status'
-        await this.error(`更新失败: ${errorMsg}`)
+        await this.showError(`更新失败: ${errorMsg}`)
         console.error('Failed to mark as unpaid:', error)
       }
     },
@@ -2024,7 +2043,7 @@ export default {
         await this.success(successMsg)
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || 'Failed to update status'
-        await this.error(`更新失败: ${errorMsg}`)
+        await this.showError(`更新失败: ${errorMsg}`)
         console.error('Failed to mark order complete:', error)
       } finally {
         this.markingComplete = false
@@ -2090,12 +2109,13 @@ export default {
       const deliveryOrders = this.orders.filter(order => 
         order.delivery_method === 'delivery' && 
         order.status !== 'out_for_delivery' &&
+        order.status !== 'delivered' &&
         order.status !== 'completed' &&
         order.status !== 'cancelled'
       )
       
       if (deliveryOrders.length === 0) {
-        await this.error('当前团购没有可更新的配送订单')
+        await this.showError('当前团购没有可更新的配送订单')
         return
       }
       
@@ -2125,7 +2145,7 @@ export default {
         await this.fetchGroupDealDetail()
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.response?.data?.error || '批量更新失败'
-        await this.error(`更新失败: ${errorMsg}`)
+        await this.showError(`更新失败: ${errorMsg}`)
         console.error('Failed to bulk update orders:', error)
       } finally {
         this.loadingBulkUpdate = false
@@ -2141,6 +2161,7 @@ export default {
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
         'delivering': '正在配送',
+        'delivered': '已送达',
         'completed': '订单完成',
         'cancelled': '已取消'
       }

@@ -53,13 +53,14 @@ from schemas.order import (
 from utils.order_item_pricing import (
     priced_items_from_request,
     create_order_item_rows,
-    enrich_order_item_dict,
     enrich_order_items,
+    buyer_pricing_dict,
     combine_order_notes,
     order_item_fields_for_merge,
     recalculate_existing_item,
     bulk_set_product_fulfillment,
     apply_product_substitute_fields,
+    apply_product_cutting_fields,
     sync_product_variants,
 )
 from utils.query_batch import (
@@ -89,7 +90,7 @@ from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import joinedload, selectinload
 from decimal import Decimal
 from utils.shipping import calculate_shipping_fee
-from utils.stock_management import restore_stock
+from utils.stock_management import restore_stock, update_stock_after_order_modification
 import csv
 import io
 from models.credit_transaction import CreditTransaction
@@ -295,8 +296,11 @@ def create_product():
             counts_toward_free_shipping=validated_data.get('counts_toward_free_shipping', True),
             variants_share_price=validated_data.get('variants_share_price', True),
             is_discount=False,
+            cutting_enabled=bool(validated_data.get('cutting_enabled', False)),
+            cutting_fee=validated_data.get('cutting_fee') or 0,
         )
         apply_product_substitute_fields(product, validated_data)
+        apply_product_cutting_fields(product, validated_data)
         
         db.session.add(product)
         db.session.flush()
@@ -390,6 +394,7 @@ def update_product(product_id):
         if 'variants_share_price' in validated_data:
             product.variants_share_price = bool(validated_data['variants_share_price'])
         apply_product_substitute_fields(product, validated_data)
+        apply_product_cutting_fields(product, validated_data)
         if 'variants' in validated_data:
             sync_product_variants(product, validated_data.get('variants'))
         
@@ -1287,7 +1292,7 @@ def get_group_deals():
         if include_products:
             grouped = group_deal_products_by_deal(load_group_deal_products([deal.id for deal in deals]))
             products_by_deal = {
-                deal_id: serialize_loaded_deal_products(rows)
+                deal_id: serialize_loaded_deal_products(rows, expose_stock_cap=True)
                 for deal_id, rows in grouped.items()
             }
 
@@ -1331,7 +1336,9 @@ def get_group_deal(deal_id):
         if fulfillment_service.is_fulfillment_only(actor) and deal.status == GroupDealStatus.DRAFT.value:
             return jsonify({'error': '团购不存在'}), 404
         deal_dict = deal.to_dict()
-        deal_dict['products'] = serialize_loaded_deal_products(load_group_deal_products(deal.id))
+        deal_dict['products'] = serialize_loaded_deal_products(
+            load_group_deal_products(deal.id), expose_stock_cap=True
+        )
         
         return jsonify({
             'group_deal': deal_dict
@@ -1409,7 +1416,9 @@ def create_group_deal():
         
         # Return full deal with products
         deal_dict = group_deal.to_dict()
-        deal_dict['products'] = serialize_loaded_deal_products(load_group_deal_products(group_deal.id))
+        deal_dict['products'] = serialize_loaded_deal_products(
+            load_group_deal_products(group_deal.id), expose_stock_cap=True
+        )
         
         return jsonify({
             'group_deal': deal_dict
@@ -1603,7 +1612,9 @@ def update_group_deal(deal_id):
         
         # Return full deal with products
         deal_dict = deal.to_dict()
-        deal_dict['products'] = serialize_loaded_deal_products(load_group_deal_products(deal.id))
+        deal_dict['products'] = serialize_loaded_deal_products(
+            load_group_deal_products(deal.id), expose_stock_cap=True
+        )
         
         return jsonify({
             'group_deal': deal_dict
@@ -1934,6 +1945,11 @@ def _build_admin_order_dict(order):
     if address:
         order_dict['address'] = address.to_dict()
     order_dict['items'] = enrich_order_items(order.items)
+    product_ids = [item.product_id for item in (order.items or [])]
+    if group_deal:
+        from utils.deal_products import load_group_deal_products
+        product_ids.extend(dp.product_id for dp in load_group_deal_products(group_deal.id))
+    order_dict['buyer_pricing'] = buyer_pricing_dict(user, product_ids)
     return order_dict
 
 
@@ -2030,10 +2046,7 @@ def get_admin_orders():
             if order.address:
                 order_dict['address'] = order.address.to_dict()
             
-            items_data = [
-                enrich_order_item_dict(item, item.product, source_order=item.source_order)
-                for item in order.items
-            ]
+            items_data = enrich_order_items(order.items)
             order_dict['items'] = items_data
             order_dict['items_count'] = len(items_data)
             fulfillment_service.apply_order_pii_lock(order_dict, order.group_deal, acting_user)
@@ -2379,6 +2392,7 @@ def bulk_update_order_status():
             # Don't update orders that are already out_for_delivery, completed, or cancelled
             query = query.filter(Order.status.notin_([
                 OrderStatus.OUT_FOR_DELIVERY.value,
+                OrderStatus.DELIVERED.value,
                 OrderStatus.COMPLETED.value,
                 OrderStatus.CANCELLED.value
             ]))
@@ -2518,14 +2532,13 @@ def update_order_payment(order_id):
             if user:
                 current_app.logger.info(f'Awarded {points_awarded} points to user {user.id} for order {order_id}')
             
-            # Auto-complete the order for pickup cash orders
-            if order.delivery_method == DeliveryMethod.PICKUP.value and order.payment_method == PaymentMethod.CASH.value:
-                order.status = OrderStatus.COMPLETED.value
-                current_app.logger.info(f'Pickup cash order {order_id} marked as paid and auto-completed. Points: {points_awarded}')
-            else:
-                # For other orders, also auto-complete (existing behavior)
-                order.status = OrderStatus.COMPLETED.value
+            from utils.order_payment import maybe_complete_order
+            if maybe_complete_order(order):
                 current_app.logger.info(f'Order {order_id} marked as paid and completed. Points: {points_awarded}')
+            else:
+                current_app.logger.info(
+                    f'Order {order_id} marked as paid; waiting for delivery before complete. Points: {points_awarded}'
+                )
             from services import influencer_service
             influencer_service.accrue_for_order(order)
         elif old_payment_status == PaymentStatus.PAID.value and payment_status == PaymentStatus.UNPAID.value:
@@ -2782,6 +2795,15 @@ def update_admin_order(order_id):
             )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
+
+        stock_ok, stock_err = update_stock_after_order_modification(
+            order.group_deal_id,
+            order.items,
+            filtered_items,
+        )
+        if not stock_ok:
+            db.session.rollback()
+            return jsonify({'error': stock_err}), 400
 
         items_before = [
             item_snapshot(i, order.order_number) for i in active_items_for_order(order_id)

@@ -2,7 +2,7 @@
 export const WEIGHT_PRICING_TYPES = ['weight_range', 'unit_weight', 'bundled_weight']
 
 /** Order statuses where missing final weight should trigger an extra warning (完成 / 配送中). */
-export const STATUSES_WARN_IF_MISSING_FINAL_WEIGHT = ['completed', 'out_for_delivery', 'delivering']
+export const STATUSES_WARN_IF_MISSING_FINAL_WEIGHT = ['completed', 'out_for_delivery', 'delivering', 'delivered']
 
 export function pricingTypeNeedsFinalWeight(pricingType) {
   return WEIGHT_PRICING_TYPES.includes(pricingType)

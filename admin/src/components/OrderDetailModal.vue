@@ -91,6 +91,7 @@
                   <option value="packing_complete">配货完成</option>
                   <option value="ready_for_pickup">可以取货</option>
                   <option value="out_for_delivery">正在配送</option>
+                  <option value="delivered">已送达</option>
                   <option value="completed">订单完成</option>
                   <option value="cancelled">已取消</option>
                 </select>
@@ -364,6 +365,9 @@
                 <div class="item-info">
                   <div class="item-name">
                     {{ item.display_name || item.product?.name || 'N/A' }}
+                    <span v-if="stockLabel(item.product_id)" class="item-stock-label" :class="{ 'item-stock-label--out': !canIncreaseItem(item) }">
+                      {{ stockLabel(item.product_id) }}
+                    </span>
                     <span v-if="item.is_substituted" class="item-badge sub">替代品</span>
                     <span v-if="item.is_unavailable && item.accept_substitute === false" class="item-badge declined">缺货·不要备选</span>
                     <span v-else-if="item.is_unavailable && item.accept_substitute == null" class="item-badge pending">待确认备选</span>
@@ -382,7 +386,10 @@
                             <div class="tooltip-divider"></div>
                             <div v-if="item.product.pricing_type === 'per_item'" class="tooltip-row">
                               <span class="tooltip-label">价格:</span>
-                              <span class="tooltip-value">${{ formatStatMoney(item.product.pricing_data?.price) }}</span>
+                              <span class="tooltip-value">
+                                <span v-if="isProductOnSale(productForRecalc(item.product))" class="product-price-original">{{ formatProductCompareAt(productForRecalc(item.product)) }}</span>
+                                ${{ formatProductListPrice(productForRecalc(item.product)) }}
+                              </span>
                             </div>
                             <div v-else-if="item.product.pricing_type === 'weight_range'" class="tooltip-section">
                               <div class="tooltip-label">价格区间:</div>
@@ -417,11 +424,16 @@
                         <input
                           type="number"
                           v-model.number="item.quantity"
-                          @input="recalculateItemPrice(index)"
+                          @input="onQuantityInput(index)"
                           min="1"
+                          :max="maxQtyForProduct(item.product_id) || undefined"
                           class="quantity-input"
                         />
-                        <button @click="increaseQuantity(index)" class="qty-btn">+</button>
+                        <button
+                          @click="increaseQuantity(index)"
+                          class="qty-btn"
+                          :disabled="!canIncreaseItem(item)"
+                        >+</button>
                       </div>
                       <ProductVariantPicker
                         v-if="productVariants(item).length"
@@ -431,6 +443,29 @@
                         :allow-none="true"
                         @update:model-value="(id) => setItemVariant(index, id)"
                       />
+                      <div
+                        v-if="productOffersCutting(item)"
+                        class="substitute-chips"
+                        role="group"
+                        aria-label="切分服务"
+                      >
+                        <button
+                          type="button"
+                          class="pref-chip"
+                          :class="{ 'pref-chip--on': !item.cutting }"
+                          @click.stop="setItemCutting(index, false)"
+                        >
+                          不切分
+                        </button>
+                        <button
+                          type="button"
+                          class="pref-chip"
+                          :class="{ 'pref-chip--on': !!item.cutting }"
+                          @click.stop="setItemCutting(index, true)"
+                        >
+                          切分{{ cuttingFeeHint(item) }}
+                        </button>
+                      </div>
                       <div
                         v-if="productHasSubstitute(item)"
                         class="substitute-chips"
@@ -554,13 +589,17 @@
                   <div 
                     v-for="product in availableProducts" 
                     :key="product.id"
-                    @click="addProductToOrder(product)"
+                    @click="canIncreaseProduct(product) && addProductToOrder(product)"
                     class="product-item"
-                    :class="{ 'out-of-stock': isOutOfStock(product) }">
+                    :class="{ 'out-of-stock': !canIncreaseProduct(product) }">
                     <div class="product-name">{{ product.name }}</div>
                     <div class="product-info">
-                      <div class="product-price">${{ formatStatMoney(product.price) }}</div>
-                      <div v-if="isOutOfStock(product)" class="out-of-stock-badge">缺货</div>
+                      <div class="product-price">
+                        <span v-if="isProductOnSale(productForRecalc(product))" class="product-price-original">{{ formatProductCompareAt(productForRecalc(product)) }}</span>
+                        ${{ formatProductListPrice(productForRecalc(product)) }}
+                      </div>
+                      <div v-if="stockLabel(product.id)" class="product-stock-label">{{ stockLabel(product.id) }}</div>
+                      <div v-if="!canIncreaseProduct(product)" class="out-of-stock-badge">缺货</div>
                     </div>
                   </div>
                 </div>
@@ -713,29 +752,32 @@
             </template>
           </div>
 
-          <div v-if="updateError" class="error-message">{{ updateError }}</div>
         </div>
       </div>
       <div class="modal-footer">
-        <button 
-          v-if="order && order.status !== 'completed'"
-          @click="$emit('mark-complete', order)" 
-          class="complete-order-btn"
-          :disabled="updatingOrder || markingComplete">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          {{ markingComplete ? '处理中...' : '标记订单完成' }}
-        </button>
-        <button 
-          @click="handleUpdateOrder" 
-          class="update-order-btn"
-          :disabled="updatingOrder || markingComplete">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          {{ updatingOrder ? '更新中...' : '更新订单' }}
-        </button>
+        <div v-if="updateError" class="error-message footer-update-error">{{ updateError }}</div>
+        <div class="footer-actions">
+          <button 
+            v-if="order && order.status !== 'completed'"
+            @click="$emit('mark-complete', order)" 
+            class="complete-order-btn"
+            :disabled="updatingOrder || markingComplete">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="btn-label-full">{{ markingComplete ? '处理中...' : '标记订单完成' }}</span>
+            <span class="btn-label-short">{{ markingComplete ? '处理中' : '完成' }}</span>
+          </button>
+          <button 
+            @click="handleUpdateOrder" 
+            class="update-order-btn"
+            :disabled="updatingOrder || markingComplete">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span>{{ updatingOrder ? '更新中...' : '更新订单' }}</span>
+          </button>
+        </div>
       </div>
     </div>
     </div>
@@ -749,8 +791,18 @@ import { useModal } from '../composables/useModal'
 import {
   editableRowMissingFinalWeight as rowNeedsFinalWeight
 } from '../utils/orderWeightValidation'
-import { estimateAdminLinePrice, resolveOrderLineTotal, isDeclinedSubstituteLine } from '../utils/orderItemPricing'
+import {
+  estimateAdminLinePrice,
+  resolveOrderLineTotal,
+  isDeclinedSubstituteLine,
+  applyInfluencerDiscountToProduct
+} from '../utils/orderItemPricing'
 import { previewOrderTotals, formatOrderMoney2 } from '../utils/orderPricing'
+import {
+  formatProductCompareAt,
+  formatProductListPrice,
+  isProductOnSale
+} from '../utils/productPriceDisplay'
 import { fetchShippingConfig } from '../utils/shipping'
 import ProductVariantPicker from './ProductVariantPicker.vue'
 import ImageLightbox from './ImageLightbox.vue'
@@ -817,6 +869,7 @@ export default {
         delivery_instructions: ''
       },
       editableItems: [],
+      cachedBuyerPricing: null,
       showAddProductModal: false,
       tempIdCounter: 0,
       substitutePrefLoading: null,
@@ -989,6 +1042,20 @@ export default {
         this.$emit('payment-method-change', 'cash')
       }
     },
+    'order.buyer_pricing': {
+      handler(pricing) {
+        if (pricing) this.cachedBuyerPricing = pricing
+      },
+      immediate: true
+    },
+    availableProducts: {
+      handler() {
+        if (!this.show || !this.editableItems.length || this.isInitializingOrder) return
+        if (this.hydrateItemProductsFromDeal()) {
+          this.recalculateAllItemPrices()
+        }
+      }
+    },
     localDeliveryMethod(newVal, oldVal) {
       if (this.isInitializingOrder) return
       
@@ -1034,8 +1101,53 @@ export default {
     formatStatMoney(value) {
       return formatOrderMoney2(value)
     },
+    formatProductListPrice,
+    formatProductCompareAt,
+    isProductOnSale,
     displayItemPrice(item) {
       return formatOrderMoney2(resolveOrderLineTotal(item))
+    },
+    buyerRate(productId) {
+      const rates = this.order?.buyer_pricing?.rates || this.cachedBuyerPricing?.rates
+      if (!rates || productId == null) return null
+      return rates[productId] || rates[String(productId)] || null
+    },
+    productForRecalc(product) {
+      if (!product) return product
+      return applyInfluencerDiscountToProduct(product, this.buyerRate(product.id))
+    },
+    hydrateItemProductsFromDeal() {
+      const items = this.editableItems || []
+      if (!items.length) return false
+      let changed = false
+      for (const item of items) {
+        const dealProduct = this.dealProductById(item.product_id)
+        if (!dealProduct) {
+          const priced = this.productForRecalc(item.product)
+          if (priced !== item.product) {
+            item.product = priced
+            changed = true
+          }
+          continue
+        }
+        const next = this.productForRecalc({
+          ...(item.product || {}),
+          ...dealProduct,
+          is_discount: !!dealProduct.is_discount,
+          influencer_discount: false,
+          pricing_data: dealProduct.pricing_data || item.product?.pricing_data
+        })
+        if (
+          item.product?.is_discount !== next.is_discount ||
+          item.product?.influencer_discount !== next.influencer_discount ||
+          item.product?.price !== next.price ||
+          item.product?.sale_price !== next.sale_price
+        ) {
+          changed = true
+        }
+        item.product = next
+      }
+      return changed
     },
     rowMissingFinalWeight(row) {
       return rowNeedsFinalWeight(row)
@@ -1189,10 +1301,12 @@ export default {
       // Use nextTick to ensure watcher checks complete before we clear the flag
       this.$nextTick(() => {
         this.isInitializingOrder = false
+        this.hydrateItemProductsFromDeal()
         this.recalculateAllItemPrices()
         this.captureBaseline()
         this.loadAuditTrail()
       })
+      this.ensureDealProducts()
     },
     recalculateAllItemPrices() {
       this.editableItems.forEach((_, index) => this.recalculateItemPrice(index))
@@ -1219,6 +1333,7 @@ export default {
         delivery_instructions: ''
       }
       this.editableItems = []
+      this.cachedBuyerPricing = null
       this.showAddProductModal = false
       this.tempIdCounter = 0
       this.isInitializingOrder = false
@@ -1367,6 +1482,7 @@ export default {
 
       this.$nextTick(() => {
         if (!this.isInitializingOrder) {
+          this.hydrateItemProductsFromDeal()
           this.recalculateAllItemPrices()
           this.captureBaseline()
           this.loadAuditTrail()
@@ -1404,6 +1520,7 @@ export default {
       }
     },
     addProductToOrder(product) {
+      if (!this.canIncreaseProduct(product)) return
       // For weight-based products, always create a new item (don't stack) because each can have different weight
       const isWeightBased = product.pricing_type === 'weight_range' || 
                            product.pricing_type === 'unit_weight' || 
@@ -1422,9 +1539,10 @@ export default {
       }
       
       // Add new item (always for weight-based products, or if product doesn't exist for non-weight-based)
+      const priced = this.productForRecalc(product)
       let initialPrice = 0
-      if (product.pricing_type === 'per_item') {
-        initialPrice = parseFloat(product.price || 0)
+      if (priced.pricing_type === 'per_item') {
+        initialPrice = parseFloat(priced.price || 0)
       }
       
       const activeVariants = (product.variants || []).filter((v) => v.is_active !== false)
@@ -1432,14 +1550,16 @@ export default {
       this.editableItems.push({
         tempId: `temp_${++this.tempIdCounter}`,
         product_id: product.id,
-        product: product,
+        product: priced,
         quantity: 1,
         unit_price: initialPrice,
         total_price: initialPrice,
         final_weight: null,
         variant_id: defaultVariant?.id ?? null,
         variant_name: defaultVariant?.name ?? null,
-        variant_price_delta: defaultVariant ? parseFloat(defaultVariant.price_delta || 0) : null
+        variant_price_delta: defaultVariant ? parseFloat(defaultVariant.price_delta || 0) : null,
+        cutting: false,
+        cutting_fee: null
       })
       const newIndex = this.editableItems.length - 1
       this.recalculateItemPrice(newIndex)
@@ -1449,7 +1569,9 @@ export default {
       this.editableItems.splice(index, 1)
     },
     increaseQuantity(index) {
-      this.editableItems[index].quantity += 1
+      const item = this.editableItems[index]
+      if (!this.canIncreaseItem(item)) return
+      item.quantity += 1
       this.recalculateItemPrice(index)
     },
     decreaseQuantity(index) {
@@ -1480,7 +1602,7 @@ export default {
     },
     recalculateItemPrice(index, { skipSiblings = false } = {}) {
       const item = this.editableItems[index]
-      const product = item.product
+      const product = this.productForRecalc(item.product)
       if (!product) return
 
       item.quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
@@ -1495,6 +1617,8 @@ export default {
         variant_price_delta: item.variant_price_delta,
         accept_substitute: item.accept_substitute,
         is_unavailable: item.is_unavailable,
+        cannot_fulfill: item.cannot_fulfill,
+        cutting: !!item.cutting,
         product_qty: pooled
       })
       item.unit_price = unitPrice
@@ -1625,6 +1749,7 @@ export default {
         final_weight: item.final_weight || null,
         variant_id: item.variant_id ?? null,
         accept_substitute: item.accept_substitute,
+        cutting: !!item.cutting,
         is_unavailable: item.is_unavailable || false
       }))
       
@@ -1702,15 +1827,96 @@ export default {
 
       this.$emit('status-change', this.order.id, this.localOrderStatus)
     },
+    dealProductById(productId) {
+      return (this.availableProducts || []).find((p) => p.id === productId) || null
+    },
+    dealStockCap(productId) {
+      const deal = this.dealProductById(productId)
+      if (!deal) return null
+      if (deal.deal_stock_limit === undefined || deal.deal_stock_limit === null) return null
+      return Number(deal.deal_stock_limit)
+    },
+    serverRemaining(productId) {
+      const deal = this.dealProductById(productId)
+      if (!deal) return null
+      if (deal.deal_stock_remaining !== undefined && deal.deal_stock_remaining !== null) {
+        return Number(deal.deal_stock_remaining)
+      }
+      return null
+    },
+    remainingDealStock(product) {
+      const productId = product?.id ?? product?.product_id
+      return this.serverRemaining(productId)
+    },
+    draftRemaining(productId) {
+      const server = this.serverRemaining(productId)
+      if (server == null) return null
+      const extra = this.editableQtyForProduct(productId) - this.originalQtyForProduct(productId)
+      return Math.max(0, server - extra)
+    },
+    stockLabel(productId) {
+      const cap = this.dealStockCap(productId)
+      const left = this.draftRemaining(productId)
+      if (cap == null || left == null) return ''
+      return `库存${cap} 剩余${left}`
+    },
+    maxQtyForProduct(productId) {
+      const remaining = this.serverRemaining(productId)
+      if (remaining == null) return null
+      return this.originalQtyForProduct(productId) + remaining
+    },
+    originalQtyForProduct(productId) {
+      return (this.order?.items || [])
+        .filter((item) => item.product_id === productId)
+        .reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)
+    },
+    editableQtyForProduct(productId) {
+      return (this.editableItems || [])
+        .filter((item) => item.product_id === productId)
+        .reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)
+    },
+    canIncreaseProduct(product) {
+      const productId = product?.id ?? product?.product_id
+      const maxQty = this.maxQtyForProduct(productId)
+      if (maxQty == null) return true
+      return this.editableQtyForProduct(productId) < maxQty
+    },
+    canIncreaseItem(item) {
+      return this.canIncreaseProduct({ id: item.product_id })
+    },
     isOutOfStock(product) {
-      // Check deal_stock_limit (deal-specific inventory) first, then stock_limit (product-level inventory)
-      // null or undefined means unlimited stock, only 0 means out of stock
-      // Admin can still add out-of-stock products, this is just for visual indication
-      const inventory = (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null)
-        ? product.deal_stock_limit
-        : (product.stock_limit !== undefined && product.stock_limit !== null ? product.stock_limit : null)
-      
-      return inventory === 0
+      return !this.canIncreaseProduct(product)
+    },
+    onQuantityInput(index) {
+      const item = this.editableItems[index]
+      if (!item) return
+      const maxQty = this.maxQtyForProduct(item.product_id)
+      let qty = parseInt(item.quantity, 10) || 1
+      if (qty < 1) qty = 1
+      if (maxQty != null) {
+        const others = this.editableQtyForProduct(item.product_id) - (parseInt(item.quantity, 10) || 0)
+        const allowed = Math.max(1, maxQty - others)
+        if (qty > allowed) qty = allowed
+      }
+      item.quantity = qty
+      this.recalculateItemPrice(index)
+    },
+    async ensureDealProducts() {
+      if (!this.order?.group_deal_id) return
+      const products = this.availableProducts || []
+      const needsRefresh = products.length === 0 || products.some(
+        (p) => p.deal_stock_limit != null && p.deal_stock_remaining == null
+      )
+      if (!needsRefresh) return
+      this.loadingProducts = true
+      try {
+        const response = await apiClient.get(`/admin/group-deals/${this.order.group_deal_id}`)
+        this.$emit('products-loaded', response.data.group_deal?.products || [])
+      } catch (error) {
+        console.error('Failed to load deal products for stock:', error)
+      } finally {
+        this.loadingProducts = false
+      }
     },
     handlePaymentMethodChange() {
       if (this.localPaymentMethod === 'cash' && this.order && this.order.payment_status === 'unpaid') {
@@ -1972,6 +2178,21 @@ export default {
     productHasSubstitute(item) {
       const p = item?.product
       return !!(p?.substitute_enabled || p?.substitute?.enabled)
+    },
+    productOffersCutting(item) {
+      return !!(item?.product?.cutting_enabled)
+    },
+    cuttingFeeHint(item) {
+      const fee = parseFloat(item?.product?.cutting_fee)
+      if (!Number.isFinite(fee) || fee <= 0) return ''
+      return ` +$${fee.toFixed(2)}`
+    },
+    setItemCutting(index, value) {
+      const item = this.editableItems[index]
+      if (!this.productOffersCutting(item) || !!item.cutting === !!value) return
+      item.cutting = !!value
+      item.cutting_fee = value ? (parseFloat(item.product?.cutting_fee) || 0) : null
+      this.recalculateItemPrice(index)
     }
   }
 }
@@ -2345,11 +2566,38 @@ export default {
 
 .modal-footer {
   display: flex;
-  gap: var(--md-spacing-md);
+  flex-direction: column;
+  gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
   background: #FFFFFF;
   border-radius: 0 0 24px 24px;
+}
+
+.footer-update-error {
+  margin-top: 0;
+}
+
+.footer-actions {
+  display: flex;
+  gap: var(--md-spacing-md);
+}
+
+.footer-actions .complete-order-btn,
+.footer-actions .update-order-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.complete-order-btn svg,
+.update-order-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.btn-label-short {
+  display: none;
 }
 
 .update-order-btn {
@@ -2522,6 +2770,13 @@ export default {
 .product-price {
   font-weight: 600;
   color: #E65100;
+}
+
+.product-price-original {
+  margin-right: 6px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.45);
+  text-decoration: line-through;
 }
 
 .out-of-stock-badge {
@@ -3453,7 +3708,23 @@ export default {
   color: var(--md-on-surface);
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.item-stock-label,
+.product-stock-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #546e7a;
+  background: #eceff1;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.item-stock-label--out {
+  color: #c62828;
+  background: #ffebee;
 }
 
 .item-meta {
@@ -4127,15 +4398,12 @@ export default {
   }
 
   .modal-header {
-    padding: var(--md-spacing-md) var(--md-spacing-md) var(--md-spacing-sm);
+    padding: 8px 10px;
     border-radius: 0;
-    /* Not sticky: sticky + fixed modal on iOS often uses the viewport and covers body */
     position: relative;
     flex-shrink: 0;
     z-index: 2;
     background: var(--gradient-primary);
-    /* Inset already on .modal-content — only content padding here */
-    padding-top: var(--md-spacing-md);
   }
   
   /* Remove the ::before pseudo-element on mobile - not needed with full screen modal */
@@ -4144,43 +4412,54 @@ export default {
   }
   
   .header-content {
-    gap: var(--md-spacing-sm);
+    gap: 8px;
     width: 100%;
     position: relative;
+    flex-wrap: nowrap;
+    min-height: 36px;
   }
-  
+
   .header-icon {
-    width: 32px;
-    height: 32px;
+    display: none;
   }
-  
-  .header-icon svg {
-    width: 16px;
-    height: 16px;
+
+  .header-text {
+    gap: 0;
+    min-width: 0;
   }
   
   .modal-header h2 {
-    font-size: 1rem;
+    font-size: 0.9375rem;
+    line-height: 1.2;
   }
   
   .order-number {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
   .header-status-badges {
-    margin-left: auto;
+    margin-left: 0;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    gap: 4px;
   }
   
   .missing-weight-badge-header,
   .payment-status-badge-header {
     font-size: 0.625rem;
-    padding: 2px 6px;
+    padding: 3px 6px;
     border-radius: 8px;
   }
   
   .close-btn {
     flex-shrink: 0;
-    margin-left: var(--md-spacing-sm);
+    margin-left: 0;
+    width: 36px;
+    height: 36px;
   }
   
   .modal-body {
@@ -4342,22 +4621,33 @@ export default {
   }
   
   .modal-footer {
-    flex-direction: column;
     gap: var(--md-spacing-sm);
     padding: var(--md-spacing-sm);
     flex-shrink: 0;
     position: relative;
     background: #FFFFFF;
     border-top: 2px solid rgba(0, 0, 0, 0.08);
-    /* Add bottom safe area */
     padding-bottom: calc(var(--md-spacing-sm) + env(safe-area-inset-bottom));
+  }
+
+  .footer-actions {
+    gap: var(--md-spacing-sm);
   }
   
   .update-order-btn,
   .complete-order-btn {
-    width: 100%;
-    padding: 12px;
+    width: auto;
+    min-height: 44px;
+    padding: 10px 12px;
     font-size: 0.875rem;
+  }
+
+  .btn-label-full {
+    display: none;
+  }
+
+  .btn-label-short {
+    display: inline;
   }
   
   .modal-overlay-inner {

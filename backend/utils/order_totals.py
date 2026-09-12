@@ -17,11 +17,13 @@ def _dec(value) -> Decimal:
 
 
 def shipping_tier_base(order) -> Decimal:
-    """Net base for delivery fee tiers (discount-only adjustment)."""
+    """Net base for delivery fee tiers (discount-only adjustment; excludes 切分)."""
+    from utils.cutting import order_cutting_fees_total
     return shipping_tier_base_from_parts(
         _dec(order.subtotal),
         _dec(order.store_credit_applied),
         _dec(order.adjustment_amount),
+        order_cutting_fees_total(order),
     )
 
 
@@ -48,6 +50,9 @@ def order_items_for_shipping(order):
             items.append({
                 'product': product,
                 'total_price': float(oi.total_price or 0),
+                'quantity': oi.quantity,
+                'cutting': bool(getattr(oi, 'cutting', False)),
+                'cutting_fee': float(oi.cutting_fee) if getattr(oi, 'cutting_fee', None) is not None else 0,
             })
     return items
 

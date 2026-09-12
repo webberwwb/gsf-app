@@ -8,7 +8,7 @@
 
 /**
  * Order Status Enum
- * Workflow: submitted → confirmed → preparing → ready_for_pickup/out_for_delivery → completed
+ * Workflow: submitted → confirmed → preparing → ready_for_pickup/out_for_delivery → delivered → completed
  * Can be cancelled at any stage
  */
 export const OrderStatus = {
@@ -18,6 +18,7 @@ export const OrderStatus = {
   PACKING_COMPLETE: 'packing_complete',  // 配货完成 - Packing completed, ready for next step
   READY_FOR_PICKUP: 'ready_for_pickup',  // 可以取货 - Ready for customer pickup
   OUT_FOR_DELIVERY: 'out_for_delivery',  // 正在配送 - Out for delivery (delivery orders only)
+  DELIVERED: 'delivered',           // 已送达 - Dropped off; complete only after payment too
   COMPLETED: 'completed',           // 订单完成 - Order completed and paid
   CANCELLED: 'cancelled',           // 已取消 - Order cancelled
 }
@@ -29,6 +30,7 @@ export const OrderStatusLabels = {
   [OrderStatus.PACKING_COMPLETE]: '配货完成',
   [OrderStatus.READY_FOR_PICKUP]: '可以取货',
   [OrderStatus.OUT_FOR_DELIVERY]: '正在配送',
+  [OrderStatus.DELIVERED]: '已送达',
   [OrderStatus.COMPLETED]: '订单完成',
   [OrderStatus.CANCELLED]: '已取消',
 }
@@ -37,12 +39,36 @@ export function getOrderStatusLabel(status) {
   return OrderStatusLabels[status] || status
 }
 
+export const USER_SETTINGS_EDITABLE_STATUSES = [
+  OrderStatus.SUBMITTED,
+  OrderStatus.CONFIRMED,
+  OrderStatus.PREPARING
+]
+
+export function canUserEditSettings(status) {
+  return USER_SETTINGS_EDITABLE_STATUSES.includes(status)
+}
+
+export function canUserEditProducts(status, deal, now = new Date()) {
+  if (status !== OrderStatus.SUBMITTED) return false
+  if (!deal) return false
+  if (deal.status === 'closed') return false
+  if (deal.order_end_date && new Date(deal.order_end_date) < now) return false
+  return true
+}
+
 export function isOrderEditableByUser(status) {
-  return status === OrderStatus.SUBMITTED
+  return canUserEditSettings(status)
 }
 
 export function isOrderCancellableByUser(status) {
   return status === OrderStatus.SUBMITTED
+}
+
+export function isOrderPhysicallyDelivered(order) {
+  if (!order) return false
+  if (order.delivered_at) return true
+  return order.status === OrderStatus.DELIVERED || order.status === OrderStatus.COMPLETED
 }
 
 /**

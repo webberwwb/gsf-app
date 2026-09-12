@@ -11,6 +11,7 @@ class OrderItemSchema(Schema):
     pricing_type = fields.String(missing='per_item', validate=validate.OneOf(['per_item', 'weight_range', 'unit_weight', 'bundled_weight']))
     variant_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     accept_substitute = fields.Boolean(allow_none=True)
+    cutting = fields.Boolean(missing=False)
     
     class Meta:
         unknown = EXCLUDE
@@ -78,9 +79,9 @@ class CreateOrderSchema(Schema):
 
 
 class UpdateOrderSchema(Schema):
-    """Schema for updating an existing order"""
-    items = fields.List(fields.Nested(OrderItemSchema), required=True, validate=validate.Length(min=1))
-    delivery_method = fields.String(missing=DeliveryMethod.PICKUP.value, validate=validate.OneOf(DeliveryMethod.get_all_values()))
+    """Schema for updating an existing order. Omit items for settings-only."""
+    items = fields.List(fields.Nested(OrderItemSchema), allow_none=True, missing=None)
+    delivery_method = fields.String(allow_none=True, validate=validate.OneOf(DeliveryMethod.get_all_values()))
     address_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     pickup_location = fields.String(allow_none=True, validate=validate.Length(max=100))
     payment_method = fields.String(allow_none=True, validate=validate.OneOf(PaymentMethod.get_all_values()))
@@ -91,8 +92,10 @@ class UpdateOrderSchema(Schema):
     
     @validates('items')
     def validate_items(self, value):
-        if not value or len(value) == 0:
-            raise ValidationError('At least one item is required')
+        if value is None or len(value) == 0:
+            return
+        if any(not item for item in value):
+            raise ValidationError('Invalid item')
     
     @post_load
     def validate_delivery_address(self, data, **kwargs):

@@ -150,7 +150,7 @@
               <!-- Product Selection Controls -->
               <div class="product-selection" :class="{ 'disabled': !canEditProducts || isOrderCompleted }">
                 <ProductDetailsSection
-                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
+                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled || product.cutting_enabled"
                   :product="product"
                   :product-id="product.id"
                   :variants="product.variants || []"
@@ -167,9 +167,13 @@
                   :variant-id="getSelection(product).variant_id"
                   :variant-quantities="getSelection(product).variant_quantities || {}"
                   :accept-substitute="getSelection(product).accept_substitute"
+                  :quantity="getQuantity(product)"
+                  :cutting-qty="getSelection(product).cutting_qty || 0"
+                  :cutting-quantities="getSelection(product).cutting_quantities || {}"
                   :disabled="!canEditProducts || isOrderCompleted"
                   @update:accept-substitute="(v) => setAcceptSubstitute(product, v)"
                   @change-variant-qty="(variantId, qty) => setVariantQuantity(product, variantId, qty)"
+                  @change-cutting-qty="(variantId, qty) => setCuttingQuantity(product, variantId, qty)"
                 />
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
@@ -270,13 +274,12 @@
                   </div>
                 </div>
               </div>
-              <!-- Show note when products cannot be edited (deal closed or order confirmed) but order is editable -->
-              <div v-if="!canEditProducts && canEditPaymentDelivery && !isOrderCompleted" class="deal-closed-product-note">
-                <span v-if="isDealClosed && order && order.status === 'confirmed'">团购已截单且订单已确认，无法修改商品</span>
-                <span v-else-if="isDealClosed">团购已截单，无法修改商品</span>
-                <span v-else-if="order && order.status === 'confirmed'">订单已确认，无法修改商品</span>
-              </div>
           </div>
+        </div>
+        <div v-if="!canEditProducts && canEditPaymentDelivery && !isOrderCompleted" class="deal-closed-product-note">
+          <span v-if="isDealClosed && order && order.status === 'confirmed'">团购已截单且订单已确认，无法修改商品</span>
+          <span v-else-if="isDealClosed">团购已截单，无法修改商品</span>
+          <span v-else-if="order && order.status === 'confirmed'">订单已确认，无法修改商品</span>
         </div>
       </div>
 
@@ -909,11 +912,15 @@ import {
   getSelectionQuantity,
   getVariantQuantity,
   setVariantQuantity as applyVariantQuantity,
+  setCuttingQuantity as applyCuttingQuantity,
+  splitSelectionIntoOrderLines,
   emptyProductSelection,
   productRequiresSubstituteChoice,
   selectionsFromOrderItems,
-  isOrderLinePriceEstimated
+  isOrderLinePriceEstimated,
+  orderItemSelectionChanged
 } from '../utils/orderItemPricing'
+import { canUserEditProducts, canUserEditSettings } from '@shared/status-enums.js'
 import {
   formatMoney,
   formatMoneyDisplay,
@@ -998,16 +1005,10 @@ export default {
       // Order is completed
       return this.order && this.order.status === 'completed'
     },
-    isEditable() {
-      // Order is editable if status is 'submitted' (regardless of deal status)
-      return this.order && this.order.status === 'submitted'
-    },
     canEditProducts() {
-      // Can edit products only if order is submitted AND deal is not closed AND order is not confirmed
-      // Products are NOT editable when: deal is closed OR order status is confirmed
       if (!this.order) return false
-      const isOrderConfirmed = this.order.status === 'confirmed'
-      return this.isEditable && !this.isDealClosed && !isOrderConfirmed
+      if (this.order.can_edit_products != null) return this.order.can_edit_products
+      return canUserEditProducts(this.order.status, this.deal)
     },
     paymentNote() {
       if (this.deliveryMethod === 'delivery') {
@@ -1019,11 +1020,9 @@ export default {
       return '根据实际重量支付（现金或电子转账）'
     },
     canEditPaymentDelivery() {
-      // Can edit payment/delivery/notes if order is submitted, confirmed, or preparing
-      // Everything is read-only for: ready_for_pickup, out_for_delivery, completed, and other statuses
       if (!this.order) return false
-      const editableStatuses = ['submitted', 'confirmed', 'preparing']
-      return editableStatuses.includes(this.order.status)
+      if (this.order.can_edit_settings != null) return this.order.can_edit_settings
+      return canUserEditSettings(this.order.status)
     },
     hasCardOnFile() {
       return hasSavedCard(this.cardOnFile) || hasSavedCard(this.currentUser)
@@ -1060,11 +1059,7 @@ export default {
       return this.order.status === 'submitted'
     },
     canUpdateOrder() {
-      // Can update order when status is submitted, confirmed, or preparing
-      // Cannot update when: ready_for_pickup, out_for_delivery, completed, cancelled
-      if (!this.order) return false
-      const updatableStatuses = ['submitted', 'confirmed', 'preparing']
-      return updatableStatuses.includes(this.order.status)
+      return this.canEditPaymentDelivery
     },
     showOrderItemsSummary() {
       if (!this.order?.items?.length) return false
@@ -1073,6 +1068,7 @@ export default {
         'preparing',
         'ready_for_pickup',
         'out_for_delivery',
+        'delivered',
         'completed'
       ]
       if (summaryStatuses.includes(this.order.status)) return true
@@ -1419,6 +1415,7 @@ export default {
         'preparing': '正在配货',
         'ready_for_pickup': '可以取货',
         'out_for_delivery': '正在配送',
+        'delivered': '已送达',
         'completed': '订单完成',
         'cancelled': '已取消'
       }
@@ -1431,6 +1428,7 @@ export default {
         'preparing': 'processing',
         'ready_for_pickup': 'processing',
         'out_for_delivery': 'processing',
+        'delivered': 'processing',
         'completed': 'completed',
         'cancelled': 'cancelled'
       }
@@ -1490,6 +1488,7 @@ export default {
       if (finalQty !== currentQty) {
         delete this.selectedItems[product.id].weight
       }
+      this.selectedItems[product.id] = applyCuttingQuantity(this.selectedItems[product.id], this.selectedItems[product.id].cutting_qty, null)
     },
     staffWeight(product) {
       const item = this.getOrderItemForProduct(product)
@@ -1531,40 +1530,32 @@ export default {
     },
     calculateItemTotal(product) {
       const sel = this.getSelection(product)
-      const variants = product.variants || []
-      if (variants.length) {
-        let pooled = 0
-        for (const v of variants) pooled += getVariantQuantity(sel, v.id)
-        if (pooled === 0) return '0.00'
-        let total = 0
-        for (const v of variants) {
-          const qty = getVariantQuantity(sel, v.id)
-          if (qty <= 0) continue
-          total += estimateSelectionTotal(product, qty, {
-            variant_id: v.id,
-            final_weight: this.staffWeight(product),
-            product_qty: pooled
-          })
-        }
-        return formatMoney(total)
-      }
       const pooled = getSelectionQuantity(sel)
       if (pooled === 0) return '0.00'
-      return formatMoney(estimateSelectionTotal(product, pooled, {
-        variant_id: sel.variant_id,
-        final_weight: this.staffWeight(product),
-        product_qty: pooled
-      }))
+      let total = 0
+      for (const part of splitSelectionIntoOrderLines(product, sel)) {
+        total += estimateSelectionTotal(product, part.quantity, {
+          variant_id: part.variant_id,
+          final_weight: this.staffWeight(product),
+          product_qty: pooled,
+          cutting: part.cutting
+        })
+      }
+      return formatMoney(total)
     },
     calculateBundledItemTotal(product) {
       const sel = this.getSelection(product)
       const pooled = getSelectionQuantity(sel)
       if (pooled === 0) return '$0.00'
-      const total = estimateSelectionTotal(product, pooled, {
-        variant_id: sel.variant_id,
-        final_weight: this.staffWeight(product),
-        product_qty: pooled
-      })
+      let total = 0
+      for (const part of splitSelectionIntoOrderLines(product, sel)) {
+        total += estimateSelectionTotal(product, part.quantity, {
+          variant_id: part.variant_id,
+          final_weight: this.staffWeight(product),
+          product_qty: pooled,
+          cutting: part.cutting
+        })
+      }
       return formatMoneyDisplay(total)
     },
     orderSubtotalNumber,
@@ -1609,17 +1600,18 @@ export default {
     setAcceptSubstitute(product, value) {
       this.getSelection(product).accept_substitute = value
     },
+    setCuttingQuantity(product, variantId, qty) {
+      const sel = this.getSelection(product)
+      this.selectedItems[product.id] = applyCuttingQuantity(sel, qty, variantId)
+    },
     async updateOrder() {
       if (!this.canUpdateOrder) {
         await this.warning('订单无法修改')
         return
       }
       
-      // Build order items - use existing order items if products can't be edited (deal closed or order confirmed)
       let orderItems = []
-      
       if (this.canEditProducts) {
-        // Can edit products - build from current selections
         for (const product of this.deal.products) {
           const selection = this.selectedItems[product.id]
           const pooled = getSelectionQuantity(selection || {})
@@ -1630,48 +1622,20 @@ export default {
             return
           }
 
-          const variants = product.variants || []
-          const pushLine = (qty, variantId) => {
-            const itemData = {
-              id: (selection.item_ids && variantId != null) ? selection.item_ids[variantId] : selection.item_id,
+          for (const part of splitSelectionIntoOrderLines(product, selection)) {
+            orderItems.push({
               product_id: product.id,
-              quantity: qty,
+              quantity: part.quantity,
               pricing_type: product.pricing_type,
-              variant_id: variantId || undefined,
-              accept_substitute: selection.accept_substitute
-            }
-            orderItems.push(itemData)
-          }
-          if (variants.length) {
-            for (const variant of variants) {
-              const qty = getVariantQuantity(selection, variant.id)
-              if (qty > 0) pushLine(qty, variant.id)
-            }
-          } else {
-            pushLine(pooled, selection.variant_id)
+              variant_id: part.variant_id || undefined,
+              accept_substitute: selection.accept_substitute,
+              cutting: part.cutting
+            })
           }
         }
         
         if (orderItems.length === 0) {
           await this.warning('请至少选择一个商品')
-          return
-        }
-      } else {
-        // Products can't be edited (deal closed or order confirmed) - use existing order items (can only update payment/delivery/notes)
-        if (this.order.items && this.order.items.length > 0) {
-          orderItems = this.order.items.map(item => {
-            const itemData = {
-              id: item.id,
-              product_id: item.product_id,
-              quantity: item.quantity,
-              pricing_type: item.product?.pricing_type || 'per_item',
-              variant_id: item.variant_id || undefined,
-              accept_substitute: item.accept_substitute
-            }
-            return itemData
-          })
-        } else {
-          await this.warning('订单中没有商品')
           return
         }
       }
@@ -1697,12 +1661,14 @@ export default {
       this.saving = true
       try {
         const orderData = {
-          items: orderItems,
           payment_method: this.paymentMethod,
           delivery_method: this.deliveryMethod,
           address_id: this.deliveryMethod === 'delivery' ? this.selectedAddressId : null,
           pickup_location: this.deliveryMethod === 'pickup' ? this.selectedPickupLocation : null,
           notes: this.notes.trim() || null
+        }
+        if (this.canEditProducts && orderItemSelectionChanged(this.order.items, orderItems)) {
+          orderData.items = orderItems
         }
         if (this.deliveryMethod === 'delivery') {
           orderData.delivery_consent = true

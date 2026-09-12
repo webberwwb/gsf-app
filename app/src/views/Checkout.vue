@@ -158,7 +158,7 @@
             <span class="breakdown-amount">${{ calculateSubtotal() }}</span>
           </div>
           <div
-            v-if="creditApplyActive && !isOrderCompleted"
+            v-if="creditApplyActive"
             class="breakdown-row breakdown-row--store-credit"
           >
             <span class="breakdown-label">使用代金券</span>
@@ -187,7 +187,7 @@
         </div>
       </div>
 
-      <div v-if="!isOrderCompleted" class="credit-referral-section">
+      <div class="credit-referral-section">
         <h3 class="section-title">优惠与推荐</h3>
         <p v-if="currentUser?.referrer_is_influencer" class="referrer-bound-note">
           已使用推荐官邀请码{{ currentUser.referrer_display_name ? `（${currentUser.referrer_display_name}）` : '' }}
@@ -776,9 +776,6 @@ export default {
         this.checkoutStore.setNotes(value)
       }
     },
-    existingOrderId() {
-      return this.checkoutStore.existingOrderId
-    },
     hasCardOnFile() {
       return hasSavedCard(this.cardOnFile) || hasSavedCard(this.currentUser)
     },
@@ -812,14 +809,11 @@ export default {
       return true
     },
     submitAmountLabel() {
-      const prefix = this.isOrderCompleted ? '' : (this.hasEstimatedTotal ? '预估' : '')
+      const prefix = this.hasEstimatedTotal ? '预估' : ''
       return `${prefix}$${this.calculateTotal()}`
     },
     hasEstimatedTotal() {
       return this.checkoutStore.hasEstimatedTotal
-    },
-    isOrderCompleted() {
-      return this.checkoutStore.isOrderCompleted
     },
     selectedAddress() {
       if (!this.selectedAddressId) return null
@@ -867,7 +861,6 @@ export default {
       return formatOrderMoney2(this.maxStoreCreditApplicable || 0)
     },
     orderTotalRowLabel() {
-      if (this.isOrderCompleted) return '最终价格'
       if (this.creditApplyActive) return '应付金额'
       return this.hasEstimatedTotal ? '预估总计' : '总计'
     },
@@ -1269,9 +1262,6 @@ export default {
           this.referralCodeInput = ''
         }
         this.applyStoreCredit = this.maxStoreCreditApplicable > 0
-        if (this.existingOrderId && this.deliveryMethod === 'delivery') {
-          this.seedConsentIfExistingDelivery()
-        }
         if (this.deliveryMethod === 'delivery') {
           await this.loadAddresses()
         }
@@ -1348,9 +1338,6 @@ export default {
     },
     calculateTotal() {
       const raw = Number(this.checkoutStore.total) || 0
-      if (this.isOrderCompleted) {
-        return formatOrderMoney2(raw)
-      }
       if (this.creditApplyActive) {
         const credit = Number(this.maxStoreCreditApplicable) || 0
         return formatOrderMoney2(Math.max(0, raw - credit))
@@ -1396,43 +1383,17 @@ export default {
         if (orderData.delivery_method === 'delivery') {
           orderData.delivery_consent = true
         }
-        if (!this.isOrderCompleted) {
-          const rawRef = (this.referralCodeInput || this.$route.query.ref || '').trim()
-          if (this.showReferralInviteRow && !this.currentUser?.referred_by_user_id && rawRef) {
-            orderData.referral_code = rawRef
-          }
-          let useCredit = this.applyStoreCredit ? Number(this.maxStoreCreditApplicable) || 0 : 0
-          if (Number.isNaN(useCredit) || useCredit < 0) useCredit = 0
-          orderData.store_credit_to_apply = formatOrderMoney2(useCredit)
+        const rawRef = (this.referralCodeInput || this.$route.query.ref || '').trim()
+        if (this.showReferralInviteRow && !this.currentUser?.referred_by_user_id && rawRef) {
+          orderData.referral_code = rawRef
         }
+        let useCredit = this.applyStoreCredit ? Number(this.maxStoreCreditApplicable) || 0 : 0
+        if (Number.isNaN(useCredit) || useCredit < 0) useCredit = 0
+        orderData.store_credit_to_apply = formatOrderMoney2(useCredit)
 
-        let response
-        let isNew = true
-        
-        // Check if we have an existing order ID or need to create new
-        if (this.existingOrderId) {
-          // Update existing order using PATCH
-          response = await apiClient.patch(`/orders/${this.existingOrderId}`, orderData)
-          isNew = false
-        } else {
-          // Try to create new order
-          try {
-            orderData.group_deal_id = this.deal.id
-            response = await apiClient.post('/orders', orderData)
-            isNew = true
-          } catch (error) {
-            // If we get a 409 (conflict), it means order exists - try to get it and update
-            if (error.response?.status === 409 && error.response?.data?.order_id) {
-              const orderId = error.response.data.order_id
-              // Remove group_deal_id for PATCH request
-              delete orderData.group_deal_id
-              response = await apiClient.patch(`/orders/${orderId}`, orderData)
-              isNew = false
-            } else {
-              throw error
-            }
-          }
-        }
+        orderData.group_deal_id = this.deal.id
+        const response = await apiClient.post('/orders', orderData)
+        const isNew = true
         
         await this.authStore.checkAuth()
         invalidateReferralInviteCompletedCache(this.currentUser?.id)
