@@ -84,18 +84,18 @@ def test_sync_saved_card_clears_missing_payment_method(app):
     assert card['has_card'] is False
     assert user.stripe_payment_method_id is None
     assert user.stripe_card_last4 is None
-    assert user.delivery_consent_version is None
-    assert user.delivery_consent_accepted_at is None
+    assert user.delivery_consent_version == '2026-09'
+    assert user.delivery_consent_accepted_at == '2026-09-09'
 
 
-def test_unbind_saved_card_detaches_and_clears_consent(app):
+def test_unbind_saved_card_detaches_and_keeps_consent(app):
     user = _user()
     client = MagicMock()
     with patch('utils.stripe_payments.get_stripe_client', return_value=client):
         card = unbind_saved_card(user)
     assert card['has_card'] is False
     assert user.stripe_payment_method_id is None
-    assert user.delivery_consent_version is None
+    assert user.delivery_consent_version == '2026-09'
     client.v1.payment_methods.detach.assert_called_once_with('pm_old')
 
 

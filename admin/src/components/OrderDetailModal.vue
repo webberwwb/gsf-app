@@ -106,7 +106,7 @@
                 <select v-model="localPaymentMethod" class="payment-method-select" @change="handlePaymentMethodChange" :disabled="isFulfillmentOnly">
                   <option value="">未选择</option>
                   <option value="cash">现金</option>
-                  <option value="etransfer" :disabled="order && order.delivery_method === 'delivery'">电子转账</option>
+                  <option value="etransfer">电子转账</option>
                   <option value="card" :disabled="order && order.delivery_method === 'pickup'">信用卡</option>
                 </select>
               </div>
@@ -1296,13 +1296,7 @@ export default {
       this.localOrderStatus = this.order.status || 'submitted'
       
       // Initialize payment method (watcher will check isInitializingOrder flag)
-      if (this.order.delivery_method === 'delivery') {
-        this.localPaymentMethod = this.order.payment_method === 'etransfer'
-          ? 'etransfer'
-          : 'card'
-      } else {
-        this.localPaymentMethod = this.order.payment_method || ''
-      }
+      this.localPaymentMethod = this.order.payment_method || ''
       
       // Initialize delivery method and location
       this.localDeliveryMethod = this.order.delivery_method || 'pickup'
@@ -1796,11 +1790,6 @@ export default {
         updateData.pickup_location = 'markham'
       } else if (this.localDeliveryMethod === 'delivery') {
         updateData.address_id = this.localAddressId
-        if (this.localPaymentMethod === 'cash' || this.localPaymentMethod === 'card') {
-          updateData.payment_method = this.localPaymentMethod
-        } else {
-          updateData.payment_method = 'card'
-        }
       }
       
       // Include order notes

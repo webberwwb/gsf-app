@@ -100,6 +100,31 @@ def test_calculate_shipping_fee_adds_region_surcharge():
     assert fee == Decimal('11.99')
 
 
+def test_free_shipping_keeps_region_delta():
+    cfg = RegionCfg()
+    whitby = calculate_shipping_fee(
+        Decimal('160'),
+        'delivery',
+        address={'city': 'Whitby'},
+        config=cfg,
+    )
+    waterloo = calculate_shipping_fee(
+        Decimal('160'),
+        'delivery',
+        address={'city': 'Waterloo'},
+        config=cfg,
+    )
+    markham = calculate_shipping_fee(
+        Decimal('160'),
+        'delivery',
+        address={'city': 'Markham'},
+        config=cfg,
+    )
+    assert whitby == Decimal('2.00')
+    assert waterloo == Decimal('4.00')
+    assert markham == Decimal('0.00')
+
+
 def test_calculate_shipping_fee_pickup_ignores_region():
     cfg = RegionCfg()
     fee = calculate_shipping_fee(

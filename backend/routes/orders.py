@@ -335,7 +335,7 @@ def create_order():
 
         db.session.add(order)
         db.session.flush()
-        if delivery_method == DeliveryMethod.DELIVERY.value:
+        if payment_method == PaymentMethod.CARD.value:
             copy_user_card_to_order(order, user_row)
 
         create_order_item_rows(order.id, order_items, db.session)
@@ -634,7 +634,7 @@ def update_order(order_id):
             order.notes = notes
         if payment_method and payment_method in PaymentMethod.get_all_values():
             order.payment_method = payment_method
-        if delivery_method == DeliveryMethod.DELIVERY.value:
+        if order.payment_method == PaymentMethod.CARD.value:
             copy_user_card_to_order(order, user_row)
         order.updated_at = utc_now()
 

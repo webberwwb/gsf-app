@@ -59,9 +59,6 @@ def _clear_saved_card(user):
     user.stripe_payment_method_id = None
     user.stripe_card_brand = None
     user.stripe_card_last4 = None
-    # No card → delivery is off until they sign the 须知 and bind again
-    user.delivery_consent_accepted_at = None
-    user.delivery_consent_version = None
 
 
 def ensure_stripe_customer(user):
@@ -127,7 +124,7 @@ def sync_saved_card(user):
 
 
 def unbind_saved_card(user):
-    """Detach the saved payment method and revoke delivery consent."""
+    """Detach the saved payment method without affecting delivery consent."""
     if not user:
         return card_on_file_dict(user)
     client = get_stripe_client()

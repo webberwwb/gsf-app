@@ -25,6 +25,7 @@ export const DEFAULT_REGION_SURCHARGES = [
 
 export const REGION_PIN_COLORS = ['#FB8C00', '#1E88E5', '#8E24AA', '#00897B']
 export const BASE_REGION_COLOR = '#43A047'
+export const DEFAULT_REGION_LABEL = 'GTA默认区域'
 
 export function calculateShippingFee(subtotal, config) {
   if (!config || !config.tiers || config.tiers.length === 0) {
@@ -182,7 +183,7 @@ export function matchRegionSurcharge(config, address) {
   const key = cityKey(city)
   const groups = regionSurchargesFrom(config)
   if (!key) {
-    return { surcharge: 0, label: '', city, region: null, matched: false }
+    return { surcharge: 0, label: DEFAULT_REGION_LABEL, city, region: null, matched: false }
   }
   const region = groups.find((group) => group.cities.some((item) => cityKey(item) === key))
   if (region) {
@@ -194,7 +195,7 @@ export function matchRegionSurcharge(config, address) {
       matched: true
     }
   }
-  return { surcharge: 0, label: '', city, region: null, matched: false }
+  return { surcharge: 0, label: DEFAULT_REGION_LABEL, city, region: null, matched: false }
 }
 
 export function regionPinColor(config, address) {
@@ -209,6 +210,17 @@ export function regionPinColor(config, address) {
 
 export function regionSurchargeForAddress(config, address) {
   return matchRegionSurcharge(config, address).surcharge
+}
+
+export function baseDeliveryFee(config) {
+  const tiers = [...(config?.tiers || [])].sort((a, b) => (a.threshold || 0) - (b.threshold || 0))
+  if (!tiers.length) return 7.99
+  return roundMoney(tiers[0].fee)
+}
+
+/** Base-tier fee + region add-on, e.g. 7.99 or 9.99. */
+export function regionListedFee(config, surcharge = 0) {
+  return roundMoney(baseDeliveryFee(config) + (Number(surcharge) || 0))
 }
 
 /** Live shipping fee for admin/checkout/user previews. */

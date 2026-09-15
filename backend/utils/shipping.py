@@ -150,7 +150,7 @@ def eligible_tier_subtotal_from_items(order_items, tier_base) -> Decimal:
     return round_money(eligible)
 
 
-# Customer region add-on. Unlisted cities use the subtotal tier only (no extra).
+DEFAULT_REGION_LABEL = 'GTA默认区域'
 DEFAULT_REGION_SURCHARGES = [
     {
         'label': 'Waterloo / Kitchener / Guelph',
@@ -272,7 +272,7 @@ def match_region_surcharge(config, address):
     if not key:
         return {
             'surcharge': Decimal('0'),
-            'label': '',
+            'label': DEFAULT_REGION_LABEL,
             'city': city,
             'region': None,
             'matched': False,
@@ -288,7 +288,7 @@ def match_region_surcharge(config, address):
             }
     return {
         'surcharge': Decimal('0'),
-        'label': '',
+        'label': DEFAULT_REGION_LABEL,
         'city': city,
         'region': None,
         'matched': False,

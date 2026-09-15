@@ -1,6 +1,6 @@
 """Current delivery-order consent version. Bump when the 须知 text changes."""
 
-DELIVERY_CONSENT_VERSION = '2026-09'
+DELIVERY_CONSENT_VERSION = '2026-09-15-2'
 
 
 def user_has_delivery_consent(user):

@@ -1,7 +1,7 @@
 <template>
   <p class="delivery-agreement-footnote">
     <button type="button" class="delivery-agreement-link" @click.stop="$emit('open')">
-      查看配送协议
+      查看配送须知
     </button>
   </p>
 </template>

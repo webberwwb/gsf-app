@@ -39,8 +39,7 @@
             <h3 class="panel-title">绑定的银行卡</h3>
             <p v-if="savedCardLabel" class="bound-card-value">{{ savedCardLabel }}</p>
             <p v-else class="placeholder-msg">尚未绑定银行卡</p>
-            <p class="panel-hint">配送需绑定银行卡。解绑后将无法选择配送，需重新绑卡。卡号由 Stripe 托管，本APP只保存后四位方便核对。</p>
-            <DeliveryAgreementLink @open="openDeliveryAgreement" />
+            <p class="panel-hint">银行卡用于在线支付（称重后扣款）。解绑后仍可选择配送，改用现金或 EMT；再次在线支付需重新绑卡。卡号由 Stripe 托管，本APP只保存后四位方便核对。</p>
             <button type="button" class="ledger-btn" @click="showCardSetup = true">
               {{ savedCardLabel ? '更换银行卡' : '绑定银行卡' }}
             </button>
@@ -395,7 +394,7 @@ export default {
       await this.success('银行卡已绑定')
     },
     async unbindCard() {
-      const ok = await this.confirm('解绑后将无法选择配送。再次配送需重新绑定银行卡。确定解绑？')
+      const ok = await this.confirm('解绑后将无法使用在线支付。配送仍可选现金或 EMT。确定解绑？')
       if (!ok) return
       this.unbindingCard = true
       try {

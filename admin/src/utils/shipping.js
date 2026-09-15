@@ -3,6 +3,7 @@ import apiClient from '../api/client'
 export {
   DEFAULT_DEPOT,
   DEFAULT_REGION_SURCHARGES,
+  DEFAULT_REGION_LABEL,
   BASE_REGION_COLOR,
   REGION_PIN_COLORS,
   calculateShippingFee,
@@ -15,6 +16,7 @@ export {
   matchRegionSurcharge,
   regionSurchargesFrom,
   regionPinColor,
+  regionListedFee,
   coordsFromAddress,
   distanceKm,
   getNextShippingTier,

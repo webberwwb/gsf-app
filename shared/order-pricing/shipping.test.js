@@ -143,6 +143,30 @@ describe('region surcharges', () => {
     assert.equal(fee, 11.99)
   })
 
+  it('free shipping waives only the 7.99 base, not the region delta', () => {
+    const whitby = previewShippingFeeForOrder({
+      items: [{ product: {}, total_price: 160 }],
+      deliveryMethod: 'delivery',
+      shippingConfig: config,
+      address: { city: 'Whitby' }
+    })
+    const waterloo = previewShippingFeeForOrder({
+      items: [{ product: {}, total_price: 160 }],
+      deliveryMethod: 'delivery',
+      shippingConfig: config,
+      address: { city: 'Waterloo' }
+    })
+    const markham = previewShippingFeeForOrder({
+      items: [{ product: {}, total_price: 160 }],
+      deliveryMethod: 'delivery',
+      shippingConfig: config,
+      address: { city: 'Markham' }
+    })
+    assert.equal(whitby, 2)
+    assert.equal(waterloo, 4)
+    assert.equal(markham, 0)
+  })
+
   it('pickup stays 0 with region surcharge', () => {
     assert.equal(
       previewShippingFeeForOrder({

@@ -38,6 +38,9 @@ Delivery shipping_fee = subtotal_tier_fee + region_surcharge.
 Match address.city (case-insensitive, ignore spaces/punctuation) against configurable
 city groups. Default groups: Waterloo / Kitchener / Guelph +$4; Whitby / Pickering /
 Ajax / Hamilton / Burlington +$2. Unlisted cities (including Markham) add $0.
+Free-shipping / lower tiers reduce only the $7.99 base. The region delta is never
+waived. Example: Whitby order of $160 meets free delivery on the 7.99 zone and
+pays $2.00.
 Driver pay is separate: Markham / Richmond Hill $6, all other delivery cities $7.
 切分 fees are paid (in line.total_price / subtotal / amount_due) but excluded from
 the tier base and from each line's allocated product amount.

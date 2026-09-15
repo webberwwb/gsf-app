@@ -62,7 +62,7 @@ def test_stale_consent_version_is_not_current(app, db_session):
     assert user.to_dict()['has_delivery_consent'] is False
 
 
-def test_unbind_card_revokes_delivery_consent(app, db_session):
+def test_unbind_card_keeps_delivery_consent(app, db_session):
     user = _user()
     user.delivery_consent_version = DELIVERY_CONSENT_VERSION
     user.delivery_consent_accepted_at = utc_now()
@@ -77,7 +77,7 @@ def test_unbind_card_revokes_delivery_consent(app, db_session):
     assert res.status_code == 200
     body = res.get_json()
     assert body['has_card'] is False
-    assert body['user']['has_delivery_consent'] is False
+    assert body['user']['has_delivery_consent'] is True
     db.session.refresh(user)
     assert user.stripe_payment_method_id is None
-    assert user.delivery_consent_version is None
+    assert user.delivery_consent_version == DELIVERY_CONSENT_VERSION

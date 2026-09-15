@@ -5,7 +5,6 @@ export default {
       consentSaving: false,
       consentError: '',
       consentModalMode: 'agree',
-      deliveryGatePending: false,
       orderDeliveryConsented: false
     }
   },
@@ -35,22 +34,12 @@ export default {
         this.showConsentModal = true
         return
       }
-      if (!this.hasCardOnFile) {
-        this.deliveryGatePending = true
-        this.startCardSetup()
-        return
-      }
       this.applyDeliveryAfterGate()
     },
     acceptDeliveryConsent() {
       this.orderDeliveryConsented = true
       this.showConsentModal = false
       this.consentError = ''
-      if (!this.hasCardOnFile) {
-        this.deliveryGatePending = true
-        this.startCardSetup()
-        return
-      }
       this.applyDeliveryAfterGate()
     },
     cancelDeliveryConsent() {
@@ -59,25 +48,12 @@ export default {
       if (this.consentModalMode === 'view') return
       this.stayPickupAfterGate()
     },
-    onCardSetupClosed() {
-      if (this.deliveryGatePending && !this.hasCardOnFile) {
-        this.deliveryGatePending = false
-        this.stayPickupAfterGate()
-      }
-    },
-    onCardSavedForGate() {
-      if (!this.deliveryGatePending) return
-      this.deliveryGatePending = false
-      if (this.orderDeliveryConsented && this.hasCardOnFile) {
-        this.applyDeliveryAfterGate()
-      } else {
-        this.stayPickupAfterGate()
-      }
-    },
+    onCardSetupClosed() {},
+    onCardSavedForGate() {},
     enforceDeliveryEligibility() {
-      if (this.deliveryGatePending || this.showConsentModal) return
+      if (this.showConsentModal) return
       if (this.deliveryMethod !== 'delivery') return
-      if (this.orderDeliveryConsented && this.hasCardOnFile) return
+      if (this.orderDeliveryConsented) return
       this.stayPickupAfterGate()
     }
   }

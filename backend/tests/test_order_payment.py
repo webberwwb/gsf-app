@@ -32,22 +32,23 @@ def test_delivery_rejected_without_consent():
     assert payment_method_error('delivery', 'card', user) == '请先阅读并同意《配送须知》'
 
 
-def test_delivery_rejected_without_card():
+def test_delivery_card_rejected_without_card():
     user = _ready_user(stripe_payment_method_id=None)
-    assert payment_method_error('delivery', 'cash', user, delivery_consented=True) == '请先绑定银行卡后再提交配送订单'
-    assert payment_method_error('delivery', 'card', user, delivery_consented=True) == '请先绑定银行卡后再提交配送订单'
+    assert payment_method_error('delivery', 'cash', user, delivery_consented=True) is None
+    assert payment_method_error('delivery', 'etransfer', user, delivery_consented=True) is None
+    assert payment_method_error('delivery', 'card', user, delivery_consented=True) == '请先绑定银行卡后再使用在线支付'
 
 
-def test_delivery_allows_cash_or_card_when_ready():
+def test_delivery_allows_cash_etransfer_or_card_when_ready():
     user = _ready_user()
     assert payment_method_error('delivery', 'cash', user, delivery_consented=True) is None
     assert payment_method_error('delivery', 'card', user, delivery_consented=True) is None
-    assert payment_method_error('delivery', 'etransfer', user, delivery_consented=True) == '配送订单请使用现金或在线支付'
+    assert payment_method_error('delivery', 'etransfer', user, delivery_consented=True) is None
 
 
 def test_delivery_skips_card_check_when_not_required():
     user = _ready_user(stripe_payment_method_id=None)
-    assert payment_method_error('delivery', 'cash', user, require_card_on_file=False, delivery_consented=True) is None
+    assert payment_method_error('delivery', 'card', user, require_card_on_file=False, delivery_consented=True) is None
 
 
 def test_pickup_rejects_card():
@@ -78,6 +79,15 @@ def test_delivery_cash_not_ship_blocked():
     order = SimpleNamespace(
         delivery_method=DeliveryMethod.DELIVERY.value,
         payment_method=PaymentMethod.CASH.value,
+        payment_status=PaymentStatus.UNPAID.value,
+    )
+    assert delivery_ship_blocked(order, OrderStatus.OUT_FOR_DELIVERY.value) is False
+
+
+def test_delivery_etransfer_not_ship_blocked():
+    order = SimpleNamespace(
+        delivery_method=DeliveryMethod.DELIVERY.value,
+        payment_method=PaymentMethod.ETRANSFER.value,
         payment_status=PaymentStatus.UNPAID.value,
     )
     assert delivery_ship_blocked(order, OrderStatus.OUT_FOR_DELIVERY.value) is False

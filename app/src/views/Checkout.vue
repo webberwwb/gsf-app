@@ -107,34 +107,6 @@
     
     <!-- Checkout Content -->
     <div v-else class="checkout-content">
-      <div v-if="deal && orderItems.length > 0" class="confirm-order-section confirm-order-section--top">
-        <div class="submit-order-hint">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <span>请先核对配送与支付。点击「提交订单」后才会生成订单。</span>
-        </div>
-        <button
-          v-if="isAuthenticated"
-          type="button"
-          @click="confirmOrder"
-          :disabled="!canConfirm"
-          class="confirm-order-btn"
-        >
-          <span class="btn-text">提交订单</span>
-          <span class="btn-amount">{{ submitAmountLabel }}</span>
-        </button>
-        <button
-          v-else
-          type="button"
-          @click="goToLogin"
-          class="confirm-order-btn login-btn"
-        >
-          <span class="btn-text">登陆下单</span>
-          <span class="btn-amount">{{ submitAmountLabel }}</span>
-        </button>
-      </div>
-
       <!-- Order Summary -->
       <div class="order-summary-section">
         <h3 class="section-title">订单摘要</h3>
@@ -405,7 +377,7 @@
       <!-- Payment Method Selection -->
       <div class="payment-section">
         <h3 class="section-title">支付方式</h3>
-        <div v-if="deliveryMethod === 'pickup'" class="payment-options">
+        <div class="payment-options">
           <label 
             :class="['payment-option', { active: paymentMethod === 'cash' }]"
           >
@@ -423,6 +395,7 @@
             </div>
             <div class="option-content">
               <h4>现金</h4>
+              <p v-if="deliveryMethod === 'delivery'">配送时当面支付</p>
             </div>
             <div class="option-check">
               <svg v-if="paymentMethod === 'cash'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -447,7 +420,8 @@
               </svg>
             </div>
             <div class="option-content">
-              <h4>e-transfer</h4>
+              <h4>EMT</h4>
+              <p>配货称重完成后按提示完成电子转账</p>
             </div>
             <div class="option-check">
               <svg v-if="paymentMethod === 'etransfer'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -455,67 +429,55 @@
               </svg>
             </div>
           </label>
+
+          <label
+            v-if="deliveryMethod === 'delivery'"
+            :class="['payment-option', { active: paymentMethod === 'card' }]"
+          >
+            <input
+              type="radio"
+              name="paymentMethod"
+              value="card"
+              v-model="paymentMethod"
+              class="payment-radio"
+            />
+            <div class="option-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+            <div class="option-content">
+              <h4>在线支付</h4>
+              <p>称重后从已绑银行卡扣款</p>
+            </div>
+            <div class="option-check">
+              <svg v-if="paymentMethod === 'card'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </label>
         </div>
-        <div v-else class="delivery-payment">
-          <div class="card-bind-panel">
-            <div v-if="hasCardOnFile" class="card-on-file">
-              <div>
-                <span class="card-on-file-label">已绑卡</span>
-                <span class="card-on-file-detail">{{ savedCardLabel }}</span>
-              </div>
-              <div class="card-on-file-status">{{ deliveryCardStatus }}</div>
+        <div v-if="deliveryMethod === 'delivery' && paymentMethod === 'card'" class="card-bind-panel">
+          <div v-if="hasCardOnFile" class="card-on-file">
+            <div>
+              <span class="card-on-file-label">已绑卡</span>
+              <span class="card-on-file-detail">{{ savedCardLabel }}</span>
             </div>
-            <div v-else class="card-on-file card-on-file--empty">
-              配送需先绑定银行卡（信用卡或 Visa/Mastercard 借记卡）
-            </div>
-            <button
-              type="button"
-              class="bind-card-btn"
-              :disabled="bindingCard"
-              @click="startCardSetup"
-            >
-              {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
-            </button>
-            <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
-            <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
+            <div class="card-on-file-status">{{ deliveryCardStatus }}</div>
           </div>
-          <h4 class="selection-subtitle">选择支付方式</h4>
-          <div class="payment-options">
-            <label :class="['payment-option', { active: paymentMethod === 'cash' }]">
-              <input type="radio" name="deliveryPaymentMethod" value="cash" v-model="paymentMethod" class="payment-radio" />
-              <div class="option-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <div class="option-content">
-                <h4>现金</h4>
-                <p>配送时当面支付</p>
-              </div>
-              <div class="option-check">
-                <svg v-if="paymentMethod === 'cash'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </label>
-            <label :class="['payment-option', { active: paymentMethod === 'card' }]">
-              <input type="radio" name="deliveryPaymentMethod" value="card" v-model="paymentMethod" class="payment-radio" />
-              <div class="option-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-              </div>
-              <div class="option-content">
-                <h4>在线支付</h4>
-                <p>称重后从已绑银行卡扣款</p>
-              </div>
-              <div class="option-check">
-                <svg v-if="paymentMethod === 'card'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </label>
+          <div v-else class="card-on-file card-on-file--empty">
+            在线支付需先绑定银行卡（信用卡或 Visa/Mastercard 借记卡）
           </div>
+          <button
+            type="button"
+            class="bind-card-btn"
+            :disabled="bindingCard"
+            @click="startCardSetup"
+          >
+            {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
+          </button>
+          <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
+          <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
         </div>
         <p class="payment-note">{{ paymentNote }}</p>
       </div>
@@ -666,7 +628,7 @@ import {
 } from '../utils/referralInviteUi'
 import { formatOrderMoney2 } from '../utils/orderPricing'
 import { cardLabel, hasSavedCard, CARD_PRIVACY_NOTE } from '../utils/stripeCard'
-import { previewShippingBreakdown, regionSurchargesFrom } from '../utils/shipping'
+import { previewShippingBreakdown, regionListedFee, regionSurchargesFrom, DEFAULT_REGION_LABEL } from '../utils/shipping'
 
 export default {
   name: 'Checkout',
@@ -788,24 +750,25 @@ export default {
       return cardLabel(src.brand || src.stripe_card_brand, src.last4 || src.stripe_card_last4)
     },
     deliveryCardStatus() {
-      if (this.paymentMethod === 'card') {
-        return '称重后从该卡扣款'
-      }
-      return '现金未收到时将从该卡扣款'
+      return '称重后从该卡扣款'
     },
     paymentNote() {
+      if (this.paymentMethod === 'etransfer') {
+        return '配货称重完成后按提示完成电子转账'
+      }
       if (this.deliveryMethod === 'delivery') {
         if (this.paymentMethod === 'card') {
           return '下单不扣款，称重后扣款。未扣款不发货'
         }
-        return '配送时现金支付；无人收货或未能支付现金时，从已绑定银行卡扣款'
+        return '配送时当面支付现金'
       }
       return '根据实际重量支付（现金或电子转账）'
     },
     canConfirm() {
       if (this.deliveryMethod === 'delivery') {
-        const payOk = this.paymentMethod === 'cash' || this.paymentMethod === 'card'
-        return this.selectedAddressId !== null && this.hasDeliveryConsent && this.hasCardOnFile && payOk
+        const payOk = this.paymentMethod === 'cash' || this.paymentMethod === 'etransfer' || this.paymentMethod === 'card'
+        const cardOk = this.paymentMethod !== 'card' || this.hasCardOnFile
+        return this.selectedAddressId !== null && this.hasDeliveryConsent && payOk && cardOk
       }
       if (this.deliveryMethod === 'pickup') {
         return this.selectedPickupLocation !== null
@@ -845,9 +808,7 @@ export default {
         address: this.selectedAddress
       })
       if (!breakdown.surcharge) return ''
-      const city = breakdown.city ? `${breakdown.city} · ` : ''
-      const label = breakdown.label ? `${breakdown.label} · ` : ''
-      return `${city}${label}档次 $${formatOrderMoney2(breakdown.base)} + 地区 $${formatOrderMoney2(breakdown.surcharge)}`
+      return `跨区运费: $${formatOrderMoney2(breakdown.surcharge)}`
     },
     maxStoreCreditApplicable() {
       const bal = Number(this.currentUser?.store_credit_balance) || 0
@@ -924,8 +885,11 @@ export default {
     regionPolicySuffix() {
       const groups = regionSurchargesFrom(this.shippingConfig)
       if (!groups.length) return ''
-      const bits = groups.map((group) => `${group.label} +$${formatOrderMoney2(group.surcharge)}`)
-      return `地区加价: ${bits.join('；')}`
+      const bits = [
+        `${DEFAULT_REGION_LABEL} $${formatOrderMoney2(regionListedFee(this.shippingConfig, 0))}`,
+        ...groups.map((group) => `${group.label} $${formatOrderMoney2(regionListedFee(this.shippingConfig, group.surcharge))}`)
+      ]
+      return `地区运费起步: ${bits.join('；')}。满额只免基础运费，地区差额仍收`
     }
   },
   async mounted() {
@@ -1002,9 +966,6 @@ export default {
     maxStoreCreditApplicable() {
       this.syncShippingCreditPreview()
     },
-    hasCardOnFile() {
-      this.enforceDeliveryEligibility()
-    },
     hasDeliveryConsent() {
       this.enforceDeliveryEligibility()
     }
@@ -1025,9 +986,6 @@ export default {
     },
     applyDeliveryAfterGate() {
       this.checkoutStore.setDeliveryMethod('delivery')
-      if (this.paymentMethod === 'etransfer') {
-        this.checkoutStore.setPaymentMethod('cash')
-      }
       this.loadCardOnFile()
       if (this.addresses.length === 0) {
         this.loadAddresses()
@@ -1390,6 +1348,10 @@ export default {
       this.$router.push('/login')
     },
     async confirmOrder() {
+      if (this.deliveryMethod === 'delivery' && this.paymentMethod === 'card' && !this.hasCardOnFile) {
+        this.startCardSetup()
+        return
+      }
       if (!this.canConfirm) {
         return
       }
@@ -2051,6 +2013,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 12px;
 }
 
 .card-on-file {
@@ -2825,11 +2788,6 @@ export default {
 .confirm-order-section {
   padding: 0;
   margin-top: var(--md-spacing-lg);
-}
-
-.confirm-order-section--top {
-  padding: 0 0 var(--md-spacing-md);
-  margin-top: 0;
 }
 
 .submit-order-hint {

@@ -421,7 +421,7 @@
       <!-- Payment Method Selection -->
       <div class="payment-section">
         <h3 class="section-title">支付方式</h3>
-        <div v-if="deliveryMethod === 'pickup'" class="payment-options">
+        <div class="payment-options">
           <label 
             :class="['payment-option', { active: paymentMethod === 'cash' }]"
           >
@@ -440,6 +440,7 @@
             </div>
             <div class="option-content">
               <h4>现金</h4>
+              <p v-if="deliveryMethod === 'delivery'">配送时当面支付</p>
             </div>
             <div class="option-check">
               <svg v-if="paymentMethod === 'cash'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -465,7 +466,8 @@
               </svg>
             </div>
             <div class="option-content">
-              <h4>e-transfer</h4>
+              <h4>EMT</h4>
+              <p>配货称重完成后按提示完成电子转账</p>
             </div>
             <div class="option-check">
               <svg v-if="paymentMethod === 'etransfer'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -473,87 +475,62 @@
               </svg>
             </div>
           </label>
+
+          <label
+            v-if="deliveryMethod === 'delivery'"
+            :class="['payment-option', { active: paymentMethod === 'card' }]"
+          >
+            <input
+              type="radio"
+              name="paymentMethod"
+              value="card"
+              v-model="paymentMethod"
+              :disabled="!canEditPaymentDelivery"
+              class="payment-radio"
+            />
+            <div class="option-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+            <div class="option-content">
+              <h4>在线支付</h4>
+              <p>称重后从已绑银行卡扣款</p>
+            </div>
+            <div class="option-check">
+              <svg v-if="paymentMethod === 'card'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </label>
         </div>
-        <div v-else class="delivery-payment">
-          <div class="card-bind-panel">
-            <div v-if="orderCardLabel || hasCardOnFile" class="card-on-file">
-              <span class="card-on-file-label">{{ paymentDisplay.label }}</span>
-              <span class="card-on-file-detail">{{ orderCardLabel || savedCardLabel }}</span>
-            </div>
-            <div v-else class="card-on-file card-on-file--empty">
-              {{ paymentDisplay.label }} · 配送需先绑定银行卡
-            </div>
-            <button
-              v-if="canEditPaymentDelivery"
-              type="button"
-              class="bind-card-btn"
-              :disabled="bindingCard"
-              @click="startCardSetup"
-            >
-              {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
-            </button>
-            <button
-              v-if="showPayAgain"
-              type="button"
-              class="pay-again-btn"
-              @click="goPayAgain"
-            >
-              去付款
-            </button>
-            <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
-            <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
+        <div v-if="deliveryMethod === 'delivery' && paymentMethod === 'card'" class="card-bind-panel">
+          <div v-if="orderCardLabel || hasCardOnFile" class="card-on-file">
+            <span class="card-on-file-label">{{ paymentDisplay.label }}</span>
+            <span class="card-on-file-detail">{{ orderCardLabel || savedCardLabel }}</span>
           </div>
-          <h4 class="selection-subtitle">选择支付方式</h4>
-          <div class="payment-options">
-            <label :class="['payment-option', { active: paymentMethod === 'cash' }]">
-              <input
-                type="radio"
-                name="deliveryPaymentMethod"
-                value="cash"
-                v-model="paymentMethod"
-                :disabled="!canEditPaymentDelivery"
-                class="payment-radio"
-              />
-              <div class="option-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <div class="option-content">
-                <h4>现金</h4>
-                <p>配送时当面支付</p>
-              </div>
-              <div class="option-check">
-                <svg v-if="paymentMethod === 'cash'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </label>
-            <label :class="['payment-option', { active: paymentMethod === 'card' }]">
-              <input
-                type="radio"
-                name="deliveryPaymentMethod"
-                value="card"
-                v-model="paymentMethod"
-                :disabled="!canEditPaymentDelivery"
-                class="payment-radio"
-              />
-              <div class="option-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-              </div>
-              <div class="option-content">
-                <h4>在线支付</h4>
-                <p>称重后从已绑银行卡扣款</p>
-              </div>
-              <div class="option-check">
-                <svg v-if="paymentMethod === 'card'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </label>
+          <div v-else class="card-on-file card-on-file--empty">
+            {{ paymentDisplay.label }} · 在线支付需绑定银行卡
           </div>
+          <button
+            v-if="canEditPaymentDelivery"
+            type="button"
+            class="bind-card-btn"
+            :disabled="bindingCard"
+            @click="startCardSetup"
+          >
+            {{ hasCardOnFile ? '更换银行卡' : '绑定银行卡' }}
+          </button>
+          <button
+            v-if="showPayAgain"
+            type="button"
+            class="pay-again-btn"
+            @click="goPayAgain"
+          >
+            去付款
+          </button>
+          <p class="card-privacy-note">{{ cardPrivacyNote }}</p>
+          <p v-if="cardSetupError" class="card-setup-error">{{ cardSetupError }}</p>
         </div>
         <p class="payment-note">{{ paymentNote }}</p>
       </div>
@@ -1011,11 +988,14 @@ export default {
       return canUserEditProducts(this.order.status, this.deal)
     },
     paymentNote() {
+      if (this.paymentMethod === 'etransfer') {
+        return '配货称重完成后按提示完成电子转账'
+      }
       if (this.deliveryMethod === 'delivery') {
         if (this.paymentMethod === 'card') {
           return '下单不扣款，称重后扣款。未扣款不发货'
         }
-        return '配送时现金支付；无人收货或未能支付现金时，从已绑定银行卡扣款'
+        return '配送时当面支付现金'
       }
       return '根据实际重量支付（现金或电子转账）'
     },
@@ -1191,9 +1171,6 @@ export default {
     },
     'currentUser.id'(uid) {
       if (uid) this.refreshReferralInviteUiGate()
-    },
-    hasCardOnFile() {
-      this.enforceDeliveryEligibility()
     },
     hasDeliveryConsent() {
       this.enforceDeliveryEligibility()
@@ -1652,10 +1629,9 @@ export default {
         await this.warning('请先阅读并同意《配送须知》')
         return
       }
-      if (this.deliveryMethod === 'delivery' && !this.hasCardOnFile) {
-        this.deliveryGatePending = true
+      if (this.deliveryMethod === 'delivery' && this.paymentMethod === 'card' && !this.hasCardOnFile) {
         this.startCardSetup()
-        await this.warning('请先绑定银行卡后再保存配送订单')
+        await this.warning('请先绑定银行卡后再使用在线支付')
         return
       }
 
@@ -1794,9 +1770,6 @@ export default {
     },
     applyDeliveryAfterGate() {
       this.deliveryMethod = 'delivery'
-      if (this.paymentMethod === 'etransfer') {
-        this.paymentMethod = 'cash'
-      }
       this.loadCardOnFile()
       if (this.addresses.length === 0) {
         this.loadAddresses()
@@ -2841,6 +2814,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 12px;
 }
 
 .card-on-file {

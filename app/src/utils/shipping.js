@@ -11,6 +11,8 @@ export {
   distanceConfigFrom,
   matchRegionSurcharge,
   regionSurchargesFrom,
+  regionListedFee,
+  DEFAULT_REGION_LABEL,
   coordsFromAddress,
   adjustmentDiscount
 } from '@shared/order-pricing/shipping.js'

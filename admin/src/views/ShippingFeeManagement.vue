@@ -74,7 +74,7 @@
           <button type="button" @click="addRegion" class="add-tier-btn">+ 添加地区</button>
         </div>
         <p class="distance-help">
-          顾客运费 = 上面的档次运费 + 所在城市加价。未列出的城市不加价。司机配送费：Markham / Richmond Hill $6，其他城市 $7。
+          免运只减免基础 ${{ formatPrice(listedFee(0)) }}，地区差额照收。例如 Whitby 满额后运费 ${{ formatPrice(2) }}，不是 $0。司机配送费：Markham / Richmond Hill $6，其他城市 $7。
         </p>
         <div class="tiers-list">
           <div v-for="(group, index) in formData.region_surcharges" :key="index" class="tier-item">
@@ -93,6 +93,7 @@
                   <input v-model.number="group.surcharge" type="number" step="0.01" min="0" required />
                   <span class="unit">$</span>
                 </div>
+                <small class="form-hint">起步 ${{ formatPrice(listedFee(group.surcharge)) }}；满额免基础后剩 ${{ formatPrice(group.surcharge) }}</small>
               </div>
               <div class="form-group cities-field">
                 <label>城市（逗号分隔）</label>
@@ -120,7 +121,7 @@
           <div v-for="row in regionCounts" :key="row.key" class="ring-count" :style="{ '--swatch': row.color }">
             <span class="ring-count-label">{{ row.label }}</span>
             <span class="ring-count-value">{{ row.count }} 单</span>
-            <span class="ring-count-fee">+${{ formatPrice(row.surcharge) }}</span>
+            <span class="ring-count-fee">${{ formatPrice(row.listedFee) }}</span>
           </div>
         </div>
         <DeliveryZoneMap
@@ -159,11 +160,11 @@
           </div>
           <div v-for="(group, index) in formData.region_surcharges" :key="'r' + index" class="preview-item">
             <div class="preview-condition">{{ group.label || `地区 ${index + 1}` }}：{{ group.citiesText }}</div>
-            <div class="preview-fee">+${{ formatPrice(group.surcharge) }}</div>
+            <div class="preview-fee">${{ formatPrice(listedFee(group.surcharge)) }}</div>
           </div>
           <div class="preview-item">
-            <div class="preview-condition">其他城市</div>
-            <div class="preview-fee">+$0.00</div>
+            <div class="preview-condition">GTA默认区域</div>
+            <div class="preview-fee">${{ formatPrice(listedFee(0)) }}</div>
           </div>
           <div class="preview-item">
             <div class="preview-condition">司机：Markham / Richmond Hill</div>
@@ -189,7 +190,9 @@ import {
   coordsFromAddress,
   DEFAULT_DEPOT,
   DEFAULT_REGION_SURCHARGES,
+  DEFAULT_REGION_LABEL,
   matchRegionSurcharge,
+  regionListedFee,
   regionPinColor,
   regionSurchargesFrom
 } from '../utils/shipping'
@@ -252,6 +255,7 @@ export default {
   },
   data() {
     return {
+      DEFAULT_REGION_LABEL,
       loading: true,
       error: null,
       saving: false,
@@ -281,8 +285,8 @@ export default {
       const match = matchRegionSurcharge(this.regionConfig, { city: this.previewPin.city })
       const orderBit = this.previewPin?.label ? `${this.previewPin.label} · ` : ''
       const city = match.city || this.previewPin.city || ''
-      const label = match.label || '其他城市'
-      return `预览：${orderBit}${city} · ${label} · +$${this.formatPrice(match.surcharge)}`
+      const label = match.label || DEFAULT_REGION_LABEL
+      return `预览：${orderBit}${city} · ${label} · $${this.formatPrice(this.listedFee(match.surcharge))}`
     },
     orderPins() {
       return this.locatedOrders
@@ -319,13 +323,15 @@ export default {
         label: group.label || `地区 ${index + 1}`,
         color: regionPinColor(this.regionConfig, { city: group.cities[0] }),
         surcharge: group.surcharge,
+        listedFee: this.listedFee(group.surcharge),
         count: 0
       }))
       const other = {
         key: 'other',
-        label: '其他城市',
+        label: DEFAULT_REGION_LABEL,
         color: BASE_REGION_COLOR,
         surcharge: 0,
+        listedFee: this.listedFee(0),
         count: 0
       }
       for (const row of this.locatedOrders) {
@@ -339,7 +345,7 @@ export default {
           other.count += 1
         }
       }
-      return [...rows, other]
+      return [...rows, other].sort((a, b) => a.listedFee - b.listedFee)
     },
     dealOrdersHint() {
       const total = this.deliveryOrders.length
@@ -390,7 +396,7 @@ export default {
     },
     orderPinTitle(order, match) {
       const city = match?.city || order.address?.city || ''
-      const extra = match?.matched ? `+$${this.formatPrice(match.surcharge)}` : '基础运费'
+      const extra = `$${this.formatPrice(this.listedFee(match?.surcharge || 0))}`
       return [order.order_number, city, extra].filter(Boolean).join(' · ')
     },
     coordsFor(order) {
@@ -504,6 +510,9 @@ export default {
         return '0.00'
       }
       return formatOrderMoney2(value)
+    },
+    listedFee(surcharge) {
+      return regionListedFee(this.formData, surcharge)
     },
     async fetchConfig() {
       this.loading = true

@@ -60,16 +60,16 @@ def payment_method_error(
 ):
     """Return a Chinese error string if delivery/payment combo is invalid, else None.
 
-    Delivery requires this-order 须知 consent and a card on file. Cash or card is
-    then allowed; e-transfer is not. Pickup stays cash / e-transfer.
+    Delivery requires this-order 须知 consent. Cash, e-transfer, and card are
+    allowed; a card on file is required only for online (card) payment.
+    Pickup stays cash / e-transfer.
     """
     if delivery_method == DeliveryMethod.DELIVERY.value:
         if not delivery_consented:
             return '请先阅读并同意《配送须知》'
-        if require_card_on_file and user is not None and not getattr(user, 'stripe_payment_method_id', None):
-            return '请先绑定银行卡后再提交配送订单'
-        if payment_method == PaymentMethod.ETRANSFER.value:
-            return '配送订单请使用现金或在线支付'
+        if payment_method == PaymentMethod.CARD.value:
+            if require_card_on_file and user is not None and not getattr(user, 'stripe_payment_method_id', None):
+                return '请先绑定银行卡后再使用在线支付'
         return None
     if payment_method == PaymentMethod.CARD.value:
         if not online_payment_enabled:
