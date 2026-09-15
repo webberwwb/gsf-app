@@ -9,7 +9,8 @@ import {
   shippingTierBaseFromParts,
   eligibleTierSubtotalFromItems,
   previewShippingFeeForOrder,
-  calculateShippingFee
+  calculateShippingFee,
+  matchRegionSurcharge
 } from './shipping.js'
 
 describe('shipping tier base', () => {
@@ -92,3 +93,66 @@ describe('calculateShippingFee', () => {
     assert.equal(calculateShippingFee(160, null), 0)
   })
 })
+
+describe('region surcharges', () => {
+  const config = {
+    tiers: [
+      { threshold: 0, fee: 7.99 },
+      { threshold: 150, fee: 0 }
+    ]
+  }
+
+  it('Waterloo / Kitchener / Guelph add $4', () => {
+    assert.equal(matchRegionSurcharge(config, { city: 'Waterloo' }).surcharge, 4)
+    assert.equal(matchRegionSurcharge(config, { city: 'kitchener' }).surcharge, 4)
+    assert.equal(matchRegionSurcharge(config, { city: 'Guelph' }).surcharge, 4)
+  })
+
+  it('Whitby / Pickering / Ajax / Hamilton / Burlington add $2', () => {
+    assert.equal(matchRegionSurcharge(config, { city: 'Whitby' }).surcharge, 2)
+    assert.equal(matchRegionSurcharge(config, { city: 'Pickering' }).surcharge, 2)
+    assert.equal(matchRegionSurcharge(config, { city: 'Ajax' }).surcharge, 2)
+    assert.equal(matchRegionSurcharge(config, { city: 'Hamilton' }).surcharge, 2)
+    assert.equal(matchRegionSurcharge(config, { city: 'Burlington' }).surcharge, 2)
+  })
+
+  it('Markham and unknown cities add $0', () => {
+    assert.equal(matchRegionSurcharge(config, { city: 'Markham' }).surcharge, 0)
+    assert.equal(matchRegionSurcharge(config, { city: 'Toronto' }).surcharge, 0)
+    assert.equal(matchRegionSurcharge(config, { city: '' }).surcharge, 0)
+    assert.equal(matchRegionSurcharge(config, null).surcharge, 0)
+  })
+
+  it('ignores old km-ring config and still uses city defaults', () => {
+    const withRings = {
+      ...config,
+      distance_surcharges: [{ max_km: 10, surcharge: 99, label: 'near' }],
+      beyond_surcharge: 12
+    }
+    assert.equal(matchRegionSurcharge(withRings, { city: 'Waterloo' }).surcharge, 4)
+    assert.equal(matchRegionSurcharge(withRings, { city: 'Markham' }).surcharge, 0)
+  })
+
+  it('preview adds city surcharge on top of tier', () => {
+    const fee = previewShippingFeeForOrder({
+      items: [{ product: {}, total_price: 40 }],
+      deliveryMethod: 'delivery',
+      shippingConfig: config,
+      address: { city: 'Waterloo' }
+    })
+    assert.equal(fee, 11.99)
+  })
+
+  it('pickup stays 0 with region surcharge', () => {
+    assert.equal(
+      previewShippingFeeForOrder({
+        items: [{ product: {}, total_price: 40 }],
+        deliveryMethod: 'pickup',
+        shippingConfig: config,
+        address: { city: 'Waterloo' }
+      }),
+      0
+    )
+  })
+})
+

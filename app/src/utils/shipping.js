@@ -6,6 +6,12 @@ export {
   shippingTierBaseFromParts,
   eligibleTierSubtotalFromItems,
   previewShippingFeeForOrder,
+  previewShippingBreakdown,
+  depotFromConfig,
+  distanceConfigFrom,
+  matchRegionSurcharge,
+  regionSurchargesFrom,
+  coordsFromAddress,
   adjustmentDiscount
 } from '@shared/order-pricing/shipping.js'
 

@@ -21,13 +21,27 @@ class DeliveryFeeConfig(BaseModel):
         {"threshold": 150.00, "fee": 0}
     ])
     
+    # Map center (not used for fees). Region groups are stored in distance_surcharges:
+    # [{"label": "...", "surcharge": 4, "cities": ["Waterloo", ...]}]
+    depot = db.Column(JSON, nullable=True)
+    distance_surcharges = db.Column(JSON, nullable=True)
+    beyond_surcharge = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    beyond_label = db.Column(db.String(255), nullable=True)
+
     # Active flag - only one config should be active at a time
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     
     def to_dict(self):
+        from utils.shipping import region_surcharges_from
+
         data = super().to_dict()
         data.update({
             'tiers': self.tiers if self.tiers else [],
+            'depot': self.depot,
+            'region_surcharges': region_surcharges_from(self),
+            'distance_surcharges': [],
+            'beyond_surcharge': 0,
+            'beyond_label': '',
             'is_active': self.is_active
         })
         return data

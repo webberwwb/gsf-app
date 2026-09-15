@@ -18,6 +18,31 @@ def get_delivery_fee_config():
     return config
 
 
+DEFAULT_TIERS = [
+    {'threshold': 0, 'fee': 7.99},
+    {'threshold': 58.00, 'fee': 5.99},
+    {'threshold': 128.00, 'fee': 3.99},
+    {'threshold': 150.00, 'fee': 0},
+]
+
+DEFAULT_DEPOT = {'lat': 43.8776838, 'lng': -79.3639328, 'label': 'Markham'}
+
+
+def public_delivery_fee_payload(config=None):
+    if config is None:
+        config = get_delivery_fee_config()
+    tiers = _cfg_get(config, 'tiers') or DEFAULT_TIERS
+    depot = _cfg_get(config, 'depot') or DEFAULT_DEPOT
+    return {
+        'tiers': tiers,
+        'depot': depot,
+        'region_surcharges': region_surcharges_from(config),
+        'distance_surcharges': [],
+        'beyond_surcharge': 0,
+        'beyond_label': '',
+    }
+
+
 def get_shipping_fee_for_subtotal(subtotal, config=None):
     """
     Calculate shipping fee based on subtotal and delivery fee config
@@ -125,52 +150,163 @@ def eligible_tier_subtotal_from_items(order_items, tier_base) -> Decimal:
     return round_money(eligible)
 
 
-# GTA cities (case-insensitive matching)
-GTA_CITIES = {
-    'toronto',
-    'north york',
-    'northyork',
-    'scarborough',
-    'etobicoke',
-    'york',
-    'east york',
-    'eastyork',
-    'mississauga',
-    'brampton',
-    'markham',
-    'vaughan',
-    'richmond hill',
-    'richmondhill',
-    'ajax',
-    'pickering',
-    'whitby',
-    'oshawa',
-    'oakville',
-    'burlington',
-    'milton',
-    'aurora',
-    'newmarket',
-    'georgina',
-    'king',
-    'whitchurch-stouffville',
-    'caledon',
-}
+# Customer region add-on. Unlisted cities use the subtotal tier only (no extra).
+DEFAULT_REGION_SURCHARGES = [
+    {
+        'label': 'Waterloo / Kitchener / Guelph',
+        'surcharge': 4,
+        'cities': ['Waterloo', 'Kitchener', 'Guelph', 'Kitchener-Waterloo'],
+    },
+    {
+        'label': 'Whitby / Pickering / Ajax / Hamilton / Burlington',
+        'surcharge': 2,
+        'cities': ['Whitby', 'Pickering', 'Ajax', 'Hamilton', 'Burlington'],
+    },
+]
 
 
-def is_gta_address(city):
-    if not city:
-        return False
-    normalized_city = city.lower().strip()
-    return normalized_city in GTA_CITIES
+def _cfg_get(config, key, default=None):
+    if config is None:
+        return default
+    if isinstance(config, dict):
+        return config.get(key, default)
+    return getattr(config, key, default)
 
 
-def calculate_shipping_fee(subtotal, delivery_method, address=None, order_items=None):
+def address_coords(address):
+    if not address:
+        return None
+    if isinstance(address, dict):
+        lat = address.get('latitude', address.get('lat'))
+        lng = address.get('longitude', address.get('lng'))
+    else:
+        lat = getattr(address, 'latitude', None)
+        if lat is None:
+            lat = getattr(address, 'lat', None)
+        lng = getattr(address, 'longitude', None)
+        if lng is None:
+            lng = getattr(address, 'lng', None)
+    if lat is None or lng is None or lat == '' or lng == '':
+        return None
+    try:
+        return {'lat': float(lat), 'lng': float(lng)}
+    except (TypeError, ValueError):
+        return None
+
+
+def distance_km(a, b):
+    if not a or not b:
+        return None
+    try:
+        lat1 = float(a['lat'])
+        lng1 = float(a['lng'])
+        lat2 = float(b['lat'])
+        lng2 = float(b['lng'])
+    except (TypeError, ValueError, KeyError):
+        return None
+    from math import atan2, cos, radians, sin, sqrt
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    x = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    return 6371 * 2 * atan2(sqrt(x), sqrt(1 - x))
+
+
+def city_key(city):
+    return ''.join(ch for ch in str(city or '').lower() if ch.isalnum())
+
+
+def city_from_address(address):
+    if not address:
+        return ''
+    if isinstance(address, str):
+        return address
+    if isinstance(address, dict):
+        return address.get('city') or address.get('locality') or ''
+    return getattr(address, 'city', None) or ''
+
+
+def _as_region_groups(raw):
+    groups = []
+    if not raw:
+        return groups
+    for group in raw:
+        try:
+            cities = [str(city).strip() for city in (group.get('cities') or []) if str(city).strip()]
+        except AttributeError:
+            continue
+        if not cities:
+            continue
+        try:
+            surcharge = float(group.get('surcharge') or 0)
+        except (TypeError, ValueError):
+            surcharge = 0.0
+        groups.append({
+            'label': group.get('label') or '',
+            'surcharge': surcharge,
+            'cities': cities,
+        })
+    return groups
+
+
+def region_surcharges_from(config):
+    groups = _as_region_groups(_cfg_get(config, 'region_surcharges'))
+    if groups:
+        return groups
+    groups = _as_region_groups(_cfg_get(config, 'distance_surcharges'))
+    if groups:
+        return groups
+    return [
+        {
+            'label': group['label'],
+            'surcharge': group['surcharge'],
+            'cities': list(group['cities']),
+        }
+        for group in DEFAULT_REGION_SURCHARGES
+    ]
+
+
+def match_region_surcharge(config, address):
+    city = city_from_address(address)
+    key = city_key(city)
+    groups = region_surcharges_from(config)
+    if not key:
+        return {
+            'surcharge': Decimal('0'),
+            'label': '',
+            'city': city,
+            'region': None,
+            'matched': False,
+        }
+    for group in groups:
+        if any(city_key(item) == key for item in group['cities']):
+            return {
+                'surcharge': round_money(group['surcharge']),
+                'label': group['label'],
+                'city': city,
+                'region': group,
+                'matched': True,
+            }
+    return {
+        'surcharge': Decimal('0'),
+        'label': '',
+        'city': city,
+        'region': None,
+        'matched': False,
+    }
+
+
+def region_surcharge_for_address(config, address):
+    return match_region_surcharge(config, address)['surcharge']
+
+
+def calculate_shipping_fee(subtotal, delivery_method, address=None, order_items=None, config=None):
     """
     Calculate shipping fee based on order details.
 
     ``subtotal`` is shipping_tier_base (after credit + adjustment discount).
     When order_items is provided, tier_base is allocated proportionally across
     eligible lines (counts_toward_free_shipping=True).
+    Delivery adds a city-region surcharge on top of the subtotal tier.
     """
     from constants.status_enums import DeliveryMethod
 
@@ -180,8 +316,12 @@ def calculate_shipping_fee(subtotal, delivery_method, address=None, order_items=
     if delivery_method == DeliveryMethod.PICKUP.value:
         return Decimal('0.00')
 
+    if config is None:
+        config = get_delivery_fee_config()
+
     tier_subtotal = subtotal
     if order_items:
         tier_subtotal = eligible_tier_subtotal_from_items(order_items, subtotal)
 
-    return get_shipping_fee_for_subtotal(tier_subtotal)
+    base = get_shipping_fee_for_subtotal(tier_subtotal, config=config)
+    return round_money(base + region_surcharge_for_address(config, address))

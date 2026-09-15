@@ -148,6 +148,7 @@ VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key-here
      - `http://localhost:3000/*` (for local development)
      - `http://localhost:*/*` (for any localhost port)
      - `https://app.grainstoryfarm.ca/*` (for production)
+     - `https://admin.grainstoryfarm.ca/*` (for admin maps)
      - `https://*.grainstoryfarm.ca/*` (for all subdomains)
    - Under "API restrictions", restrict to:
      - Maps JavaScript API

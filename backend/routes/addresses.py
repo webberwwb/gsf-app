@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from models.base import utc_now
 from schemas.address import CreateAddressSchema, UpdateAddressSchema
 from schemas.utils import validate_request
+from utils.geocode import apply_coords_from_payload
 
 addresses_bp = Blueprint('addresses', __name__)
 
@@ -122,6 +123,7 @@ def create_address():
             notification_email=validated_data.get('notification_email'),
             is_default=is_default
         )
+        apply_coords_from_payload(address, validated_data)
         
         db.session.add(address)
         db.session.commit()
@@ -165,6 +167,18 @@ def update_address(address_id):
             address.recipient_name = validated_data['recipient_name']
         if 'phone' in validated_data:
             address.phone = validated_data['phone']
+        address_fields_changed = any(
+            key in validated_data for key in ('address_line1', 'city', 'postal_code')
+        )
+        has_new_coords = (
+            validated_data.get('latitude') is not None
+            and validated_data.get('longitude') is not None
+        )
+        if address_fields_changed and not has_new_coords:
+            address.latitude = None
+            address.longitude = None
+            address.place_id = None
+
         if 'address_line1' in validated_data:
             address.address_line1 = validated_data['address_line1']
         if 'address_line2' in validated_data:
@@ -180,6 +194,7 @@ def update_address(address_id):
         
         # Always set country (not editable)
         address.country = 'Canada'
+        apply_coords_from_payload(address, validated_data)
         
         # Handle default address
         if 'is_default' in validated_data:

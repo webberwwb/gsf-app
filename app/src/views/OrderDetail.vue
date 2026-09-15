@@ -1106,7 +1106,8 @@ export default {
         adjustment: orderAdjustmentNumber(this.order),
         storeCredit: this.storeCreditForPreview,
         shippingConfig: this.shippingConfigReady ? this.shippingConfig : undefined,
-        shippingFee: orderShippingFeeNumber(this.order)
+        shippingFee: orderShippingFeeNumber(this.order),
+        address: this.order?.address
       })
     },
     displayedSubtotal() {

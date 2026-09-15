@@ -14,6 +14,9 @@ class CreateAddressSchema(Schema):
     delivery_instructions = fields.String(allow_none=True, missing=None)
     notification_email = fields.String(allow_none=True, missing=None)
     is_default = fields.Boolean(missing=False)
+    latitude = fields.Float(allow_none=True, missing=None)
+    longitude = fields.Float(allow_none=True, missing=None)
+    place_id = fields.String(allow_none=True, missing=None)
     
     class Meta:
         unknown = EXCLUDE
@@ -31,6 +34,9 @@ class UpdateAddressSchema(Schema):
     delivery_instructions = fields.String(allow_none=True, missing=None)
     notification_email = fields.String(allow_none=True, missing=None)
     is_default = fields.Boolean(allow_none=True)
+    latitude = fields.Float(allow_none=True, missing=None)
+    longitude = fields.Float(allow_none=True, missing=None)
+    place_id = fields.String(allow_none=True, missing=None)
     
     class Meta:
         unknown = EXCLUDE

@@ -18,6 +18,14 @@
         </svg>
         {{ printingLabels ? '准备打印...' : '打印配送标签' }}
       </button>
+      <button
+        type="button"
+        class="print-labels-btn"
+        :disabled="!canEdit || !plan.self.length || sortingRoute"
+        @click="sortSelfByDistance"
+      >
+        {{ sortingRoute ? '排序中...' : '按距离排序' }}
+      </button>
     </div>
 
     <div class="plan-stage">
@@ -67,6 +75,16 @@
       </div>
       <div class="mobile-cash-banner" :class="{ due: activeLaneCash.count }">{{ activeLaneCash.text }}</div>
 
+      <DeliveryPlanMap
+        class="plan-map"
+        :unassigned="plan.unassigned"
+        :self="plan.self"
+        :third-party="plan.third_party"
+        :selected-order-id="selectedOrderId"
+        :depot="shippingConfig?.depot"
+        @select-order="onMapSelect"
+      />
+
       <div class="lane-grid">
         <section class="lane" :class="{ 'is-active': activeLane === 'unassigned' }">
           <div class="lane-header">
@@ -75,7 +93,7 @@
             <span class="lane-count">{{ plan.unassigned.length }}</span>
           </div>
           <div v-if="!plan.unassigned.length" class="lane-empty">暂无</div>
-          <article v-for="order in plan.unassigned" :key="order.id" class="order-card" :class="payCardClass(order)">
+          <article v-for="order in plan.unassigned" :key="order.id" class="order-card" :class="[payCardClass(order), { selected: selectedOrderId === order.id }]">
             <div class="order-top">
               <h4 class="customer-name">{{ displayName(order) }}</h4>
             </div>
@@ -100,7 +118,7 @@
             <span class="lane-count">{{ plan.self.length }}</span>
           </div>
           <div v-if="!plan.self.length" class="lane-empty">把要自己送的订单点到这里，再调整顺序</div>
-          <article v-for="(order, index) in plan.self" :key="order.id" class="order-card" :class="payCardClass(order)">
+          <article v-for="(order, index) in plan.self" :key="order.id" class="order-card" :class="[payCardClass(order), { selected: selectedOrderId === order.id }]">
             <div class="order-top">
               <span class="route-seq">{{ routeSeqLabel(order, index) }}</span>
               <h4 class="customer-name">{{ displayName(order) }}</h4>
@@ -169,7 +187,7 @@
             <span class="lane-count">{{ plan.third_party.length }}</span>
           </div>
           <div v-if="!plan.third_party.length" class="lane-empty">远单可交给第三方</div>
-          <article v-for="order in plan.third_party" :key="order.id" class="order-card" :class="payCardClass(order)">
+          <article v-for="order in plan.third_party" :key="order.id" class="order-card" :class="[payCardClass(order), { selected: selectedOrderId === order.id }]">
             <div class="order-top">
               <h4 class="customer-name">{{ displayName(order) }}</h4>
               <span v-if="orderStatusChip(order)" class="status-chip" :class="order.status">{{ orderStatusChip(order) }}</span>
@@ -257,7 +275,9 @@
 import apiClient from '../api/client'
 import { cashDueSummary, deliveryPayKind, deliveryPayText, shouldCollectCash } from '../utils/deliveryPay'
 import { isOrderPhysicallyDelivered, OrderStatus } from '@shared/status-enums.js'
-import { routeSeqLabel, sortSelfDeliveryOrders } from '../utils/deliveryRoute'
+import { nearestNeighborOrders, routeSeqLabel, sortSelfDeliveryOrders } from '../utils/deliveryRoute'
+import { depotFromConfig, distanceKm, fetchShippingConfig } from '../utils/shipping'
+import DeliveryPlanMap from '../components/DeliveryPlanMap.vue'
 import { printSelfDeliveryLabels } from '../utils/printDeliveryLabels'
 import { useModal } from '../composables/useModal'
 import PageLoading from '../components/PageLoading.vue'
@@ -267,7 +287,7 @@ import DeliveryPayBar from '../components/DeliveryPayBar.vue'
 
 export default {
   name: 'DeliveryPlanning',
-  components: { PageLoading, ImageLightbox, AddressDetails, DeliveryPayBar },
+  components: { PageLoading, ImageLightbox, AddressDetails, DeliveryPayBar, DeliveryPlanMap },
   setup() {
     const { confirm, success, error: showError } = useModal()
     return { confirm, success, showError }
@@ -287,6 +307,9 @@ export default {
       deletingId: null,
       activeLane: 'unassigned',
       printingLabels: false,
+      sortingRoute: false,
+      selectedOrderId: null,
+      shippingConfig: null,
       thirdPartyModal: {
         show: false,
         order: null,
@@ -321,11 +344,35 @@ export default {
       return this.unassignedCash
     }
   },
-  mounted() {
+  async mounted() {
+    this.shippingConfig = await fetchShippingConfig()
     this.loadDeals()
   },
   methods: {
     routeSeqLabel,
+    onMapSelect(order, lane) {
+      this.selectedOrderId = order.id
+      if (lane) this.activeLane = lane
+    },
+    async sortSelfByDistance() {
+      const depot = depotFromConfig(this.shippingConfig)
+      const next = nearestNeighborOrders(this.plan.self, depot, distanceKm)
+      this.plan.self = next
+      this.sortingRoute = true
+      try {
+        const res = await apiClient.put(`/admin/fulfillment/deals/${this.selectedDealId}/route`, {
+          order_ids: next.map((o) => o.id)
+        })
+        if (res.data?.self) {
+          this.plan.self = sortSelfDeliveryOrders(res.data.self)
+        }
+      } catch (e) {
+        await this.showError(e.response?.data?.error || '保存路线失败')
+        await this.loadPlan()
+      } finally {
+        this.sortingRoute = false
+      }
+    },
     statusLabel(status) {
       const labels = {
         draft: '草稿',
@@ -701,6 +748,9 @@ export default {
 .mobile-cash-banner {
   display: none;
 }
+.plan-map {
+  margin-bottom: var(--md-spacing-lg);
+}
 .lane-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -777,6 +827,9 @@ export default {
 .order-card.prepaid {
   border: 1px solid #2e7d32;
   background: #f3f8f3;
+}
+.order-card.selected {
+  box-shadow: 0 0 0 2px var(--md-primary);
 }
 .order-top {
   display: flex;

@@ -15,6 +15,7 @@ export const useCheckoutStore = defineStore('checkout', {
     deliveryMethod: 'pickup',
     selectedPickupLocation: 'markham',
     selectedAddressId: null,
+    selectedAddress: null,
     notes: '',
     
     // Shipping fee configuration
@@ -54,7 +55,8 @@ export const useCheckoutStore = defineStore('checkout', {
         deliveryMethod: state.deliveryMethod,
         storeCredit: credit,
         adjustment: 0,
-        shippingConfig: state.shippingConfig ?? undefined
+        shippingConfig: state.shippingConfig ?? undefined,
+        address: state.selectedAddress
       })
     },
     
@@ -134,8 +136,14 @@ export const useCheckoutStore = defineStore('checkout', {
     /**
      * Update selected address
      */
-    setAddress(addressId) {
+    setAddress(addressId, address = null) {
       this.selectedAddressId = addressId
+      this.selectedAddress = address
+    },
+
+    setSelectedAddress(address) {
+      this.selectedAddress = address || null
+      if (address?.id) this.selectedAddressId = address.id
     },
     
     /**
@@ -155,6 +163,7 @@ export const useCheckoutStore = defineStore('checkout', {
       this.deliveryMethod = 'pickup'
       this.selectedPickupLocation = 'markham'
       this.selectedAddressId = null
+      this.selectedAddress = null
       this.notes = ''
       this.storeCreditToApply = 0
     },

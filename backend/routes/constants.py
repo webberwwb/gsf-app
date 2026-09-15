@@ -4,7 +4,6 @@ Expose status enums to frontend
 """
 from flask import Blueprint, jsonify
 from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, DeliveryMethod
-from utils.shipping import get_delivery_fee_config
 
 constants_bp = Blueprint('constants', __name__, url_prefix='/api/constants')
 
@@ -54,33 +53,11 @@ def get_delivery_methods():
 @constants_bp.route('/delivery-fee-config', methods=['GET'])
 def get_delivery_fee_config_public():
     """Get active delivery fee configuration (public endpoint)"""
+    from utils.shipping import public_delivery_fee_payload
     try:
-        config = get_delivery_fee_config()
-        
-        if not config:
-            # Return default values if no config exists
-            return jsonify({
-                'tiers': [
-                    {'threshold': 0, 'fee': 7.99},
-                    {'threshold': 58.00, 'fee': 5.99},
-                    {'threshold': 128.00, 'fee': 3.99},
-                    {'threshold': 150.00, 'fee': 0}
-                ]
-            }), 200
-        
-        return jsonify({
-            'tiers': config.tiers if config.tiers else []
-        }), 200
-    except Exception as e:
-        # Return defaults on error
-        return jsonify({
-            'tiers': [
-                {'threshold': 0, 'fee': 7.99},
-                {'threshold': 58.00, 'fee': 5.99},
-                {'threshold': 128.00, 'fee': 3.99},
-                {'threshold': 150.00, 'fee': 0}
-            ]
-        }), 200
+        return jsonify(public_delivery_fee_payload()), 200
+    except Exception:
+        return jsonify(public_delivery_fee_payload({})), 200
 
 
 @constants_bp.route('/all', methods=['GET'])

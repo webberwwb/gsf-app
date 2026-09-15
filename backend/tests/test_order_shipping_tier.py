@@ -3,7 +3,10 @@ from decimal import Decimal
 
 from utils.shipping import (
     adjustment_discount,
+    calculate_shipping_fee,
     eligible_tier_subtotal_from_items,
+    match_region_surcharge,
+    region_surcharge_for_address,
     shipping_tier_base_from_parts,
     get_shipping_fee_for_subtotal,
 )
@@ -51,4 +54,58 @@ def test_shipping_fee_from_tier_subtotal():
         ]
     })()
     fee = get_shipping_fee_for_subtotal(Decimal('160'), config=config)
+    assert fee == Decimal('0.00')
+
+
+class RegionCfg:
+    def __init__(self):
+        self.tiers = [
+            {'threshold': 0, 'fee': 7.99},
+            {'threshold': 150, 'fee': 0},
+        ]
+        self.region_surcharges = None
+        self.distance_surcharges = None
+
+
+def test_region_surcharge_defaults():
+    cfg = RegionCfg()
+    assert match_region_surcharge(cfg, {'city': 'Waterloo'})['surcharge'] == Decimal('4.00')
+    assert match_region_surcharge(cfg, {'city': 'Kitchener'})['surcharge'] == Decimal('4.00')
+    assert match_region_surcharge(cfg, {'city': 'Guelph'})['surcharge'] == Decimal('4.00')
+    assert match_region_surcharge(cfg, {'city': 'Whitby'})['surcharge'] == Decimal('2.00')
+    assert match_region_surcharge(cfg, {'city': 'Pickering'})['surcharge'] == Decimal('2.00')
+    assert match_region_surcharge(cfg, {'city': 'Ajax'})['surcharge'] == Decimal('2.00')
+    assert match_region_surcharge(cfg, {'city': 'Hamilton'})['surcharge'] == Decimal('2.00')
+    assert match_region_surcharge(cfg, {'city': 'Burlington'})['surcharge'] == Decimal('2.00')
+    assert match_region_surcharge(cfg, {'city': 'Markham'})['surcharge'] == Decimal('0.00')
+    assert match_region_surcharge(cfg, {'city': 'Toronto'})['surcharge'] == Decimal('0.00')
+    assert region_surcharge_for_address(cfg, None) == Decimal('0.00')
+
+
+def test_old_km_rings_are_ignored():
+    cfg = RegionCfg()
+    cfg.distance_surcharges = [{'max_km': 10, 'surcharge': 99, 'label': 'near'}]
+    assert region_surcharge_for_address(cfg, {'city': 'Waterloo'}) == Decimal('4.00')
+    assert region_surcharge_for_address(cfg, {'city': 'Markham'}) == Decimal('0.00')
+
+
+def test_calculate_shipping_fee_adds_region_surcharge():
+    cfg = RegionCfg()
+    fee = calculate_shipping_fee(
+        Decimal('40'),
+        'delivery',
+        address={'city': 'Waterloo'},
+        config=cfg,
+    )
+    assert fee == Decimal('11.99')
+
+
+def test_calculate_shipping_fee_pickup_ignores_region():
+    cfg = RegionCfg()
+    fee = calculate_shipping_fee(
+        Decimal('40'),
+        'pickup',
+        address={'city': 'Waterloo'},
+        config=cfg,
+    )
     assert fee == Decimal('0.00')

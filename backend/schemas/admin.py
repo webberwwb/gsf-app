@@ -99,12 +99,39 @@ def validate_tiers(tiers):
     return True
 
 
+class DeliveryDepotSchema(Schema):
+    lat = fields.Float(required=True)
+    lng = fields.Float(required=True)
+    label = fields.String(allow_none=True, missing='')
+
+    class Meta:
+        unknown = EXCLUDE
+
+
+class RegionSurchargeSchema(Schema):
+    cities = fields.List(
+        fields.String(validate=validate.Length(min=1, max=80)),
+        required=True,
+        validate=validate.Length(min=1),
+    )
+    surcharge = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    label = fields.String(allow_none=True, missing='')
+
+    class Meta:
+        unknown = EXCLUDE
+
+
 class UpdateDeliveryFeeConfigSchema(Schema):
     """Schema for updating delivery fee configuration with dynamic tiers"""
     tiers = fields.List(
         fields.Nested(DeliveryFeeTierSchema),
         required=True,
         validate=[validate.Length(min=1), validate_tiers]
+    )
+    depot = fields.Nested(DeliveryDepotSchema, allow_none=True, missing=None)
+    region_surcharges = fields.List(
+        fields.Nested(RegionSurchargeSchema),
+        missing=list,
     )
     
     class Meta:

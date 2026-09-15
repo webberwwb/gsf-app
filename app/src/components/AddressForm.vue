@@ -167,7 +167,10 @@ export default {
         postal_code: '',
         delivery_instructions: '',
         notification_email: '',
-        is_default: false
+        is_default: false,
+        latitude: null,
+        longitude: null,
+        place_id: null
       }
     }
   },
@@ -227,12 +230,12 @@ export default {
         inputRef,
         {
           onPlaceSelected: (parsedAddress) => {
-            // Auto-fill form fields when place is selected
             this.formData.address_line1 = parsedAddress.address_line1 || this.formData.address_line1
             this.formData.city = parsedAddress.city || this.formData.city
             this.formData.postal_code = parsedAddress.postal_code || this.formData.postal_code
-            
-            // If address_line2 is empty and we have subpremise info, use it
+            this.formData.latitude = parsedAddress.latitude
+            this.formData.longitude = parsedAddress.longitude
+            this.formData.place_id = parsedAddress.place_id
             if (!this.formData.address_line2 && parsedAddress.address_line2) {
               this.formData.address_line2 = parsedAddress.address_line2
             }
@@ -270,7 +273,10 @@ export default {
           postal_code: this.address.postal_code || '',
           delivery_instructions: this.address.delivery_instructions || '',
           notification_email: this.address.notification_email || '',
-          is_default: this.address.is_default || false
+          is_default: this.address.is_default || false,
+          latitude: this.address.latitude ?? null,
+          longitude: this.address.longitude ?? null,
+          place_id: this.address.place_id || null
         }
       } else {
         this.resetForm()
@@ -286,7 +292,10 @@ export default {
         postal_code: '',
         delivery_instructions: '',
         notification_email: '',
-        is_default: false
+        is_default: false,
+        latitude: null,
+        longitude: null,
+        place_id: null
       }
       this.error = null
       this.autocompleteError = null
@@ -309,7 +318,10 @@ export default {
           postal_code: this.formData.postal_code,
           delivery_instructions: this.formData.delivery_instructions || null,
           notification_email: this.formData.notification_email || null,
-          is_default: this.formData.is_default || false
+          is_default: this.formData.is_default || false,
+          latitude: this.formData.latitude,
+          longitude: this.formData.longitude,
+          place_id: this.formData.place_id
         }
 
         // Log the payload for debugging

@@ -15,6 +15,9 @@ class Address(BaseModel):
     city = db.Column(db.String(100), nullable=False)
     postal_code = db.Column(db.String(20), nullable=False)
     country = db.Column(db.String(100), default='Canada', nullable=False)
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
+    place_id = db.Column(db.String(255), nullable=True)
     
     # Optional: delivery instructions
     delivery_instructions = db.Column(db.Text, nullable=True)
@@ -36,6 +39,9 @@ class Address(BaseModel):
             'city': self.city,
             'postal_code': self.postal_code,
             'country': self.country,
+            'latitude': self.latitude,
+            'longitude': self.longitude,
+            'place_id': self.place_id,
             'delivery_instructions': self.delivery_instructions,
             'notification_email': self.notification_email,
             'is_default': self.is_default

@@ -624,6 +624,21 @@ def deal_delivery_plan(deal, viewer):
         .all()
     )
     orders.sort(key=_delivery_plan_sort_key)
+    from utils.geocode import ensure_address_coords
+    geocoded = 0
+    for order in orders:
+        if geocoded >= 80:
+            break
+        if order.address and (
+            getattr(order.address, 'latitude', None) is None
+            or getattr(order.address, 'longitude', None) is None
+        ):
+            before = (order.address.latitude, order.address.longitude)
+            ensure_address_coords(order.address)
+            if (order.address.latitude, order.address.longitude) != before:
+                geocoded += 1
+    if geocoded:
+        db.session.commit()
     locked = is_fulfillment_only(viewer) and not deal_is_fulfillable(deal)
     buckets = {
         DeliveryHandler.UNASSIGNED.value: [],

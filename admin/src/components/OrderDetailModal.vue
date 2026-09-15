@@ -265,7 +265,15 @@
                   </div>
                   <div class="form-group">
                     <label>地址第一行 *</label>
-                    <input v-model="newAddress.address_line1" type="text" placeholder="街道地址" class="form-input" required>
+                    <input
+                      ref="adminAddressInput"
+                      v-model="newAddress.address_line1"
+                      type="text"
+                      placeholder="开始输入地址，选择自动完成建议"
+                      class="form-input"
+                      autocomplete="off"
+                      required
+                    >
                   </div>
                   <div class="form-group">
                     <label>地址第二行</label>
@@ -804,6 +812,7 @@ import {
   isProductOnSale
 } from '../utils/productPriceDisplay'
 import { fetchShippingConfig } from '../utils/shipping'
+import { useAddressAutocomplete } from '../composables/useAddressAutocomplete'
 import ProductVariantPicker from './ProductVariantPicker.vue'
 import ImageLightbox from './ImageLightbox.vue'
 import AddressDetails from './AddressDetails.vue'
@@ -866,8 +875,12 @@ export default {
         address_line2: '',
         city: '',
         postal_code: '',
-        delivery_instructions: ''
+        delivery_instructions: '',
+        latitude: null,
+        longitude: null,
+        place_id: null
       },
+      addressAutocomplete: null,
       editableItems: [],
       cachedBuyerPricing: null,
       showAddProductModal: false,
@@ -897,6 +910,12 @@ export default {
     },
     previewDeliveryMethod() {
       return this.localDeliveryMethod || this.order?.delivery_method || 'pickup'
+    },
+    previewAddress() {
+      if (this.localAddressId) {
+        return this.userAddresses.find((addr) => addr.id === this.localAddressId) || this.order?.address || null
+      }
+      return this.order?.address || null
     },
     isAddressValid() {
       return this.newAddress.recipient_name?.trim() && 
@@ -948,7 +967,8 @@ export default {
         shippingFee: this.order?.shipping_fee,
         adjustment: this.previewAdjustment,
         storeCredit: this.previewCredit,
-        shippingConfig: this.shippingConfigReady ? this.shippingConfig : undefined
+        shippingConfig: this.shippingConfigReady ? this.shippingConfig : undefined,
+        address: this.previewAddress
       })
     },
     previewShipping() {
@@ -990,6 +1010,13 @@ export default {
     }
   },
   watch: {
+    showAddAddressForm(show) {
+      if (show) {
+        this.$nextTick(() => this.initAddressAutocomplete())
+      } else {
+        this.destroyAddressAutocomplete()
+      }
+    },
     show(newVal) {
       if (newVal && this.order) {
         this.ensureShippingConfig()
@@ -1330,7 +1357,10 @@ export default {
         address_line2: '',
         city: '',
         postal_code: '',
-        delivery_instructions: ''
+        delivery_instructions: '',
+        latitude: null,
+        longitude: null,
+        place_id: null
       }
       this.editableItems = []
       this.cachedBuyerPricing = null
@@ -2055,6 +2085,36 @@ export default {
       this.localAddressId = addressId
       this.showAddAddressForm = false
     },
+    async initAddressAutocomplete() {
+      await this.$nextTick()
+      const input = this.$refs.adminAddressInput
+      if (!input) return
+      this.destroyAddressAutocomplete()
+      const { initAutocomplete, destroy } = useAddressAutocomplete(
+        { value: input },
+        {
+          onPlaceSelected: (parsed) => {
+            this.newAddress.address_line1 = parsed.address_line1 || this.newAddress.address_line1
+            this.newAddress.city = parsed.city || this.newAddress.city
+            this.newAddress.postal_code = parsed.postal_code || this.newAddress.postal_code
+            this.newAddress.latitude = parsed.latitude
+            this.newAddress.longitude = parsed.longitude
+            this.newAddress.place_id = parsed.place_id
+            if (!this.newAddress.address_line2 && parsed.address_line2) {
+              this.newAddress.address_line2 = parsed.address_line2
+            }
+          }
+        }
+      )
+      this.addressAutocomplete = { destroy }
+      await initAutocomplete()
+    },
+    destroyAddressAutocomplete() {
+      if (this.addressAutocomplete) {
+        this.addressAutocomplete.destroy()
+        this.addressAutocomplete = null
+      }
+    },
     cancelAddAddress() {
       this.showAddAddressForm = false
       this.addressError = null
@@ -2065,7 +2125,10 @@ export default {
         address_line2: '',
         city: '',
         postal_code: '',
-        delivery_instructions: ''
+        delivery_instructions: '',
+        latitude: null,
+        longitude: null,
+        place_id: null
       }
     },
     async saveNewAddress() {
@@ -2121,7 +2184,10 @@ export default {
           address_line2: this.newAddress.address_line2?.trim() || null,
           city: this.newAddress.city.trim(),
           postal_code: this.newAddress.postal_code.trim(),
-          delivery_instructions: this.newAddress.delivery_instructions?.trim() || null
+          delivery_instructions: this.newAddress.delivery_instructions?.trim() || null,
+          latitude: this.newAddress.latitude,
+          longitude: this.newAddress.longitude,
+          place_id: this.newAddress.place_id
         }
         
         console.log('[saveNewAddress] Payload:', payload)
@@ -2147,7 +2213,10 @@ export default {
           address_line2: '',
           city: '',
           postal_code: '',
-          delivery_instructions: ''
+          delivery_instructions: '',
+          latitude: null,
+          longitude: null,
+          place_id: null
         }
         
         await this.success('地址已添加')

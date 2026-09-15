@@ -5,7 +5,6 @@ import { loadGoogleMaps, parsePlaceAddress } from '@shared/maps/loadGoogleMaps.j
 
 export function useAddressAutocomplete(inputElement, options = {}) {
   let autocomplete = null
-  let place = null
 
   const {
     onPlaceSelected = () => {},
@@ -14,8 +13,6 @@ export function useAddressAutocomplete(inputElement, options = {}) {
     fields = ['address_components', 'formatted_address', 'geometry', 'place_id']
   } = options
 
-  const parseAddressComponents = parsePlaceAddress
-
   const initAutocomplete = async () => {
     if (!inputElement || !inputElement.value) {
       return { error: 'Input element not available' }
@@ -23,26 +20,21 @@ export function useAddressAutocomplete(inputElement, options = {}) {
 
     try {
       await loadGoogleMaps({ libraries: ['places'] })
-
       if (!window.google?.maps?.places) {
         throw new Error('Google Maps Places API not available')
       }
 
       destroy()
-
       autocomplete = new window.google.maps.places.Autocomplete(
         inputElement.value,
         { componentRestrictions, types, fields }
       )
-
       autocomplete.addListener('place_changed', () => {
         const selectedPlace = autocomplete.getPlace()
-        if (selectedPlace && selectedPlace.address_components) {
-          place = selectedPlace
+        if (selectedPlace?.address_components) {
           onPlaceSelected(parsePlaceAddress(selectedPlace))
         }
       })
-
       return { success: true }
     } catch (err) {
       console.error('Error initializing autocomplete:', err)
@@ -55,12 +47,7 @@ export function useAddressAutocomplete(inputElement, options = {}) {
       window.google?.maps?.event?.clearInstanceListeners?.(autocomplete)
       autocomplete = null
     }
-    place = null
   }
 
-  return {
-    initAutocomplete,
-    destroy,
-    parseAddressComponents
-  }
+  return { initAutocomplete, destroy, parseAddressComponents: parsePlaceAddress }
 }

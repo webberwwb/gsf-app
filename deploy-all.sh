@@ -134,7 +134,7 @@ wait_for_build $BUILD_ID $PROJECT_ID || {
 }
 
 ENV_VARS="MYSQL_DATABASE=gsf_app,GOOGLE_OAUTH_REDIRECT_URI=https://backend.grainstoryfarm.ca/api/auth/google/callback,ADMIN_FRONTEND_URL=https://admin.grainstoryfarm.ca,APP_FRONTEND_URL=https://app.grainstoryfarm.ca,APP_VERSION=$FRONTEND_VERSION"
-SECRETS="MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,STRIPE_DASHBOARD_BASE=stripe-dashboard-base:latest"
+SECRETS="MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,STRIPE_DASHBOARD_BASE=stripe-dashboard-base:latest,GOOGLE_MAPS_API_KEY=google-maps-api-key:latest"
 
 BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --image gcr.io/$PROJECT_ID/gsf-app-backend \
@@ -143,7 +143,7 @@ BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --allow-unauthenticated \
     --add-cloudsql-instances $PROJECT_ID:us-central1:gsf-app-mysql \
     --update-env-vars "$ENV_VARS" \
-    --remove-env-vars MYSQL_USER,MYSQL_PASSWORD,SECRET_KEY,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,GOOGLE_OAUTH_CLIENT_SECRET,CRON_SECRET,STRIPE_SECRET_KEY,STRIPE_PUBLISHABLE_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_DASHBOARD_BASE \
+    --remove-env-vars MYSQL_USER,MYSQL_PASSWORD,SECRET_KEY,TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,GOOGLE_OAUTH_CLIENT_SECRET,CRON_SECRET,STRIPE_SECRET_KEY,STRIPE_PUBLISHABLE_KEY,STRIPE_WEBHOOK_SECRET,STRIPE_DASHBOARD_BASE,GOOGLE_MAPS_API_KEY \
     --update-secrets "$SECRETS" \
     --execution-environment gen2 \
     --session-affinity \
@@ -209,7 +209,7 @@ echo "Frontend deployed at: $FRONTEND_URL"
 echo "Building and deploying admin..."
 # Already in gsf-app directory from frontend build
 set +e
-BUILD_OUTPUT=$(gcloud builds submit --async --config=admin/cloudbuild.yaml --project=$PROJECT_ID 2>&1)
+BUILD_OUTPUT=$(gcloud builds submit --async --config=admin/cloudbuild.yaml --substitutions=_VITE_API_BASE_URL=https://backend.grainstoryfarm.ca/api,_VITE_GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY --project=$PROJECT_ID 2>&1)
 BUILD_EXIT=$?
 set -e
 echo "$BUILD_OUTPUT"

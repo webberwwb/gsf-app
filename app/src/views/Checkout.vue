@@ -168,6 +168,9 @@
             <span class="breakdown-label">运费:</span>
             <span class="breakdown-amount">{{ shippingFeeDisplay }}</span>
           </div>
+          <p v-if="deliveryMethod === 'delivery' && shippingBreakdownText" class="shipping-split">
+            {{ shippingBreakdownText }}
+          </p>
           <div class="breakdown-row total-row">
             <span class="total-label">{{ orderTotalRowLabel }}:</span>
             <span class="total-amount">${{ calculateTotal() }}</span>
@@ -326,7 +329,7 @@
             </div>
             <div class="option-content">
               <h4>配送</h4>
-              <p>配送到指定地址（限GTA）</p>
+              <p>配送到指定地址</p>
               <DeliveryAgreementLink @open="openDeliveryAgreement" />
             </div>
             <div class="option-check">
@@ -663,6 +666,7 @@ import {
 } from '../utils/referralInviteUi'
 import { formatOrderMoney2 } from '../utils/orderPricing'
 import { cardLabel, hasSavedCard, CARD_PRIVACY_NOTE } from '../utils/stripeCard'
+import { previewShippingBreakdown, regionSurchargesFrom } from '../utils/shipping'
 
 export default {
   name: 'Checkout',
@@ -828,6 +832,23 @@ export default {
       }
       return `$${formatOrderMoney2(this.shippingFee)}`
     },
+    shippingConfig() {
+      return this.checkoutStore.shippingConfig
+    },
+    shippingBreakdownText() {
+      if (this.deliveryMethod !== 'delivery') return ''
+      const breakdown = previewShippingBreakdown({
+        items: this.checkoutStore.previewLines,
+        deliveryMethod: 'delivery',
+        shippingConfig: this.shippingConfig,
+        storeCredit: this.checkoutStore.storeCreditToApply,
+        address: this.selectedAddress
+      })
+      if (!breakdown.surcharge) return ''
+      const city = breakdown.city ? `${breakdown.city} · ` : ''
+      const label = breakdown.label ? `${breakdown.label} · ` : ''
+      return `${city}${label}档次 $${formatOrderMoney2(breakdown.base)} + 地区 $${formatOrderMoney2(breakdown.surcharge)}`
+    },
     maxStoreCreditApplicable() {
       const bal = Number(this.currentUser?.store_credit_balance) || 0
       const t = parseFloat(this.checkoutStore.total) || 0
@@ -898,7 +919,13 @@ export default {
         }
       }
       
-      return `运费规则: ${parts.join('; ')} (不计入免运的商品除外）`
+      return `运费规则: ${parts.join('; ')} (不计入免运的商品除外）。${this.regionPolicySuffix}`
+    },
+    regionPolicySuffix() {
+      const groups = regionSurchargesFrom(this.shippingConfig)
+      if (!groups.length) return ''
+      const bits = groups.map((group) => `${group.label} +$${formatOrderMoney2(group.surcharge)}`)
+      return `地区加价: ${bits.join('；')}`
     }
   },
   async mounted() {
@@ -943,6 +970,12 @@ export default {
     }
   },
   watch: {
+    selectedAddress: {
+      immediate: true,
+      handler(address) {
+        this.checkoutStore.setSelectedAddress(address)
+      }
+    },
     deliveryMethod(newVal) {
       if (newVal === 'delivery' && this.addresses.length === 0) {
         // Load addresses when switching to delivery mode
@@ -2379,6 +2412,30 @@ export default {
   width: 20px;
   height: 20px;
   animation: checkmarkPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.shipping-split {
+  margin: 0 0 var(--md-spacing-sm);
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+.zone-map-block {
+  margin-top: var(--md-spacing-md);
+}
+.zone-toggle {
+  width: 100%;
+  margin-bottom: var(--md-spacing-sm);
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--md-primary);
+  font-weight: 500;
+  cursor: pointer;
+}
+.locate-warn {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #c62828;
 }
 
 /* Address Selection */

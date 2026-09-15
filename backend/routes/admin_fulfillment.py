@@ -360,6 +360,31 @@ def get_earnings():
     return jsonify(fulfillment_service.earnings_for_user(target_id, parsed_from, parsed_to)), 200
 
 
+@admin_fulfillment_bp.route('/fulfillment/addresses/<int:address_id>/coords', methods=['PUT', 'OPTIONS'])
+def save_address_coords(address_id):
+    if request.method == 'OPTIONS':
+        return '', 204
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
+    if error_response:
+        return error_response, status_code
+    from models.address import Address
+    address = Address.query.get(address_id)
+    if not address:
+        return jsonify({'error': '地址不存在'}), 404
+    data = request.get_json() or {}
+    try:
+        lat = float(data.get('latitude'))
+        lng = float(data.get('longitude'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'latitude / longitude 无效'}), 400
+    address.latitude = lat
+    address.longitude = lng
+    if data.get('place_id'):
+        address.place_id = data.get('place_id')
+    db.session.commit()
+    return jsonify({'ok': True}), 200
+
+
 @admin_fulfillment_bp.route('/fulfillment/payouts', methods=['POST'])
 def create_payout():
     user_id, error_response, status_code = require_admin_auth()

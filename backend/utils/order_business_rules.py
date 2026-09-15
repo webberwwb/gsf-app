@@ -5,10 +5,10 @@ See ORDER_PRICING_AND_POINTS_RULES before changing order_item_pricing.py,
 order_points.py, shipping.py, or frontend pricing mirrors.
 """
 
-RULES_VERSION = '2026-09-12-cutting'
+RULES_VERSION = '2026-09-15-region-surcharge'
 
 ORDER_PRICING_AND_POINTS_RULES = """
-ORDER PRICING AND POINTS RULES (v2026-09-12)
+ORDER PRICING AND POINTS RULES (v2026-09-15)
 ============================================
 
 Change this text and RULES_VERSION when business rules change. Update tests and
@@ -24,7 +24,8 @@ ORDER BREAKDOWN (display and calculation order)
 1. subtotal           = sum(line.total_price)
 2. store credit       = deducted from subtotal (代金券)
 3. adjustment         = admin +/- amount (user app read-only)
-4. shipping_fee       = delivery tier from shipping_tier_base (pickup = $0)
+4. shipping_fee       = delivery tier from shipping_tier_base
+                        + city-region surcharge (pickup = $0)
 5. amount_due         = max(0, subtotal - credit + adjustment + shipping)
 
 adjustment_discount = min(adjustment_amount, 0)   (negative admin discount only)
@@ -35,6 +36,14 @@ Admin discounts (negative adjustment) reduce shipping tier base.
 
 Free-shipping tiers use shipping_tier_base allocated proportionally across lines.
 Products with counts_toward_free_shipping=False are excluded from tier subtotal only.
+
+REGION SURCHARGE
+----------------
+Delivery shipping_fee = subtotal_tier_fee + region_surcharge.
+Match address.city (case-insensitive, ignore spaces/punctuation) against configurable
+city groups. Default groups: Waterloo / Kitchener / Guelph +$4; Whitby / Pickering /
+Ajax / Hamilton / Burlington +$2. Unlisted cities (including Markham) add $0.
+Driver pay is separate: Markham / Richmond Hill $6, all other delivery cities $7.
 切分 fees are paid (in line.total_price / subtotal / amount_due) but excluded from
 the tier base and from each line's allocated product amount.
 

@@ -89,7 +89,8 @@ export function previewOrderTotals({
   shippingFee = 0,
   adjustment = 0,
   storeCredit = 0,
-  shippingConfig
+  shippingConfig,
+  address = null
 } = {}) {
   const subtotal = items.reduce((sum, item) => sum + resolveOrderLineTotal(item), 0)
   const credit = Number(storeCredit) || 0
@@ -101,7 +102,8 @@ export function previewOrderTotals({
           deliveryMethod,
           shippingConfig,
           storeCredit: credit,
-          adjustment: adj
+          adjustment: adj,
+          address
         })
       : deliveryMethod === 'delivery'
         ? Number(shippingFee) || 0

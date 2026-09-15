@@ -1,10 +1,22 @@
 import apiClient from '../api/client'
 
 export {
+  DEFAULT_DEPOT,
+  DEFAULT_REGION_SURCHARGES,
+  BASE_REGION_COLOR,
+  REGION_PIN_COLORS,
   calculateShippingFee,
   freeShippingSubtotalFromItems,
   eligibleTierSubtotalFromItems,
   previewShippingFeeForOrder,
+  previewShippingBreakdown,
+  depotFromConfig,
+  distanceConfigFrom,
+  matchRegionSurcharge,
+  regionSurchargesFrom,
+  regionPinColor,
+  coordsFromAddress,
+  distanceKm,
   getNextShippingTier,
   shippingTierBaseFromParts,
   adjustmentDiscount

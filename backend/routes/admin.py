@@ -1143,6 +1143,8 @@ def create_user_address(user_id):
             notification_email=data.get('notification_email'),
             is_default=data.get('is_default', False)
         )
+        from utils.geocode import apply_coords_from_payload
+        apply_coords_from_payload(address, data)
         
         db.session.add(address)
         db.session.commit()
@@ -3780,19 +3782,11 @@ def get_delivery_fee_config():
         config = DeliveryFeeConfig.query.filter_by(is_active=True).first()
         
         if not config:
-            # Return default values if no config exists
-            return jsonify({
-                'config': {
-                    'id': None,
-                    'tiers': [
-                        {'threshold': 0, 'fee': 7.99},
-                        {'threshold': 58.00, 'fee': 5.99},
-                        {'threshold': 128.00, 'fee': 3.99},
-                        {'threshold': 150.00, 'fee': 0}
-                    ],
-                    'is_active': True
-                }
-            }), 200
+            from utils.shipping import public_delivery_fee_payload
+            payload = public_delivery_fee_payload({})
+            payload['id'] = None
+            payload['is_active'] = True
+            return jsonify({'config': payload}), 200
         
         return jsonify({
             'config': config.to_dict()
@@ -3825,6 +3819,14 @@ def update_delivery_fee_config():
                 'threshold': float(tier['threshold']),
                 'fee': float(tier['fee'])
             })
+        rings = []
+        for group in validated_data.get('region_surcharges') or []:
+            rings.append({
+                'cities': [str(city).strip() for city in (group.get('cities') or []) if str(city).strip()],
+                'surcharge': float(group.get('surcharge') or 0),
+                'label': group.get('label') or '',
+            })
+        depot = validated_data.get('depot')
         
         # Get or create active config
         config = DeliveryFeeConfig.query.filter_by(is_active=True).first()
@@ -3833,12 +3835,20 @@ def update_delivery_fee_config():
             # Create new config
             config = DeliveryFeeConfig(
                 tiers=tiers,
+                depot=depot,
+                distance_surcharges=rings,
+                beyond_surcharge=0,
+                beyond_label='',
                 is_active=True
             )
             db.session.add(config)
         else:
             # Update existing config
             config.tiers = tiers
+            config.depot = depot
+            config.distance_surcharges = rings
+            config.beyond_surcharge = 0
+            config.beyond_label = ''
         
         db.session.commit()
         
