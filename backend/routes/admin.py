@@ -37,7 +37,15 @@ from utils.commission import (
 )
 from datetime import datetime, timedelta, timezone, date
 from config import Config
-from constants.status_enums import OrderStatus, PaymentStatus, GroupDealStatus, UserStatus, PaymentMethod, DeliveryMethod
+from constants.status_enums import (
+    OrderStatus,
+    PaymentStatus,
+    GroupDealStatus,
+    UserStatus,
+    PaymentMethod,
+    DeliveryMethod,
+    is_deal_open_for_product_edits,
+)
 from schemas.product import CreateProductSchema, UpdateProductSchema, BulkUpdateSortOrderSchema
 from schemas.product_category import CreateProductCategorySchema, UpdateProductCategorySchema, BulkUpdateCategorySortOrderSchema
 from schemas.groupdeal import CreateGroupDealSchema, UpdateGroupDealSchema, UpdateGroupDealStatusSchema
@@ -49,6 +57,7 @@ from schemas.order import (
     AdminOrderItemAvailabilitySchema,
     AdminOrderItemSubstituteSchema,
     AdminProductFulfillmentSchema,
+    AdminCreateOrderSchema,
 )
 from utils.order_item_pricing import (
     priced_items_from_request,
@@ -70,6 +79,7 @@ from utils.query_batch import (
     users_by_ids,
 )
 from utils.order_audit import (
+    EVENT_ADMIN_CREATE,
     EVENT_ADMIN_ITEMS_REPLACE,
     EVENT_MERGE,
     active_items_for_order,
@@ -87,10 +97,15 @@ import uuid
 import secrets
 from werkzeug.utils import secure_filename
 from sqlalchemy import func, and_, or_
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 from decimal import Decimal
 from utils.shipping import calculate_shipping_fee
-from utils.stock_management import restore_stock, update_stock_after_order_modification
+from utils.stock_management import (
+    check_and_reserve_stock,
+    restore_stock,
+    update_stock_after_order_modification,
+)
+from utils.order_payment import payment_method_error, copy_user_card_to_order
 import csv
 import io
 from models.credit_transaction import CreditTransaction
@@ -1955,6 +1970,169 @@ def _build_admin_order_dict(order):
     return order_dict
 
 
+def _generate_order_number():
+    import random
+    import string
+    timestamp = utc_now().strftime('%Y%m%d%H%M%S')
+    random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f'GSF-{timestamp}-{random_suffix}'
+
+
+def _initial_status_for_admin_order(group_deal):
+    """Place a staff-created order into the deal's current stage.
+
+    Closed and completed deals get a confirmed order so it can still be fulfilled.
+    Open deals stay submitted so the customer can edit until cutoff.
+    """
+    status = group_deal.status
+    if status == GroupDealStatus.PREPARING.value:
+        return OrderStatus.PREPARING.value
+    if status == GroupDealStatus.READY_FOR_PICKUP.value:
+        return OrderStatus.READY_FOR_PICKUP.value
+    if status in (GroupDealStatus.CLOSED.value, GroupDealStatus.COMPLETED.value):
+        return OrderStatus.CONFIRMED.value
+    if not is_deal_open_for_product_edits(group_deal):
+        return OrderStatus.CONFIRMED.value
+    return OrderStatus.SUBMITTED.value
+
+
+@admin_bp.route('/orders', methods=['POST'])
+def create_admin_order():
+    """Create an order for an existing customer. Ignores group deal status and cutoff."""
+    admin_user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+
+    validated_data, error_response, status_code = validate_request(AdminCreateOrderSchema)
+    if error_response:
+        return error_response, status_code
+
+    user_id = validated_data['user_id']
+    group_deal_id = validated_data['group_deal_id']
+    items = validated_data['items']
+    delivery_method = validated_data['delivery_method']
+    address_id = validated_data.get('address_id')
+    pickup_location = validated_data.get('pickup_location')
+    payment_method = validated_data['payment_method']
+    notes = validated_data.get('notes')
+
+    try:
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == group_deal_id,
+            GroupDeal.deleted_at.is_(None),
+        ).first()
+        if not group_deal:
+            return jsonify({'error': 'Group deal not found'}), 404
+
+        user_row = User.query.get(user_id)
+        if not user_row:
+            return jsonify({'error': 'User not found'}), 404
+        if user_row.status == UserStatus.BANNED.value:
+            return jsonify({'error': '该用户已禁用，无法创建订单'}), 400
+
+        if delivery_method == DeliveryMethod.DELIVERY.value:
+            address = Address.query.filter_by(id=address_id, user_id=user_id).first()
+            if not address:
+                return jsonify({'error': 'Address not found or does not belong to user'}), 400
+        else:
+            address_id = None
+            pickup_location = pickup_location or 'markham'
+
+        pay_err = payment_method_error(
+            delivery_method,
+            payment_method,
+            user_row,
+            online_payment_enabled=bool(group_deal.online_payment_enabled),
+            delivery_consented=True,
+        )
+        if pay_err:
+            return jsonify({'error': pay_err}), 400
+
+        try:
+            priced_items, _subtotal = priced_items_from_request(
+                items,
+                group_deal_id=group_deal_id,
+                buyer_user_id=user_id,
+            )
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+        stock_ok, stock_err = check_and_reserve_stock(group_deal_id, items)
+        if not stock_ok:
+            db.session.rollback()
+            return jsonify({'error': stock_err}), 400
+
+        order = Order(
+            user_id=user_id,
+            group_deal_id=group_deal_id,
+            address_id=address_id if delivery_method == DeliveryMethod.DELIVERY.value else None,
+            delivery_method=delivery_method,
+            pickup_location=pickup_location if delivery_method == DeliveryMethod.PICKUP.value else None,
+            order_number=_generate_order_number(),
+            subtotal=Decimal('0'),
+            tax=Decimal('0'),
+            shipping_fee=Decimal('0'),
+            total=Decimal('0'),
+            points_earned=0,
+            payment_method=payment_method,
+            payment_status=PaymentStatus.UNPAID.value,
+            stripe_charge_status='setup_complete' if payment_method == PaymentMethod.CARD.value else None,
+            pickup_status='pending',
+            status=_initial_status_for_admin_order(group_deal),
+            notes=notes if notes else None,
+            store_credit_applied=Decimal('0'),
+        )
+        db.session.add(order)
+        db.session.flush()
+        if payment_method == PaymentMethod.CARD.value:
+            copy_user_card_to_order(order, user_row)
+
+        create_order_item_rows(order.id, priced_items, db.session)
+        db.session.flush()
+        sync_order_pricing(order)
+
+        items_after = [
+            item_snapshot(i, order.order_number) for i in active_items_for_order(order.id)
+        ]
+        record_order_audit(
+            order.id,
+            EVENT_ADMIN_CREATE,
+            {
+                'order_number': order.order_number,
+                'user_id': user_id,
+                'group_deal_id': group_deal_id,
+                'group_deal_status': group_deal.status,
+                'items_after': items_after,
+            },
+            actor_user_id=admin_user_id,
+        )
+
+        db.session.commit()
+
+        try:
+            update_product_sales_stats(order)
+        except Exception as e:
+            current_app.logger.warning(f'Failed to update sales stats: {e}')
+
+        current_app.logger.info(
+            f'Admin {admin_user_id} created order {order.id} for user {user_id} '
+            f'on group deal {group_deal_id} (status {group_deal.status})'
+        )
+
+        return jsonify({
+            'message': '订单已创建',
+            'order': _build_admin_order_dict(order),
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error creating admin order: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Failed to create order',
+            'message': str(e),
+        }), 500
+
+
 # Orders Management
 @admin_bp.route('/orders', methods=['GET'])
 def get_admin_orders():
@@ -1976,10 +2154,16 @@ def get_admin_orders():
         user_source_filter = request.args.get('user_source', '').strip()
         search = request.args.get('search', '').strip()
         
-        # Build query - join with User for phone search and eager load relationships
-        # Filter out soft-deleted orders (deleted_at IS NULL)
-        # Use eager loading to prevent N+1 queries
-        query = Order.query.options(*order_admin_eager_options()).join(
+        # Join User for phone search. contains_eager reuses that join.
+        # Roles and influencer profile are omitted: the list payload does not use them.
+        # Items, products, variants, source orders, addresses, and deals load in batches.
+        query = Order.query.options(
+            contains_eager(Order.user),
+            selectinload(Order.items).selectinload(OrderItem.product).selectinload(Product.variants),
+            selectinload(Order.items).joinedload(OrderItem.source_order),
+            selectinload(Order.address),
+            joinedload(Order.group_deal),
+        ).join(
             User, Order.user_id == User.id
         ).filter(Order.deleted_at.is_(None))
         
@@ -2019,13 +2203,20 @@ def get_admin_orders():
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         
         orders = pagination.items
-        
-        # Build response with order details (all relationships already loaded)
+
+        # One prefetch for every line on the page. Per-order enrich re-queried
+        # products, source orders, and deal sale flags.
+        items_by_order_id = {}
+        for item_dict in enrich_order_items(
+            item for order in orders for item in order.items
+        ):
+            items_by_order_id.setdefault(item_dict['order_id'], []).append(item_dict)
+
         orders_data = []
         for order in orders:
             order_dict = order.to_dict()
             
-            # Get user info (already loaded via joinedload)
+            # Get user info (already loaded via contains_eager)
             if order.user:
                 order_dict['user'] = {
                     'id': order.user.id,
@@ -2048,7 +2239,7 @@ def get_admin_orders():
             if order.address:
                 order_dict['address'] = order.address.to_dict()
             
-            items_data = enrich_order_items(order.items)
+            items_data = items_by_order_id.get(order.id, [])
             order_dict['items'] = items_data
             order_dict['items_count'] = len(items_data)
             fulfillment_service.apply_order_pii_lock(order_dict, order.group_deal, acting_user)

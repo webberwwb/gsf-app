@@ -8,6 +8,7 @@ from models.base import utc_now
 
 
 EVENT_MERGE = 'merge'
+EVENT_ADMIN_CREATE = 'admin_create'
 EVENT_ADMIN_ITEMS_REPLACE = 'admin_items_replace'
 EVENT_CUSTOMER_ITEMS_REPLACE = 'customer_items_replace'
 

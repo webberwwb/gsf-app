@@ -414,6 +414,9 @@
                 </svg>
               </button>
             </div>
+            <button v-if="!isFulfillmentOnly" @click="openCreateOrder" class="create-order-btn" :disabled="!groupDeal">
+              新建订单
+            </button>
             <button v-if="!isFulfillmentOnly" @click="findDuplicates" class="duplicates-btn" :disabled="loadingDuplicates">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 20px; height: 20px;">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -516,6 +519,13 @@
         </template>
       </div>
       
+      <AdminCreateOrderModal
+        :show="showCreateOrder"
+        :group-deal="groupDeal"
+        @close="showCreateOrder = false"
+        @created="onAdminOrderCreated"
+      />
+
       <!-- Order Detail Modal -->
       <OrderDetailModal
         ref="orderDetailModal"
@@ -611,6 +621,7 @@ import { usePageHeader } from '../stores/pageHeader'
 import OrderCard from '../components/OrderCard.vue'
 import GroupDealOrderListView from '../components/GroupDealOrderListView.vue'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
+import AdminCreateOrderModal from '../components/AdminCreateOrderModal.vue'
 import OrderMergeModal from '../components/OrderMergeModal.vue'
 import CommissionBreakdownModal from '../components/CommissionBreakdownModal.vue'
 import GroupDealFulfillmentPanel from '../components/GroupDealFulfillmentPanel.vue'
@@ -632,6 +643,7 @@ export default {
     OrderCard,
     GroupDealOrderListView,
     OrderDetailModal,
+    AdminCreateOrderModal,
     OrderMergeModal,
     CommissionBreakdownModal,
     GroupDealFulfillmentPanel,
@@ -689,6 +701,7 @@ export default {
       error: null,
       groupDeal: null,
       showOrderDetail: false,
+      showCreateOrder: false,
       selectedOrder: null,
       availableProducts: [],
       updatingOrder: false,
@@ -1677,6 +1690,18 @@ export default {
         address.postal_code
       ].filter(Boolean)
       return parts.join(', ')
+    },
+    openCreateOrder() {
+      this.showCreateOrder = true
+    },
+    async onAdminOrderCreated(order) {
+      this.showCreateOrder = false
+      if (this.groupDeal?.id) {
+        await this.fetchOrders(this.groupDeal.id)
+      }
+      if (order?.id) {
+        await this.viewOrderDetail(order)
+      }
     },
     async viewOrderDetail(order) {
       try {
@@ -3309,6 +3334,27 @@ export default {
   box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.3);
 }
 
+.create-order-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-xs);
+  padding: 10px 20px;
+  border: none;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--md-primary);
+  color: white;
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.create-order-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Duplicates button */
 .duplicates-btn {
   display: flex;
@@ -3967,6 +4013,7 @@ export default {
     width: 100%;
   }
 
+  .create-order-btn,
   .duplicates-btn {
     width: 100%;
     justify-content: center;

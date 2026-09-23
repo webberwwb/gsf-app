@@ -659,6 +659,12 @@ def _product_sale_fields(product, on_sale):
     }
 
 
+def _relation_loaded(obj, name):
+    """True when the relationship is already populated. Does not lazy-load."""
+    from sqlalchemy import inspect
+    return name not in inspect(obj).unloaded
+
+
 def _deal_sale_by_item(items):
     """Batch (deal_id, product_id) → is_discount for a set of order lines."""
     from models.groupdeal import GroupDealProduct
@@ -668,13 +674,15 @@ def _deal_sale_by_item(items):
     orders = {}
     missing_ids = []
     for item in items:
-        order = getattr(item, 'order', None)
-        if order is not None and getattr(item, 'order_id', None):
-            orders[item.order_id] = order
-        elif getattr(item, 'order_id', None):
-            missing_ids.append(item.order_id)
+        order_id = getattr(item, 'order_id', None)
+        if not order_id or order_id in orders:
+            continue
+        if _relation_loaded(item, 'order') and item.order is not None:
+            orders[order_id] = item.order
+        else:
+            missing_ids.append(order_id)
     if missing_ids:
-        orders.update(rows_by_id(Order, missing_ids))
+        orders.update(rows_by_id(Order, [oid for oid in missing_ids if oid not in orders]))
 
     deal_ids = []
     product_ids = []
@@ -821,15 +829,42 @@ def buyer_pricing_dict(user, product_ids):
 
 
 def enrich_order_items(items):
-    """Serialize many order lines with one product/source-order prefetch."""
+    """Serialize many order lines with one product/source-order prefetch.
+
+    Reuses relationships already eager-loaded on the lines. Missing products,
+    source orders, and deal-sale flags are loaded once for the whole set, so
+    callers can pass every line from a page instead of one order at a time.
+    """
     from models.order import Order
     from utils.query_batch import products_by_ids, rows_by_id
 
     items = list(items or [])
     if not items:
         return []
-    products = products_by_ids(item.product_id for item in items)
-    source_orders = rows_by_id(Order, (item.source_order_id for item in items))
+
+    products = {}
+    missing_product_ids = []
+    source_orders = {}
+    missing_source_ids = []
+    for item in items:
+        product_id = item.product_id
+        if product_id and product_id not in products:
+            loaded_product = item.product if _relation_loaded(item, 'product') else None
+            if loaded_product is not None and _relation_loaded(loaded_product, 'variants'):
+                products[product_id] = loaded_product
+            else:
+                missing_product_ids.append(product_id)
+        if item.source_order_id and item.source_order_id not in source_orders:
+            if _relation_loaded(item, 'source_order'):
+                if item.source_order is not None:
+                    source_orders[item.source_order_id] = item.source_order
+            else:
+                missing_source_ids.append(item.source_order_id)
+
+    if missing_product_ids:
+        products.update(products_by_ids(missing_product_ids))
+    if missing_source_ids:
+        source_orders.update(rows_by_id(Order, missing_source_ids))
     on_sale_by_item = _deal_sale_by_item(items)
     return [
         enrich_order_item_dict(

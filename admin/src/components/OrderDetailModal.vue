@@ -1389,6 +1389,7 @@ export default {
     formatAuditEventType(type) {
       const map = {
         merge: '合并订单',
+        admin_create: '后台代客下单',
         admin_items_replace: '后台修改商品',
         customer_items_replace: '顾客修改商品'
       }

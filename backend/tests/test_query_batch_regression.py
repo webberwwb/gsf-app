@@ -502,6 +502,81 @@ def test_admin_orders_users_stats_referrals_payloads(app, db_session):
     assert 'products' not in lite.get_json()['group_deals'][0]
 
 
+def test_admin_order_list_query_count_does_not_grow_with_orders(app, db_session):
+    from sqlalchemy import event
+
+    admin = _admin()
+    sale = _product('特价鸭', price=20)
+    plain = _product('青菜', price=5)
+    db_session.add(ProductVariant(
+        product_id=sale.id, name='整只', price_delta=Decimal('0'), sort_order=0, is_active=True,
+    ))
+    db_session.flush()
+
+    def seed(n, phone_base):
+        deal = _deal(title=f'团{phone_base}')
+        db_session.add(GroupDealProduct(
+            group_deal_id=deal.id, product_id=sale.id, is_discount=True,
+        ))
+        db_session.add(GroupDealProduct(
+            group_deal_id=deal.id, product_id=plain.id, is_discount=False,
+        ))
+        db_session.flush()
+        for i in range(n):
+            user = _user(f'+1666{phone_base:04d}{i:03d}', f'客{phone_base}-{i}')
+            order = _order(
+                user, deal, sale, qty=1, unit=Decimal('18.00'),
+                order_number=f'TEST-QBR-LIST-{deal.id}-{i}',
+            )
+            db_session.add(OrderItem(
+                order_id=order.id,
+                product_id=plain.id,
+                quantity=2,
+                unit_price=Decimal('5.00'),
+                total_price=Decimal('10.00'),
+            ))
+        db_session.flush()
+        return deal
+
+    small = seed(3, 1000)
+    large = seed(12, 2000)
+    client = app.test_client()
+    headers = _headers(admin)
+
+    def measure(deal_id):
+        db.session.expire_all()
+        statements = []
+
+        def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(db.engine, 'before_cursor_execute', _before_cursor_execute)
+        try:
+            res = client.get(
+                f'/api/admin/orders?group_deal_id={deal_id}&per_page=1000',
+                headers=headers,
+            )
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', _before_cursor_execute)
+        return res, len(statements)
+
+    small_res, small_n = measure(small.id)
+    large_res, large_n = measure(large.id)
+    assert small_res.status_code == 200
+    assert large_res.status_code == 200
+    assert len(small_res.get_json()['orders']) == 3
+    orders = large_res.get_json()['orders']
+    assert len(orders) == 12
+    sample = orders[0]
+    by_name = {item['product']['name']: item for item in sample['items']}
+    assert set(by_name) == {'特价鸭', '青菜'}
+    assert by_name['特价鸭']['product']['is_discount'] is True
+    assert by_name['特价鸭']['product']['variants'][0]['name'] == '整只'
+    assert by_name['青菜']['product']['is_discount'] is False
+    assert sample['user']['nickname'].startswith('客2000-')
+    assert large_n == small_n
+
+
 def test_invitees_and_influencer_customers_http(app, db_session):
     inf = _make_influencer(phone='+15550000008', nickname='官丙')
     pending = _user('+15550000009', '未下单丁')

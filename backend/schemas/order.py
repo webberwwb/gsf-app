@@ -130,6 +130,32 @@ class UpdateOrderWeightsSchema(Schema):
         unknown = EXCLUDE
 
 
+class AdminCreateOrderSchema(Schema):
+    """Admin creates an order for an existing customer. Group deal status is not checked."""
+    user_id = fields.Integer(required=True, validate=validate.Range(min=1))
+    group_deal_id = fields.Integer(required=True, validate=validate.Range(min=1))
+    items = fields.List(fields.Nested(OrderItemSchema), required=True, validate=validate.Length(min=1))
+    delivery_method = fields.String(missing=DeliveryMethod.PICKUP.value, validate=validate.OneOf(DeliveryMethod.get_all_values()))
+    address_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    pickup_location = fields.String(allow_none=True, validate=validate.Length(max=100))
+    payment_method = fields.String(missing=PaymentMethod.CASH.value, validate=validate.OneOf(PaymentMethod.get_all_values()))
+    notes = fields.String(allow_none=True, validate=validate.Length(max=1000))
+
+    @validates('items')
+    def validate_items(self, value):
+        if not value:
+            raise ValidationError('At least one item is required')
+
+    @post_load
+    def validate_delivery_address(self, data, **kwargs):
+        if data.get('delivery_method') == DeliveryMethod.DELIVERY.value and not data.get('address_id'):
+            raise ValidationError('address_id is required for delivery')
+        return data
+
+    class Meta:
+        unknown = EXCLUDE
+
+
 class AdminUpdateOrderSchema(Schema):
     """Schema for admin updating order items"""
     items = fields.List(fields.Nested(AdminOrderItemSchema), required=True, validate=validate.Length(min=1))
