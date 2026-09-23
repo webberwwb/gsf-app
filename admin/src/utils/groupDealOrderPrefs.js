@@ -6,6 +6,7 @@ const DEFAULTS = {
   weightFilter: '',
   packingFilter: '',
   notesFilter: '',
+  cuttingFilter: '',
   orderSort: 'payment',
   userSourceFilter: '',
   viewMode: 'card'
@@ -16,6 +17,7 @@ const VALID = {
   weightFilter: ['', 'not_weighed', 'weighed'],
   packingFilter: ['', 'not_packed', 'packing_complete'],
   notesFilter: ['', 'has_notes', 'no_notes'],
+  cuttingFilter: ['', 'has_cutting', 'no_cutting'],
   orderSort: ['payment', 'weight_asc', 'weight_desc', 'packing_asc', 'packing_desc'],
   userSourceFilter: ['', '花泽', 'default'],
   viewMode: ['card', 'list']

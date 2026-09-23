@@ -1,6 +1,29 @@
 <template>
   <div class="products-tab">
     <div class="page-header-actions">
+      <div class="search-box">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="search-icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="search-input"
+          placeholder="搜索商品名称、分类或供应商..."
+          enterkeyhint="search"
+        />
+        <button
+          v-if="searchQuery"
+          type="button"
+          class="clear-search-btn"
+          title="清除搜索"
+          @click="searchQuery = ''"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
       <select v-model="sortBy" @change="handleSortByChange" class="sort-select">
         <option value="custom">自定义排序</option>
         <option value="created_at">按创建时间</option>
@@ -27,13 +50,6 @@
           </svg>
         </button>
       </div>
-      <input
-        v-if="sortBy === 'custom' && customSortViewMode === 'table'"
-        v-model="sortTableSearch"
-        type="search"
-        class="sort-table-search"
-        placeholder="搜索商品名称或分类..."
-      />
       <button
         v-if="sortBy === 'custom' && (hasUnsavedChanges || savingSortOrder)"
         @click="saveSortOrder"
@@ -59,6 +75,9 @@
     <div v-else-if="products.length === 0" class="empty-state">
       <p>暂无商品</p>
       <button @click="openAddModal" class="add-first-btn">添加第一个商品</button>
+    </div>
+    <div v-else-if="filteredProducts.length === 0" class="empty-state">
+      <p>没有匹配的商品</p>
     </div>
     <div v-else-if="sortBy === 'custom' && customSortViewMode === 'table'" class="sort-table-section">
       <p class="sort-table-hint">输入排序值（支持小数，如 1.1、1.2），按 Enter 确认后预览顺序会更新，完成后点击「保存排序」。</p>
@@ -121,14 +140,13 @@
           </tbody>
         </table>
       </div>
-      <p v-if="filteredSortedProducts.length === 0" class="sort-table-empty">没有匹配的商品</p>
     </div>
     <div v-else class="products-grid">
       <div 
-        v-for="(product, index) in products" 
+        v-for="(product, index) in filteredProducts" 
         :key="product.id" 
         class="product-card"
-        :draggable="sortBy === 'custom'"
+        :draggable="sortBy === 'custom' && !hasSearchQuery"
         @dragstart="handleDragStart(index, $event)"
         @dragover.prevent="handleDragOver(index, $event)"
         @dragenter="handleDragEnter(index)"
@@ -136,12 +154,12 @@
         @drop="handleDrop(index, $event)"
         @dragend="handleDragEnd"
         :class="{ 
-          'draggable': sortBy === 'custom',
+          'draggable': sortBy === 'custom' && !hasSearchQuery,
           'drag-over': dragOverIndex === index && draggedIndex !== index
         }"
       >
         <div class="product-image">
-          <div v-if="sortBy === 'custom'" class="drag-handle" title="拖动排序">
+          <div v-if="sortBy === 'custom' && !hasSearchQuery" class="drag-handle" title="拖动排序">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
             </svg>
@@ -251,7 +269,7 @@ export default {
       editingProduct: null,
       sortBy: 'custom', // 'custom', 'created_at', 'popularity', 'name'
       customSortViewMode: 'grid', // 'grid' | 'table'
-      sortTableSearch: '',
+      searchQuery: '',
       draggedIndex: null,
       dragOverIndex: null,
       hasUnsavedChanges: false,
@@ -261,18 +279,21 @@ export default {
     }
   },
   computed: {
+    hasSearchQuery() {
+      return !!this.searchQuery.trim()
+    },
+    filteredProducts() {
+      const query = this.searchQuery.trim().toLowerCase()
+      if (!query) return this.products
+      return this.products.filter((product) => {
+        const name = product.name?.toLowerCase() || ''
+        const category = product.category?.name?.toLowerCase() || ''
+        const supplier = product.supplier?.name?.toLowerCase() || ''
+        return name.includes(query) || category.includes(query) || supplier.includes(query)
+      })
+    },
     filteredSortedProducts() {
-      const query = this.sortTableSearch.trim().toLowerCase()
-      let list = this.products
-      if (query) {
-        list = list.filter((product) => {
-          const name = product.name?.toLowerCase() || ''
-          const category = product.category?.name?.toLowerCase() || ''
-          const supplier = product.supplier?.name?.toLowerCase() || ''
-          return name.includes(query) || category.includes(query) || supplier.includes(query)
-        })
-      }
-      return this.sortProductsByOrder(list)
+      return this.sortProductsByOrder(this.filteredProducts)
     }
   },
   mounted() {
@@ -308,7 +329,6 @@ export default {
       }
     },
     handleSortByChange() {
-      this.sortTableSearch = ''
       this.sortOrderDrafts = {}
       this.fetchProducts()
     },
@@ -532,6 +552,80 @@ export default {
   gap: var(--md-spacing-md);
 }
 
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+  margin-right: auto;
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 24px;
+  padding: 8px 12px 8px 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-box:focus-within {
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+}
+
+.search-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--md-on-surface-variant);
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--md-body-size);
+  color: var(--md-on-surface);
+  padding: 0;
+}
+
+.search-input::placeholder {
+  color: var(--md-on-surface-variant);
+  opacity: 0.7;
+}
+
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.clear-search-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.clear-search-btn:hover {
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface);
+}
+
+.clear-search-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* Laptop screens - more compact header */
 @media (max-width: 1366px) {
   .page-header-actions {
@@ -565,11 +659,13 @@ export default {
     gap: var(--md-spacing-sm);
   }
   
+  .search-box,
   .sort-select,
   .add-btn,
-  .save-btn,
-  .sort-table-search {
+  .save-btn {
     width: 100%;
+    max-width: none;
+    margin-right: 0;
   }
 
   .view-mode-toggle {
@@ -711,22 +807,6 @@ export default {
   background: var(--md-primary);
   color: white;
   box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.3);
-}
-
-.sort-table-search {
-  min-width: 220px;
-  padding: var(--md-spacing-sm) var(--md-spacing-md);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-radius-md);
-  font-size: var(--md-body-size);
-  background: var(--md-surface);
-  color: var(--md-on-surface);
-}
-
-.sort-table-search:focus {
-  outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
 }
 
 .sort-table-section {

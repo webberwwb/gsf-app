@@ -15,6 +15,9 @@
           <span v-if="hasMissingFinalWeight" class="missing-weight-badge" title="有按重计价商品未填写有效实际重量">
             缺称重
           </span>
+          <span v-if="hasCutting" class="cutting-badge" title="订单含需切分商品">
+            切分
+          </span>
           <span class="status-badge" :class="`status-${order.status}`">
             {{ getStatusText(order.status) }}
           </span>
@@ -60,6 +63,9 @@
         <div class="status-badges">
           <span v-if="hasMissingFinalWeight" class="missing-weight-badge" title="有按重计价商品未填写有效实际重量">
             缺称重
+          </span>
+          <span v-if="hasCutting" class="cutting-badge" title="订单含需切分商品">
+            切分
           </span>
           <span class="status-badge" :class="`status-${order.status}`">
             {{ getStatusText(order.status) }}
@@ -127,7 +133,7 @@
             v-for="(item, index) in order.items" 
             :key="item.id"
             class="item-compact">
-            {{ item.product?.name || 'Unknown' }} x{{ item.quantity }}{{ index < order.items.length - 1 ? ',' : '' }}
+            {{ item.product?.name || 'Unknown' }} x{{ item.quantity }}<template v-if="item.cutting"> · 切分</template>{{ index < order.items.length - 1 ? ',' : '' }}
           </span>
         </div>
       </div>
@@ -184,6 +190,9 @@ export default {
   computed: {
     hasMissingFinalWeight() {
       return orderHasMissingFinalWeight(this.order)
+    },
+    hasCutting() {
+      return (this.order?.items || []).some((item) => !!item.cutting)
     }
   },
   methods: {
@@ -340,6 +349,7 @@ export default {
 }
 
 .missing-weight-badge,
+.cutting-badge,
 .status-badge,
 .payment-badge {
   display: inline-flex;
@@ -358,6 +368,12 @@ export default {
   background: #FFEBEE;
   color: #B71C1C;
   border: 1px solid rgba(183, 28, 28, 0.25);
+}
+
+.cutting-badge {
+  background: #FFF3E0;
+  color: #E65100;
+  border: 1px solid rgba(230, 81, 0, 0.28);
 }
 
 .status-badge,
@@ -714,7 +730,9 @@ export default {
   }
   
   .status-badge,
-  .payment-badge {
+  .payment-badge,
+  .missing-weight-badge,
+  .cutting-badge {
     font-size: 0.625rem;
     padding: 2px 6px;
   }

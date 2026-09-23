@@ -25,6 +25,7 @@
 <script>
 import {
   formatSubstitutePreferenceLabel,
+  formatCuttingLabel,
   formatLinePrice,
   resolveOrderLineTotal,
   isOrderLinePriceEstimated,
@@ -66,7 +67,8 @@ export default {
     detailTags() {
       const tags = []
       if (this.variantLabel) tags.push(this.variantLabel)
-      if (this.item.cutting) tags.push('切分')
+      const cutting = formatCuttingLabel(this.item)
+      if (cutting) tags.push(cutting)
       const sub = this.substitutePreferenceLabel
       if (sub) tags.push(sub)
       const w = this.weightLabel

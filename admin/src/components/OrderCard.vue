@@ -21,6 +21,9 @@
           <span v-if="hasMissingFinalWeight" class="missing-weight-badge" title="有按重计价商品未填写有效实际重量">
             缺称重
           </span>
+          <span v-if="hasCutting" class="cutting-badge" title="订单含需切分商品">
+            切分
+          </span>
           <span class="order-status" :class="`status-${order.status}`">
             {{ getStatusText(order.status) }}
           </span>
@@ -325,6 +328,9 @@ export default {
   computed: {
     hasMissingFinalWeight() {
       return orderHasMissingFinalWeight(this.order)
+    },
+    hasCutting() {
+      return (this.order?.items || []).some((item) => !!item.cutting)
     }
   },
   methods: {
@@ -570,6 +576,7 @@ export default {
 }
 
 .missing-weight-badge,
+.cutting-badge,
 .order-status,
 .payment-status {
   display: inline-flex;
@@ -590,6 +597,12 @@ export default {
   border: 1px solid rgba(183, 28, 28, 0.25);
 }
 
+.cutting-badge {
+  background: #FFF3E0;
+  color: #E65100;
+  border: 1px solid rgba(230, 81, 0, 0.28);
+}
+
 .order-status,
 .payment-status {
   border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
@@ -602,6 +615,7 @@ export default {
   }
 
   .missing-weight-badge,
+  .cutting-badge,
   .order-status,
   .payment-status {
     padding: 3px 8px;

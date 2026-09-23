@@ -1,40 +1,43 @@
 <template>
   <template v-if="hasContent">
     <!-- Variants: 产品细节 with qty per option -->
-    <div v-if="variants.length" class="product-details">
+    <div v-if="variantRows.length" class="product-details">
       <div class="variant-qty-list">
         <div
-          v-for="v in variants"
-          :key="v.id"
+          v-for="row in variantRows"
+          :key="row.key"
           class="variant-qty-row"
         >
           <div class="variant-qty-info">
-            <span class="variant-qty-name">{{ v.name }}</span>
-            <span v-if="variantPriceLabel(v)" class="chip-extra">{{ variantPriceLabel(v) }}</span>
+            <span class="variant-qty-name">{{ row.name }}</span>
+            <span v-if="row.priceLabel" class="chip-extra">{{ row.priceLabel }}</span>
+            <span v-if="row.feeLabel" class="chip-extra">{{ row.feeLabel }}</span>
           </div>
           <div class="variant-qty-control">
             <button
               type="button"
               class="vq-btn"
-              :disabled="disabled || variantQty(v.id) === 0"
-              @click="$emit('change-variant-qty', v.id, variantQty(v.id) - 1)"
+              :disabled="disabled || row.qty === 0"
+              @click="changeRowQty(row, row.qty - 1)"
             >-</button>
             <input
               type="number"
               class="vq-input"
               min="0"
-              :value="variantQty(v.id)"
+              :value="row.qty"
               :disabled="disabled"
-              @input="$emit('change-variant-qty', v.id, $event.target.value)"
+              @input="changeRowQty(row, $event.target.value)"
             />
             <button
               type="button"
               class="vq-btn"
+              :class="{ 'at-limit': atStockLimit }"
               :disabled="disabled"
-              @click="$emit('change-variant-qty', v.id, variantQty(v.id) + 1)"
+              @click="changeRowQty(row, row.qty + 1)"
             >+</button>
           </div>
         </div>
+        <p v-if="atStockLimit" class="stock-limit-hint">已达库存上限</p>
       </div>
     </div>
 
@@ -90,76 +93,6 @@
       </div>
     </div>
 
-    <!-- Cutting: 切分服务 -->
-    <div v-if="offersCutting" class="cutting-section">
-      <div class="details-head">
-        <span class="details-title">切分服务</span>
-        <span v-if="cuttingFeeLabel" class="chip-extra">{{ cuttingFeeLabel }}</span>
-      </div>
-      <template v-if="variants.length">
-        <div
-          v-for="v in variants"
-          :key="'cut-' + v.id"
-          class="variant-qty-row"
-        >
-          <div class="variant-qty-info">
-            <span class="variant-qty-name">{{ v.name }} 切分</span>
-          </div>
-          <div class="variant-qty-control">
-            <button
-              type="button"
-              class="vq-btn"
-              :disabled="disabled || cuttingQtyFor(v.id) === 0 || variantQty(v.id) === 0"
-              @click="$emit('change-cutting-qty', v.id, cuttingQtyFor(v.id) - 1)"
-            >-</button>
-            <input
-              type="number"
-              class="vq-input"
-              min="0"
-              :max="variantQty(v.id)"
-              :value="cuttingQtyFor(v.id)"
-              :disabled="disabled || variantQty(v.id) === 0"
-              @input="$emit('change-cutting-qty', v.id, $event.target.value)"
-            />
-            <button
-              type="button"
-              class="vq-btn"
-              :disabled="disabled || cuttingQtyFor(v.id) >= variantQty(v.id)"
-              @click="$emit('change-cutting-qty', v.id, cuttingQtyFor(v.id) + 1)"
-            >+</button>
-          </div>
-        </div>
-      </template>
-      <div v-else class="variant-qty-row">
-        <div class="variant-qty-info">
-          <span class="variant-qty-name">切分</span>
-        </div>
-        <div class="variant-qty-control">
-          <button
-            type="button"
-            class="vq-btn"
-            :disabled="disabled || cuttingQty === 0 || quantity === 0"
-            @click="$emit('change-cutting-qty', null, cuttingQty - 1)"
-          >-</button>
-          <input
-            type="number"
-            class="vq-input"
-            min="0"
-            :max="quantity"
-            :value="cuttingQty"
-            :disabled="disabled || quantity === 0"
-            @input="$emit('change-cutting-qty', null, $event.target.value)"
-          />
-          <button
-            type="button"
-            class="vq-btn"
-            :disabled="disabled || cuttingQty >= quantity"
-            @click="$emit('change-cutting-qty', null, cuttingQty + 1)"
-          >+</button>
-        </div>
-      </div>
-    </div>
-
     <Modal
       :show="showSubstituteInfo"
       type="info"
@@ -204,7 +137,7 @@ export default {
     cuttingQuantities: { type: Object, default: () => ({}) },
     disabled: { type: Boolean, default: false }
   },
-  emits: ['update:variantId', 'update:acceptSubstitute', 'change-variant-qty', 'change-cutting-qty'],
+  emits: ['update:variantId', 'update:acceptSubstitute', 'change-variant-qty', 'change-cutting-part'],
   data() {
     return {
       showSubstituteInfo: false,
@@ -213,16 +146,57 @@ export default {
   },
   computed: {
     hasContent() {
-      return (this.variants && this.variants.length > 0) || !!this.substitute || this.offersCutting
+      return this.variantRows.length > 0 || !!this.substitute
     },
     offersCutting() {
       return !!(this.product && this.product.cutting_enabled)
     },
+    atStockLimit() {
+      const max = this.product && this.product.deal_stock_limit
+      if (max === undefined || max === null) return false
+      const n = Number(max)
+      return n > 0 && (this.quantity || 0) >= n
+    },
     cuttingFeeLabel() {
       if (!this.offersCutting) return null
       const fee = parseFloat(this.product.cutting_fee)
-      if (!Number.isFinite(fee) || fee <= 0) return '免费'
-      return `+$${fee.toFixed(2)}/件`
+      if (!Number.isFinite(fee) || fee <= 0) return null
+      return `+$${fee.toFixed(2)}`
+    },
+    variantRows() {
+      const rows = []
+      for (const v of this.variants || []) {
+        const priceLabel = this.variantPriceLabel(v)
+        if (this.offersCutting) {
+          rows.push({
+            key: `${v.id}-cut`,
+            variantId: v.id,
+            cutting: true,
+            name: `${v.name} 切分`,
+            qty: this.cuttingQtyFor(v.id),
+            priceLabel,
+            feeLabel: this.cuttingFeeLabel
+          })
+          rows.push({
+            key: `${v.id}-whole`,
+            variantId: v.id,
+            cutting: false,
+            name: `${v.name} 不切分`,
+            qty: this.uncutQtyFor(v.id),
+            priceLabel
+          })
+        } else {
+          rows.push({
+            key: String(v.id),
+            variantId: v.id,
+            cutting: null,
+            name: v.name,
+            qty: this.variantQty(v.id),
+            priceLabel
+          })
+        }
+      }
+      return rows
     },
     substituteImage() {
       if (!this.substitute) return null
@@ -246,6 +220,19 @@ export default {
     cuttingQtyFor(variantId) {
       const raw = this.cuttingQuantities[variantId] ?? this.cuttingQuantities[String(variantId)]
       return Math.max(0, parseInt(raw, 10) || 0)
+    },
+    uncutQtyFor(variantId) {
+      return Math.max(0, this.variantQty(variantId) - this.cuttingQtyFor(variantId))
+    },
+    emitCuttingPart(cutting, qty, variantId) {
+      this.$emit('change-cutting-part', { cutting, qty, variantId })
+    },
+    changeRowQty(row, qty) {
+      if (row.cutting == null) {
+        this.$emit('change-variant-qty', row.variantId, qty)
+        return
+      }
+      this.emitCuttingPart(row.cutting, qty, row.variantId)
     }
   }
 }
@@ -253,8 +240,7 @@ export default {
 
 <style scoped>
 .product-details,
-.substitute-section,
-.cutting-section {
+.substitute-section {
   margin: 0.25rem 0 0.5rem;
   padding: 0.5rem 0.75rem;
   border-radius: 12px;
@@ -270,8 +256,7 @@ export default {
     inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
-.substitute-section,
-.cutting-section {
+.substitute-section {
   background: linear-gradient(
     145deg,
     rgba(0, 0, 0, 0.02) 0%,
@@ -424,6 +409,7 @@ export default {
   text-overflow: ellipsis;
 }
 
+
 .variant-qty-control {
   display: inline-flex;
   align-items: center;
@@ -450,14 +436,30 @@ export default {
   cursor: not-allowed;
 }
 
+.vq-btn.at-limit:not(:disabled) {
+  border-color: rgba(230, 81, 0, 0.45);
+  color: #E65100;
+  background: rgba(255, 140, 0, 0.1);
+}
+
+.stock-limit-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #E65100;
+}
+
 .vq-input {
   width: 2.5rem;
   height: 36px;
+  padding: 0;
+  line-height: 36px;
   text-align: center;
   border: 1px solid var(--md-outline-variant);
   border-radius: 10px;
   font-size: 1rem;
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .vq-input::-webkit-outer-spin-button,

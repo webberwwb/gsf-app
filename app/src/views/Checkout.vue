@@ -117,8 +117,8 @@
         <div class="products-section">
           <div class="items-list">
           <OrderLineDisplay
-            v-for="item in orderItems"
-            :key="item.product_id"
+            v-for="(item, index) in orderItems"
+            :key="checkoutLineKey(item, index)"
             :item="toCheckoutLineDisplay(item)"
             class="order-item-summary"
           />
@@ -1314,6 +1314,11 @@ export default {
       if (this.addresses.length === 1) {
         this.selectedAddressId = this.addresses[0].id
       }
+    },
+    checkoutLineKey(item, index) {
+      const vid = item.variant_id == null ? '' : item.variant_id
+      const cut = item.cutting ? '1' : '0'
+      return `${item.product_id}:${vid}:${cut}:${index}`
     },
     toCheckoutLineDisplay(item) {
       const product = this.deal?.products?.find((p) => p.id === item.product_id)

@@ -207,6 +207,7 @@ export function emptyProductSelection() {
     variant_id: null,
     variant_quantities: {},
     accept_substitute: null,
+    want_cutting: null,
     cutting_qty: 0,
     cutting_quantities: {}
   }
@@ -220,6 +221,12 @@ export function catalogCuttingFee(product) {
   if (!productOffersCutting(product)) return 0
   const n = parseFloat(product.cutting_fee)
   return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+export function formatCuttingFeeLabel(fee) {
+  const n = parseFloat(fee)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return `+$${n.toFixed(2)}`
 }
 
 export function getCuttingQuantity(selection = {}, variantId = null) {
@@ -273,6 +280,38 @@ export function clampCuttingQuantities(selection = {}) {
   return next
 }
 
+export function productRequiresCuttingChoice(product) {
+  return productOffersCutting(product)
+}
+
+export function getUncutQuantity(selection = {}, variantId = null) {
+  const total = variantId != null
+    ? getVariantQuantity(selection, variantId)
+    : getSelectionQuantity(selection)
+  return Math.max(0, total - getCuttingQuantity(selection, variantId))
+}
+
+/** Set 切分 or 不切分 qty independently; the other part is kept. */
+export function setCuttingPartQuantity(selection = {}, { cutting, qty, variantId = null } = {}) {
+  const n = Math.max(0, parseInt(qty, 10) || 0)
+  const currentCut = getCuttingQuantity(selection, variantId)
+  const currentUncut = getUncutQuantity(selection, variantId)
+  const nextCut = cutting ? n : currentCut
+  const nextUncut = cutting ? currentUncut : n
+  const nextTotal = nextCut + nextUncut
+  if (variantId != null) {
+    return setCuttingQuantity(setVariantQuantity(selection, variantId, nextTotal), nextCut, variantId)
+  }
+  const next = {
+    ...emptyProductSelection(),
+    ...selection,
+    variant_quantities: { ...(selection.variant_quantities || {}) },
+    cutting_quantities: { ...(selection.cutting_quantities || {}) },
+    quantity: nextTotal
+  }
+  return setCuttingQuantity(next, nextCut, null)
+}
+
 export function splitSelectionIntoOrderLines(product, selection = {}) {
   const lines = []
   const variants = product?.variants || []
@@ -321,8 +360,13 @@ export function lineProductAmount(item) {
 }
 
 export function formatCuttingLabel(item) {
-  if (!item || !item.cutting) return null
-  return '切分'
+  if (!item) return null
+  if (item.cutting) {
+    const fee = formatCuttingFeeLabel(item.cutting_fee ?? item.product?.cutting_fee)
+    return fee ? `切分 ${fee}` : '切分'
+  }
+  if (item.show_cutting_preference) return '不切分'
+  return null
 }
 
 export function getVariantQuantity(selection = {}, variantId) {
@@ -370,6 +414,7 @@ export function selectionsFromOrderItems(items, existing = {}) {
       sel.item_ids = {}
       sel.cutting_quantities = {}
       sel.cutting_qty = 0
+      sel.want_cutting = null
       sel.quantity = 0
       sel.variant_id = null
       reset.add(productId)
@@ -390,6 +435,8 @@ export function selectionsFromOrderItems(items, existing = {}) {
     }
 
     sel.quantity = getSelectionQuantity(sel)
+    if (item.cutting) sel.want_cutting = true
+    else if (sel.want_cutting !== true && qty > 0) sel.want_cutting = false
     if (item.accept_substitute !== undefined) {
       sel.accept_substitute = item.accept_substitute
     }
@@ -857,6 +904,8 @@ export function toOrderLineDisplay(item) {
     ...item,
     display_name: item.display_name || product.name || '商品',
     variant_name: variantName,
+    show_cutting_preference:
+      item.show_cutting_preference ?? !!product.cutting_enabled,
     show_substitute_preference:
       item.show_substitute_preference ??
       !!(product.substitute_enabled || product.substitute?.enabled),

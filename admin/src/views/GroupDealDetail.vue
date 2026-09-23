@@ -476,6 +476,11 @@
                 <option value="has_notes">有备注</option>
                 <option value="no_notes">无备注</option>
               </select>
+              <select v-model="cuttingFilter" class="source-filter-select">
+                <option value="">全部切分</option>
+                <option value="has_cutting">需切分</option>
+                <option value="no_cutting">无需切分</option>
+              </select>
               <select v-model="orderSort" class="source-filter-select">
                 <option value="payment">排序: 未付款优先</option>
                 <option value="weight_asc">排序: 未称重优先</option>
@@ -715,6 +720,7 @@ export default {
       weightFilter: orderPrefs.weightFilter,
       packingFilter: orderPrefs.packingFilter,
       notesFilter: orderPrefs.notesFilter,
+      cuttingFilter: orderPrefs.cuttingFilter,
       orderSort: orderPrefs.orderSort,
       userSourceFilter: orderPrefs.userSourceFilter,
       // Duplicate orders
@@ -784,6 +790,7 @@ export default {
         weightFilter: this.weightFilter,
         packingFilter: this.packingFilter,
         notesFilter: this.notesFilter,
+        cuttingFilter: this.cuttingFilter,
         orderSort: this.orderSort,
         userSourceFilter: this.userSourceFilter,
         viewMode: this.viewMode
@@ -880,6 +887,12 @@ export default {
       } else if (this.notesFilter === 'no_notes') {
         orders = orders.filter(order => !this.orderHasNotes(order))
       }
+
+      if (this.cuttingFilter === 'has_cutting') {
+        orders = orders.filter(order => this.orderHasCutting(order))
+      } else if (this.cuttingFilter === 'no_cutting') {
+        orders = orders.filter(order => !this.orderHasCutting(order))
+      }
       
       orders.sort((a, b) => this.compareOrdersForSort(a, b))
       
@@ -892,6 +905,7 @@ export default {
         || !!this.weightFilter
         || !!this.packingFilter
         || !!this.notesFilter
+        || !!this.cuttingFilter
     },
     filteredAllOrders() {
       return this.applyProductFilter(this.orders)
@@ -1246,6 +1260,9 @@ export default {
     },
     orderHasNotes(order) {
       return !!(order?.notes && String(order.notes).trim())
+    },
+    orderHasCutting(order) {
+      return (order?.items || []).some((item) => !!item.cutting)
     },
     compareOrdersForSort(a, b) {
       const sortKey = this.orderSort || 'payment'

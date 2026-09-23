@@ -15,6 +15,7 @@ import {
   isOrderLinePriceEstimated,
   orderItemSelectionChanged,
   setCuttingQuantity,
+  setCuttingPartQuantity,
   splitSelectionIntoOrderLines,
   cuttingFeesTotal
 } from './orderItemPricing.js'
@@ -275,6 +276,29 @@ describe('cutting service', () => {
         { qty: 1, cutting: true }
       ]
     )
+  })
+
+  it('lets cut and uncut qty be set independently', () => {
+    let sel = setCuttingPartQuantity({}, { cutting: true, qty: 1, variantId: 1 })
+    sel = setCuttingPartQuantity(sel, { cutting: false, qty: 1, variantId: 1 })
+    const lines = splitSelectionIntoOrderLines(product, sel)
+    assert.equal(lines.length, 2)
+    assert.deepEqual(
+      lines.map((l) => ({ qty: l.quantity, cutting: l.cutting })),
+      [
+        { qty: 1, cutting: false },
+        { qty: 1, cutting: true }
+      ]
+    )
+  })
+
+  it('restores mixed cut and uncut lines', () => {
+    const next = selectionsFromOrderItems([
+      { id: 51, product_id: 3, quantity: 1, variant_id: 1, cutting: true },
+      { id: 52, product_id: 3, quantity: 1, variant_id: 1, cutting: false }
+    ])
+    assert.equal(next[3].variant_quantities[1], 2)
+    assert.equal(next[3].cutting_quantities[1], 1)
   })
 
   it('does not offer cutting when the product flag is off', () => {

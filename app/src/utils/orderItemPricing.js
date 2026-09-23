@@ -3,6 +3,7 @@ export * from '@shared/order-pricing/orderItemPricing.js'
 import {
   productRequiresVariant,
   productRequiresSubstituteChoice,
+  productRequiresCuttingChoice,
   getSelectionQuantity,
   getVariantQuantity
 } from '@shared/order-pricing/orderItemPricing.js'
@@ -25,6 +26,8 @@ export function toCheckoutLineDisplay(item, product) {
     variant: variantName ? { name: variantName } : null,
     accept_substitute: item.accept_substitute,
     cutting: !!item.cutting,
+    cutting_fee: item.cutting_fee ?? (item.cutting ? product?.cutting_fee : null),
+    show_cutting_preference: productRequiresCuttingChoice(product || {}),
     show_substitute_preference: productRequiresSubstituteChoice(product || {}),
     substitute_name: product?.substitute?.name,
     price_display: priceDisplay,
@@ -42,6 +45,7 @@ export function toOrderLineDisplay(item) {
     ...item,
     display_name: item.display_name || product.name || '商品',
     variant_name: variantName,
+    show_cutting_preference: !!product.cutting_enabled,
     show_substitute_preference: product.substitute_enabled || !!product.substitute?.enabled,
     substitute_name: product.substitute?.name
   }

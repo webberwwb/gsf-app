@@ -139,10 +139,9 @@
               </div>
               <div v-if="quantityBreakHint(product)" class="qty-break-hint">{{ quantityBreakHint(product) }}</div>
 
-              <!-- Stock Info -->
-              <!-- Only show stock when it's less than 10 (or out of stock) -->
-              <div v-if="product.deal_stock_limit !== undefined && product.deal_stock_limit !== null && product.deal_stock_limit < 10" class="stock-info" :class="{ 'out-of-stock': isOutOfStock(product) }">
+              <div v-if="showStockInfo(product)" class="stock-info" :class="{ 'out-of-stock': isOutOfStock(product), 'at-limit': isAtStockLimit(product) && !isOutOfStock(product) }">
                 <span v-if="isOutOfStock(product)">缺货</span>
+                <span v-else-if="isAtStockLimit(product)">已达库存上限（{{ product.deal_stock_limit }} 件）</span>
                 <span v-else>库存: {{ product.deal_stock_limit }} 件</span>
               </div>
             </div>
@@ -150,7 +149,7 @@
               <!-- Product Selection Controls -->
               <div class="product-selection" :class="{ 'disabled': !canEditProducts || isOrderCompleted }">
                 <ProductDetailsSection
-                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled || product.cutting_enabled"
+                  v-if="(product.variants || []).length || product.substitute_enabled || product.substitute?.enabled"
                   :product="product"
                   :product-id="product.id"
                   :variants="product.variants || []"
@@ -173,11 +172,40 @@
                   :disabled="!canEditProducts || isOrderCompleted"
                   @update:accept-substitute="(v) => setAcceptSubstitute(product, v)"
                   @change-variant-qty="(variantId, qty) => setVariantQuantity(product, variantId, qty)"
-                  @change-cutting-qty="(variantId, qty) => setCuttingQuantity(product, variantId, qty)"
+                  @change-cutting-part="(part) => setCuttingPart(product, part)"
                 />
+                <div v-if="showCuttingQuantityControls(product)" class="selection-controls">
+                  <div class="quantity-control">
+                    <label>切分:<span v-if="cuttingFeeOf(product)" class="qty-extra">{{ cuttingFeeOf(product) }}</span></label>
+                    <button @click="setCuttingPart(product, { cutting: true, qty: cuttingQtyOf(product) - 1 })" :disabled="cuttingQtyOf(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
+                    <input
+                      type="number"
+                      :value="cuttingQtyOf(product)"
+                      @input="setCuttingPart(product, { cutting: true, qty: $event.target.value })"
+                      min="0"
+                      :disabled="!canEditProducts || isOrderCompleted"
+                      class="qty-input"
+                    />
+                    <button @click="setCuttingPart(product, { cutting: true, qty: cuttingQtyOf(product) + 1 })" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn" :class="{ 'at-limit': isAtStockLimit(product) }">+</button>
+                  </div>
+                  <div class="quantity-control">
+                    <label>不切分:</label>
+                    <button @click="setCuttingPart(product, { cutting: false, qty: uncutQtyOf(product) - 1 })" :disabled="uncutQtyOf(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
+                    <input
+                      type="number"
+                      :value="uncutQtyOf(product)"
+                      @input="setCuttingPart(product, { cutting: false, qty: $event.target.value })"
+                      min="0"
+                      :disabled="!canEditProducts || isOrderCompleted"
+                      class="qty-input"
+                    />
+                    <button @click="setCuttingPart(product, { cutting: false, qty: uncutQtyOf(product) + 1 })" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn" :class="{ 'at-limit': isAtStockLimit(product) }">+</button>
+                  </div>
+                  <p v-if="isAtStockLimit(product)" class="stock-limit-hint">已达库存上限</p>
+                </div>
                 <!-- Per Item Pricing -->
                 <div v-if="product.pricing_type === 'per_item'" class="selection-controls">
-                  <div v-if="!(product.variants || []).length" class="quantity-control">
+                  <div v-if="showMainQuantityControl(product)" class="quantity-control">
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
                       type="number"
@@ -188,7 +216,7 @@
                       :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="(product.deal_stock_limit && getQuantity(product) >= product.deal_stock_limit) || !canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn" :class="{ 'at-limit': isAtStockLimit(product) }">+</button>
                   </div>
                   <div class="item-total">
                     小计: ${{ calculateItemTotal(product) }}
@@ -197,7 +225,7 @@
 
                 <!-- Weight Range Pricing -->
                 <div v-else-if="product.pricing_type === 'weight_range'" class="selection-controls">
-                  <div v-if="!(product.variants || []).length" class="quantity-control">
+                  <div v-if="showMainQuantityControl(product)" class="quantity-control">
                     <label>数量:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
@@ -208,7 +236,7 @@
                       :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn" :class="{ 'at-limit': isAtStockLimit(product) }">+</button>
                   </div>
                   <div class="item-total" :class="{ estimated: isProductPriceEstimated(product) }">
                     <span>{{ isProductPriceEstimated(product) ? '预估小计' : '小计' }}: ${{ calculateItemTotal(product) }}</span>
@@ -222,7 +250,7 @@
 
                 <!-- Unit Weight Pricing -->
                 <div v-else-if="product.pricing_type === 'unit_weight'" class="selection-controls">
-                  <div v-if="!(product.variants || []).length" class="quantity-control">
+                  <div v-if="showMainQuantityControl(product)" class="quantity-control">
                     <label>数量:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
@@ -233,7 +261,7 @@
                       :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn" :class="{ 'at-limit': isAtStockLimit(product) }">+</button>
                   </div>
                   <div class="item-total" :class="{ estimated: isProductPriceEstimated(product) }">
                     <span>{{ isProductPriceEstimated(product) ? '预估小计' : '小计' }}: ${{ calculateItemTotal(product) }}</span>
@@ -247,7 +275,7 @@
 
                 <!-- Bundled Weight Pricing -->
                 <div v-else-if="product.pricing_type === 'bundled_weight'" class="selection-controls">
-                  <div v-if="!(product.variants || []).length" class="quantity-control">
+                  <div v-if="showMainQuantityControl(product)" class="quantity-control">
                     <label>份数:</label>
                     <button @click="decreaseQuantity(product)" :disabled="getQuantity(product) === 0 || !canEditProducts || isOrderCompleted" class="qty-btn">-</button>
                     <input
@@ -259,7 +287,7 @@
                       :disabled="!canEditProducts || isOrderCompleted"
                       class="qty-input"
                     />
-                    <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn">+</button>
+                    <button @click="increaseQuantity(product)" :disabled="!canEditProducts || isOutOfStock(product) || isOrderCompleted" class="qty-btn" :class="{ 'at-limit': isAtStockLimit(product) }">+</button>
                   </div>
                   <div class="package-info-wrapper">
                     <span class="package-info">(每份 {{ product.pricing_data?.min_weight || 7 }}-{{ product.pricing_data?.max_weight || 15 }}{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }})</span>
@@ -889,7 +917,11 @@ import {
   getSelectionQuantity,
   getVariantQuantity,
   setVariantQuantity as applyVariantQuantity,
-  setCuttingQuantity as applyCuttingQuantity,
+  setCuttingPartQuantity,
+  clampCuttingQuantities,
+  getCuttingQuantity,
+  getUncutQuantity,
+  formatCuttingFeeLabel,
   splitSelectionIntoOrderLines,
   emptyProductSelection,
   productRequiresSubstituteChoice,
@@ -1445,6 +1477,23 @@ export default {
     applyOrderItemsToSelection(items) {
       this.selectedItems = selectionsFromOrderItems(items, this.selectedItems)
     },
+    dealStockLimit(product) {
+      const n = product && product.deal_stock_limit
+      return n === undefined || n === null ? null : Number(n)
+    },
+    showStockInfo(product) {
+      const max = this.dealStockLimit(product)
+      return max != null && (max < 10 || this.isAtStockLimit(product))
+    },
+    isAtStockLimit(product) {
+      const max = this.dealStockLimit(product)
+      return max != null && max > 0 && this.getQuantity(product) >= max
+    },
+    warnStockLimit(product) {
+      const max = this.dealStockLimit(product)
+      if (max == null) return
+      this.warning(max <= 0 ? '该商品已售罄' : `库存不足，最多可选 ${max} 件`)
+    },
     setQuantity(product, value) {
       const qty = parseInt(value) || 0
       const currentQty = this.getQuantity(product)
@@ -1452,12 +1501,23 @@ export default {
       // Allow decreasing quantity even if out of stock
       // Only block increasing quantity when out of stock
       if (this.isOutOfStock(product) && qty > currentQty) {
-        // Trying to increase quantity on out-of-stock item - block it
+        this.warnStockLimit(product)
         return
       }
       
-      const maxQty = product.deal_stock_limit || 999
-      const finalQty = Math.max(0, Math.min(qty, maxQty))
+      const maxQty = this.dealStockLimit(product)
+      if (maxQty != null && qty > maxQty) {
+        this.warnStockLimit(product)
+      }
+      const finalQty = Math.max(0, Math.min(qty, maxQty == null ? 999 : maxQty))
+
+      if (finalQty > 0) {
+        const selection = this.getSelection(product)
+        if (!isSelectionComplete(product, { ...selection, quantity: finalQty })) {
+          this.warning(getSelectionIncompleteMessage(product, { ...selection, quantity: finalQty }))
+          return
+        }
+      }
       
       if (!this.selectedItems[product.id]) {
         this.selectedItems[product.id] = { quantity: 0 }
@@ -1466,7 +1526,22 @@ export default {
       if (finalQty !== currentQty) {
         delete this.selectedItems[product.id].weight
       }
-      this.selectedItems[product.id] = applyCuttingQuantity(this.selectedItems[product.id], this.selectedItems[product.id].cutting_qty, null)
+      this.selectedItems[product.id] = clampCuttingQuantities(this.selectedItems[product.id])
+    },
+    showMainQuantityControl(product) {
+      return !(product.variants || []).length && !product.cutting_enabled
+    },
+    showCuttingQuantityControls(product) {
+      return !!(product.cutting_enabled && !(product.variants || []).length)
+    },
+    cuttingQtyOf(product) {
+      return getCuttingQuantity(this.getSelection(product))
+    },
+    uncutQtyOf(product) {
+      return getUncutQuantity(this.getSelection(product))
+    },
+    cuttingFeeOf(product) {
+      return formatCuttingFeeLabel(product.cutting_fee)
     },
     staffWeight(product) {
       const item = this.getOrderItemForProduct(product)
@@ -1480,14 +1555,11 @@ export default {
       return this.staffWeight(product) == null
     },
     increaseQuantity(product) {
-      // Only check out-of-stock for increasing quantity
-      if (this.isOutOfStock(product)) {
+      if (this.isOutOfStock(product) || this.isAtStockLimit(product)) {
+        this.warnStockLimit(product)
         return
       }
-      
-      const current = this.getQuantity(product)
-      const maxQty = product.deal_stock_limit || 999
-      this.setQuantity(product, Math.min(current + 1, maxQty))
+      this.setQuantity(product, this.getQuantity(product) + 1)
     },
     decreaseQuantity(product) {
       // Always allow decreasing quantity, even if out of stock
@@ -1557,6 +1629,7 @@ export default {
     },
     setVariantQuantity(product, variantId, qty) {
       if (this.isOutOfStock(product) && (parseInt(qty, 10) || 0) > getVariantQuantity(this.getSelection(product), variantId)) {
+        this.warnStockLimit(product)
         return
       }
       const sel = this.getSelection(product)
@@ -1566,8 +1639,11 @@ export default {
         return
       }
       const proposed = applyVariantQuantity(sel, variantId, nextQty)
-      const maxQty = product.deal_stock_limit || 999
-      if (getSelectionQuantity(proposed) > maxQty) return
+      const maxQty = this.dealStockLimit(product)
+      if (maxQty != null && getSelectionQuantity(proposed) > maxQty) {
+        this.warnStockLimit(product)
+        return
+      }
       const itemIds = sel.item_ids
       const weight = getSelectionQuantity(proposed) === getSelectionQuantity(sel) ? sel.weight : undefined
       this.selectedItems[product.id] = { ...sel, ...proposed, item_ids: itemIds, weight }
@@ -1578,9 +1654,26 @@ export default {
     setAcceptSubstitute(product, value) {
       this.getSelection(product).accept_substitute = value
     },
-    setCuttingQuantity(product, variantId, qty) {
+    setCuttingPart(product, { cutting, qty, variantId = null } = {}) {
       const sel = this.getSelection(product)
-      this.selectedItems[product.id] = applyCuttingQuantity(sel, qty, variantId)
+      const nextQty = Math.max(0, parseInt(qty, 10) || 0)
+      if (nextQty > 0 && productRequiresSubstituteChoice(product) && sel.accept_substitute == null) {
+        this.warning(getSelectionIncompleteMessage(product, { ...sel, quantity: 1, variant_id: variantId }))
+        return
+      }
+      const proposed = setCuttingPartQuantity(sel, { cutting, qty: nextQty, variantId })
+      if (this.isOutOfStock(product) && getSelectionQuantity(proposed) > getSelectionQuantity(sel)) {
+        this.warnStockLimit(product)
+        return
+      }
+      const maxQty = this.dealStockLimit(product)
+      if (maxQty != null && getSelectionQuantity(proposed) > maxQty) {
+        this.warnStockLimit(product)
+        return
+      }
+      const itemIds = sel.item_ids
+      const weight = getSelectionQuantity(proposed) === getSelectionQuantity(sel) ? sel.weight : undefined
+      this.selectedItems[product.id] = { ...proposed, item_ids: itemIds, weight }
     },
     async updateOrder() {
       if (!this.canUpdateOrder) {
@@ -2577,6 +2670,11 @@ export default {
   font-weight: 600;
 }
 
+.stock-info.at-limit {
+  color: #E65100;
+  font-weight: 600;
+}
+
 .unavailable-banner {
   background: #fff8e1;
   border: 1px solid #ffe082;
@@ -2608,13 +2706,34 @@ export default {
 .quantity-control {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--md-spacing-sm);
+  width: 100%;
 }
 
 .quantity-control label {
+  margin-right: auto;
+  min-width: 0;
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
-  min-width: 40px;
+}
+
+.quantity-control > .qty-btn,
+.quantity-control > .qty-input {
+  flex-shrink: 0;
+}
+
+.qty-extra {
+  margin-left: 0.25rem;
+  color: var(--md-primary);
+  font-weight: 500;
+}
+
+.stock-limit-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #E65100;
 }
 
 .qty-btn {
@@ -2637,6 +2756,12 @@ export default {
   cursor: not-allowed;
 }
 
+.qty-btn.at-limit:not(:disabled) {
+  border-color: rgba(230, 81, 0, 0.45);
+  color: #E65100;
+  background: rgba(255, 140, 0, 0.1);
+}
+
 .qty-input {
   width: 60px;
   height: 32px;
@@ -2644,7 +2769,16 @@ export default {
   border-radius: var(--md-radius-sm);
   text-align: center;
   font-size: var(--md-body-size);
-  padding: 0 var(--md-spacing-xs);
+  padding: 0;
+  line-height: 32px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.qty-input::-webkit-outer-spin-button,
+.qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .package-info-wrapper {
