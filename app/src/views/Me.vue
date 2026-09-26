@@ -835,7 +835,7 @@ export default {
   align-items: center;
   justify-content: center;
   gap: var(--md-spacing-md);
-  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
 }
 
 .header-logo {

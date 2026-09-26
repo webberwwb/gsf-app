@@ -479,7 +479,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  padding-top: calc(20px + env(safe-area-inset-top));
+  padding-top: calc(20px + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }

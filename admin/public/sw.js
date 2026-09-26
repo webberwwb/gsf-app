@@ -1,7 +1,7 @@
 // Service Worker for Admin PWA with Version Management and iOS-specific fixes
 // UPDATE THIS VERSION NUMBER WHEN DEPLOYING NEW CHANGES
 // This version is automatically updated by update-version.sh script
-const VERSION = '2026.09.23.1314'
+const VERSION = '2026.09.26.1814'
 const CACHE_NAME = `gsf-admin-v${VERSION}`
 const urlsToCache = [
   '/',
@@ -60,13 +60,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname === '/' || url.pathname === '/index.html' || 
       event.request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
-      fetch(event.request, {
-        cache: 'no-store', // Don't use HTTP cache
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      })
+      fetch(event.request)
         .then((response) => {
           // Only cache if we got a valid response
           if (response && response.status === 200) {

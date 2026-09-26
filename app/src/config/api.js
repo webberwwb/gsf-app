@@ -4,13 +4,15 @@ const DEV_BACKEND_PORT = '5015'
 /**
  * API base URL for axios.
  * Dev default hits Flask directly on :5015 (avoids relying on Vite :3000 proxy).
+ * The host follows the URL bar, so a phone on the LAN reaches the dev machine.
  * Override with VITE_API_BASE_URL; production uses Dockerfile / cloudbuild.
  */
 export function getApiBaseURL() {
   const fromEnv = import.meta.env.VITE_API_BASE_URL
   if (fromEnv) return fromEnv
   if (import.meta.env.DEV) {
-    return `http://localhost:${DEV_BACKEND_PORT}/api`
+    const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+    return `http://${host}:${DEV_BACKEND_PORT}/api`
   }
   return 'https://backend.grainstoryfarm.ca/api'
 }
@@ -44,7 +46,8 @@ export function getBackendOrigin() {
     return base.replace(/\/api\/?$/, '') || base
   }
   if (import.meta.env.DEV) {
-    return `http://localhost:${DEV_BACKEND_PORT}`
+    const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+    return `http://${host}:${DEV_BACKEND_PORT}`
   }
   return 'https://backend.grainstoryfarm.ca'
 }

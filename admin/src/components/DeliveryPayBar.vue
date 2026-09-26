@@ -43,6 +43,14 @@ export default {
   color: #fff;
 }
 
+.pay-bar.collected {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ef6c00;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
 .pay-bar.prepaid {
   background: #e8f5e9;
   color: #1b5e20;

@@ -1,7 +1,16 @@
 import axios from 'axios'
 
+/** Dev backend runs on the same machine as Vite, so follow the host in the URL bar
+ *  (localhost on this Mac, LAN IP when testing from a phone).
+ *  Production is pinned by VITE_API_BASE_URL in the Dockerfile / cloudbuild. */
+export function getApiBaseURL() {
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL
+  if (import.meta.env.DEV) return `http://${window.location.hostname}:5015/api`
+  return 'https://backend.grainstoryfarm.ca/api'
+}
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5015/api',
+  baseURL: getApiBaseURL(),
   timeout: 30000, // Increased to 30 seconds
   headers: {
     'Content-Type': 'application/json'
@@ -36,7 +45,9 @@ apiClient.interceptors.response.use(
 
       // Only redirect if not already on login page and not in router guard
       if (window.location.pathname !== '/login' && !error.config?.skipRedirect) {
-        window.location.href = '/login'
+        import('../router').then(({ default: router }) => {
+          router.replace('/login')
+        })
       }
     }
 

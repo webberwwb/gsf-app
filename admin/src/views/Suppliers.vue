@@ -484,7 +484,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   border-bottom: 1px solid var(--md-outline-variant);
 }
 

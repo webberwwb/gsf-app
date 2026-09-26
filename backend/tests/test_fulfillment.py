@@ -436,6 +436,77 @@ def test_self_delivery_earns_fee_third_party_does_not(app):
     toronto_line = next(row for row in earnings['deliveries'] if row['city'] == 'Toronto')
     assert toronto_line['suggested_fee'] == 7.0
     assert toronto_line['fee_overridden'] is False
+    assert toronto_line['cash_collected'] == 0.0
+    assert earnings['totals']['cash_collected'] == 0.0
+
+
+def test_paid_cash_without_driver_confirm_is_not_collected(app):
+    staff = _fulfillment()
+    order = _order(
+        _user('+10000000118', 'OfficeCash'),
+        _deal('preparing'),
+        _product(),
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+        city='Toronto',
+    )
+    order.payment_method = 'cash'
+    order.payment_status = PaymentStatus.PAID.value
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+
+    client = app.test_client()
+    assert client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-delivered',
+        json={},
+        headers=_headers(staff),
+    ).status_code == 200
+
+    earnings = fulfillment_service.earnings_for_user(staff.id)
+    assert earnings['totals']['cash_collected'] == 0.0
+    assert earnings['deliveries'][0]['cash_collected'] == 0.0
+    db.session.refresh(order)
+    assert order.cash_collected_on_delivery is None
+
+
+def test_self_delivery_cash_is_deducted_at_settlement(app):
+    staff = _fulfillment()
+    order = _order(
+        _user('+10000000117', 'CashCod'),
+        _deal('preparing'),
+        _product(),
+        delivery=True,
+        status=OrderStatus.OUT_FOR_DELIVERY.value,
+        city='Toronto',
+    )
+    order.payment_method = 'cash'
+    order.payment_status = PaymentStatus.UNPAID.value
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+
+    client = app.test_client()
+    headers = _headers(staff)
+    assert client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-delivered',
+        json={},
+        headers=headers,
+    ).status_code == 200
+    assert client.post(
+        f'/api/admin/fulfillment/orders/{order.id}/mark-cash-received',
+        json={},
+        headers=headers,
+    ).status_code == 200
+
+    earnings = fulfillment_service.earnings_for_user(staff.id)
+    db.session.refresh(order)
+    assert float(order.cash_collected_on_delivery) == 10.0
+    assert earnings['totals']['cash_collected'] == 10.0
+    assert earnings['totals']['delivery'] == 7.0
+    assert earnings['totals']['outstanding'] == -3.0
+    assert earnings['deliveries'][0]['cash_collected'] == 10.0
+    cycle = next(row for row in earnings['cycles'] if row['totals']['delivery_count'])
+    assert cycle['totals']['cash_collected'] == 10.0
+    assert cycle['totals']['outstanding'] == -3.0
 
 
 def test_admin_can_override_driver_delivery_fee(app):

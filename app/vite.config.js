@@ -11,13 +11,13 @@ export default defineConfig({
     }
   },
   server: {
+    // Listen on the LAN too, so phones on the same wifi can load the dev build
+    host: true,
     port: 3000,
-    // Enable HMR with proper WebSocket configuration
+    // HMR host is inferred from the page URL, so it works on localhost and LAN
     hmr: {
       protocol: 'ws',
-      host: 'localhost',
-      port: 3000,
-      clientPort: 3000
+      port: 3000
     },
     // Disable caching in development
     headers: {

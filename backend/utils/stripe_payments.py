@@ -287,15 +287,17 @@ def charge_order_off_session(order):
     cents = _cents(amount)
     if cents <= 0:
         return False, None, '应付金额为 0，无需扣款'
-    if not order.stripe_customer_id or not order.stripe_payment_method_id:
-        return False, None, '订单未绑定银行卡'
+    from utils.order_payment import order_payer
+    user = order_payer(order)
+    if not user or not user.stripe_customer_id or not user.stripe_payment_method_id:
+        return False, None, '客户未绑定银行卡'
     suffix = secrets.token_hex(4)
     try:
         pi = _create_with_optional_integration_id(client.v1.payment_intents.create, {
             'amount': cents,
             'currency': 'cad',
-            'customer': order.stripe_customer_id,
-            'payment_method': order.stripe_payment_method_id,
+            'customer': user.stripe_customer_id,
+            'payment_method': user.stripe_payment_method_id,
             'off_session': True,
             'confirm': True,
             'metadata': {
@@ -345,8 +347,10 @@ def create_pay_again_session(order, success_url, cancel_url):
         'integration_identifier': f'gsf_paylink_{suffix}',
         'branding_settings': {'display_name': CHECKOUT_DISPLAY_NAME},
     }
-    if order.stripe_customer_id:
-        params['customer'] = order.stripe_customer_id
+    from utils.order_payment import order_payer
+    user = order_payer(order)
+    if user and user.stripe_customer_id:
+        params['customer'] = user.stripe_customer_id
     session = _create_with_optional_integration_id(client.v1.checkout.sessions.create, params)
     order.stripe_payment_link_url = session.url
     return session

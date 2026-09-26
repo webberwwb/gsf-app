@@ -10,6 +10,8 @@ from constants.status_enums import (
     DeliveryMethod,
     GroupDealStatus,
     OrderStatus,
+    PaymentMethod,
+    PaymentStatus,
 )
 from models import db
 from models.base import est_now
@@ -44,7 +46,6 @@ FULFILLMENT_STATUS_TRANSITIONS = {
 }
 
 SEED_FULFILLMENT_EMAILS = (
-    'webberwwb@gmail.com',
     'forlove.dxy@gmail.com',
 )
 
@@ -76,6 +77,33 @@ def biweekly_billing(today=None):
     }
 
 
+def driver_cash_collected(order):
+    """Cash the driver confirmed on delivery. Never inferred from payment_status."""
+    amount = getattr(order, 'cash_collected_on_delivery', None)
+    if amount is None:
+        return Decimal('0')
+    amount = Decimal(str(amount))
+    return amount if amount > 0 else Decimal('0')
+
+
+def record_driver_cash(order):
+    """Record 代收现金 only when the driver marks 确认收款."""
+    from utils.order_payment import mark_order_paid
+    from utils.order_totals import calculate_amount_due
+
+    if getattr(order, 'payment_method', None) != PaymentMethod.CASH.value:
+        raise ValueError('仅现金订单可以标记已收款')
+    if getattr(order, 'payment_status', None) == PaymentStatus.PAID.value:
+        return order
+    amount = calculate_amount_due(order)
+    if amount <= 0:
+        raise ValueError('没有需要代收的现金')
+    if order.cash_collected_on_delivery is None:
+        order.cash_collected_on_delivery = amount
+    mark_order_paid(order)
+    return order
+
+
 def _as_date(value):
     if value is None:
         return None
@@ -100,6 +128,7 @@ def build_earnings_cycles(sessions, deliveries, payouts, today=None):
                 'pay_weekday': info['next_pay_weekday'],
                 'labor': Decimal('0'),
                 'delivery': Decimal('0'),
+                'cash_collected': Decimal('0'),
                 'paid': Decimal('0'),
                 'hours': Decimal('0'),
                 'delivery_count': 0,
@@ -114,6 +143,7 @@ def build_earnings_cycles(sessions, deliveries, payouts, today=None):
     for order in deliveries:
         row = bucket_for(_as_date(order.delivered_at) or today)
         row['delivery'] += Decimal(str(order.delivery_fee_earned or 0))
+        row['cash_collected'] += driver_cash_collected(order)
         row['delivery_count'] += 1
     for payout in payouts:
         row = bucket_for(_as_date(payout.paid_at) or today)
@@ -124,6 +154,7 @@ def build_earnings_cycles(sessions, deliveries, payouts, today=None):
         row = buckets[key]
         labor = row['labor']
         delivery = row['delivery']
+        cash_collected = row['cash_collected']
         paid = row['paid']
         cycles.append({
             'period_start': row['period_start'],
@@ -134,8 +165,9 @@ def build_earnings_cycles(sessions, deliveries, payouts, today=None):
             'totals': {
                 'labor': float(labor),
                 'delivery': float(delivery),
+                'cash_collected': float(cash_collected),
                 'paid': float(paid),
-                'outstanding': float((labor + delivery - paid).quantize(Decimal('0.01'))),
+                'outstanding': float((labor + delivery - cash_collected - paid).quantize(Decimal('0.01'))),
                 'hours': float(row['hours']),
                 'delivery_count': row['delivery_count'],
             },
@@ -453,17 +485,20 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
 
     delivery_lines = []
     delivery_total = Decimal('0')
+    cash_collected_total = Decimal('0')
     for order in deliveries:
         fee = Decimal(str(order.delivery_fee_earned or 0))
+        cash = driver_cash_collected(order)
         delivery_total += fee
+        cash_collected_total += cash
         deal = order.group_deal
-        delivery_lines.append(_driver_fee_line(order, fee, deal))
+        delivery_lines.append(_driver_fee_line(order, fee, deal, cash))
 
     paid_total = Decimal('0')
     for payout in payouts:
         paid_total += Decimal(str(payout.amount or 0))
 
-    outstanding = (labor_total + delivery_total - paid_total).quantize(Decimal('0.01'))
+    outstanding = (labor_total + delivery_total - cash_collected_total - paid_total).quantize(Decimal('0.01'))
     profile = get_or_create_profile(user_id)
     user = User.query.get(user_id)
     open_session = open_session_for(user_id)
@@ -485,6 +520,7 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
         'totals': {
             'labor': float(labor_total),
             'delivery': float(delivery_total),
+            'cash_collected': float(cash_collected_total),
             'earned': float(labor_total + delivery_total),
             'paid': float(paid_total),
             'outstanding': float(outstanding),
@@ -591,9 +627,10 @@ def override_driver_delivery_fee(order, amount):
     return order
 
 
-def _driver_fee_line(order, fee, deal=None):
+def _driver_fee_line(order, fee, deal=None, cash_collected=None):
     deal = deal if deal is not None else order.group_deal
     suggested = delivery_fee_for_address(order.address)
+    cash = driver_cash_collected(order) if cash_collected is None else cash_collected
     return {
         'order_id': order.id,
         'order_number': order.order_number,
@@ -604,6 +641,7 @@ def _driver_fee_line(order, fee, deal=None):
         'fee': float(fee),
         'suggested_fee': float(suggested),
         'fee_overridden': fee != suggested,
+        'cash_collected': float(cash),
     }
 
 
@@ -709,6 +747,7 @@ def _delivery_order_payload(order, viewer, deal):
         'payment_method': order.payment_method,
         'final_total': float(order.total) if order.total is not None else 0.0,
         'amount_due': float(calculate_amount_due(order)),
+        'cash_collected_on_delivery': float(order.cash_collected_on_delivery) if order.cash_collected_on_delivery is not None else None,
         'delivery_handler': order.delivery_handler or DeliveryHandler.UNASSIGNED.value,
         'delivery_assignee_id': order.delivery_assignee_id,
         'delivery_route_seq': order.delivery_route_seq,

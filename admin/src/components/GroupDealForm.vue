@@ -474,7 +474,7 @@ export default {
   align-items: flex-start;
   gap: var(--md-spacing-md);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   background: rgb(255, 140, 0);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0;
@@ -964,7 +964,7 @@ select.form-input:focus {
 @media (max-width: 480px) {
   .modal-header {
     padding: var(--md-spacing-sm) var(--md-spacing-md);
-    padding-top: calc(var(--md-spacing-sm) + env(safe-area-inset-top));
+    padding-top: calc(var(--md-spacing-sm) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   }
   
   .modal-header h2 {

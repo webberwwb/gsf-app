@@ -16,7 +16,6 @@ depends_on = None
 
 
 SEED_FULFILLMENT_EMAILS = (
-    'webberwwb@gmail.com',
     'forlove.dxy@gmail.com',
 )
 

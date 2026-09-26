@@ -29,7 +29,7 @@ from utils.order_audit import (
 from utils.order_totals import recalculate_order_totals, clamp_store_credit
 from services import credit_service
 from services import referral_service
-from utils.order_payment import payment_method_error, copy_user_card_to_order
+from utils.order_payment import payment_method_error
 import random
 import string
 
@@ -326,7 +326,6 @@ def create_order():
             points_earned=0,
             payment_method=payment_method,
             payment_status='unpaid',
-            stripe_charge_status='setup_complete' if payment_method == PaymentMethod.CARD.value else None,
             pickup_status='pending',
             status='submitted',
             notes=notes,
@@ -335,8 +334,6 @@ def create_order():
 
         db.session.add(order)
         db.session.flush()
-        if payment_method == PaymentMethod.CARD.value:
-            copy_user_card_to_order(order, user_row)
 
         create_order_item_rows(order.id, order_items, db.session)
 
@@ -634,8 +631,6 @@ def update_order(order_id):
             order.notes = notes
         if payment_method and payment_method in PaymentMethod.get_all_values():
             order.payment_method = payment_method
-        if order.payment_method == PaymentMethod.CARD.value:
-            copy_user_card_to_order(order, user_row)
         order.updated_at = utc_now()
 
         try:

@@ -270,7 +270,7 @@ export default {
       return user.nickname || user.wechat || user.phone || '客户'
     },
     cardLabel(order) {
-      if (!order.stripe_card_last4) return '未绑卡'
+      if (!order.stripe_card_last4) return order.has_card_on_file ? '已绑卡' : '未绑卡'
       const brand = order.stripe_card_brand
         ? order.stripe_card_brand.charAt(0).toUpperCase() + order.stripe_card_brand.slice(1)
         : '卡'

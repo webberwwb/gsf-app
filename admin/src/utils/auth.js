@@ -89,7 +89,8 @@ export function clearAuth() {
 export async function requireAuth() {
   const isAuthenticated = await checkAuth()
   if (!isAuthenticated) {
-    window.location.href = '/login'
+    const { default: router } = await import('../router')
+    router.replace('/login')
     return false
   }
   return true

@@ -154,7 +154,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   background: rgb(255, 140, 0);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0;

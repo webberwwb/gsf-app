@@ -226,13 +226,14 @@ export default {
       const order = orderOrStatus || {}
       if (order.payment_status === 'paid') return '已付款'
       if (order.payment_method === 'card' && order.stripe_charge_status === 'failed') return '扣款失败'
-      if (order.payment_method === 'card') return '已绑卡'
+      if (order.payment_method === 'card') return order.has_card_on_file || order.stripe_card_last4 ? '已绑卡' : '未绑卡'
       return { unpaid: '未付款', paid: '已付款' }[order.payment_status] || order.payment_status
     },
     paymentBadgeClass(order) {
       if (order.payment_status === 'paid') return 'payment-paid'
       if (order.payment_method === 'card' && order.stripe_charge_status === 'failed') return 'payment-failed'
-      if (order.payment_method === 'card') return 'payment-card-on-file'
+      if (order.payment_method === 'card' && (order.has_card_on_file || order.stripe_card_last4)) return 'payment-card-on-file'
+      if (order.payment_method === 'card') return 'payment-unpaid'
       return `payment-${order.payment_status}`
     },
     moneyFinal(o) {

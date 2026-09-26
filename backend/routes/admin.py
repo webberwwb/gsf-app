@@ -105,7 +105,7 @@ from utils.stock_management import (
     restore_stock,
     update_stock_after_order_modification,
 )
-from utils.order_payment import payment_method_error, copy_user_card_to_order
+from utils.order_payment import payment_method_error
 import csv
 import io
 from models.credit_transaction import CreditTransaction
@@ -2076,7 +2076,6 @@ def create_admin_order():
             points_earned=0,
             payment_method=payment_method,
             payment_status=PaymentStatus.UNPAID.value,
-            stripe_charge_status='setup_complete' if payment_method == PaymentMethod.CARD.value else None,
             pickup_status='pending',
             status=_initial_status_for_admin_order(group_deal),
             notes=notes if notes else None,
@@ -2084,8 +2083,6 @@ def create_admin_order():
         )
         db.session.add(order)
         db.session.flush()
-        if payment_method == PaymentMethod.CARD.value:
-            copy_user_card_to_order(order, user_row)
 
         create_order_item_rows(order.id, priced_items, db.session)
         db.session.flush()
@@ -2271,7 +2268,7 @@ def get_admin_stripe_payments():
     if error_response:
         return error_response, status_code
 
-    from utils.order_payment import stripe_order_bucket
+    from utils.order_payment import stripe_order_bucket, card_on_file_for_order
     from utils.order_totals import calculate_amount_due
 
     empty_totals = {
@@ -2350,15 +2347,17 @@ def get_admin_stripe_payments():
                 if stripe_status and bucket != stripe_status:
                     continue
                 user = order.user
+                card = card_on_file_for_order(order)
                 order_rows.append({
                     'id': order.id,
                     'order_number': order.order_number,
                     'status': order.status,
                     'payment_status': order.payment_status,
                     'stripe_status': bucket,
-                    'stripe_charge_status': order.stripe_charge_status,
-                    'stripe_card_brand': order.stripe_card_brand,
-                    'stripe_card_last4': order.stripe_card_last4,
+                    'stripe_charge_status': card['stripe_charge_status'],
+                    'has_card_on_file': card['has_card_on_file'],
+                    'stripe_card_brand': card['stripe_card_brand'],
+                    'stripe_card_last4': card['stripe_card_last4'],
                     'stripe_last_error': order.stripe_last_error,
                     'amount_due': due,
                     'stripe_amount_charged': charged or None,

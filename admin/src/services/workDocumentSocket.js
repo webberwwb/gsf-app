@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client'
+import { getApiBaseURL } from '../api/client'
 
 class WorkDocumentSocket {
   constructor() {
@@ -16,8 +17,7 @@ class WorkDocumentSocket {
       return
     }
     // Use the same base URL as API client, but remove '/api' suffix for WebSocket
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5015/api'
-    const apiUrl = baseUrl.replace('/api', '')
+    const apiUrl = getApiBaseURL().replace('/api', '')
     
     this.socket = io(apiUrl, {
       transports: ['websocket', 'polling'],

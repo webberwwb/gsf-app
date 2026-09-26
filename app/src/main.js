@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import { installInAppLinkGuard } from '@shared/pwaStandalone'
 
 // Initialize app
 const app = createApp(App)
@@ -27,6 +28,8 @@ authStore.checkAuth().catch((error) => {
 app.config.errorHandler = (err, instance, info) => {
   console.error('Vue Error:', err, info)
 }
+
+installInAppLinkGuard(router)
 
 try {
   app.mount('#app')

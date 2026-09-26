@@ -37,14 +37,14 @@
         </button>
         <button
           v-if="showDevLogin"
-          @click="devLogin('webberwwb@gmail.com')"
+          @click="devLogin('forlove.dxy@gmail.com')"
           class="login-btn fulfillment-dev-btn"
           :disabled="loading"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
             <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
           </svg>
-          <span>配货员登录 (webberwwb@gmail.com)</span>
+          <span>配货员登录 (forlove.dxy@gmail.com)</span>
         </button>
 
         <div v-if="error" class="error-message">

@@ -78,15 +78,45 @@ def payment_method_error(
     return None
 
 
-def copy_user_card_to_order(order, user):
-    if not user:
-        return
-    order.stripe_customer_id = user.stripe_customer_id
-    order.stripe_payment_method_id = user.stripe_payment_method_id
-    order.stripe_card_brand = user.stripe_card_brand
-    order.stripe_card_last4 = user.stripe_card_last4
-    if user.stripe_payment_method_id and not order.stripe_charge_status:
-        order.stripe_charge_status = 'setup_complete'
+def order_payer(order):
+    """Customer who owns the order. The saved card lives on this user."""
+    user = getattr(order, 'user', None)
+    if user is not None:
+        return user
+    user_id = getattr(order, 'user_id', None)
+    if not user_id:
+        return None
+    return User.query.get(user_id)
+
+
+def card_on_file_for_order(order):
+    """Card bind status is the customer's saved card, shared by every order.
+
+    Charge outcome (failed / succeeded / amount) stays on the order.
+    `setup_complete` was an old per-order copy of "card bound" and is ignored.
+    """
+    user = order_payer(order)
+    charge_status = getattr(order, 'stripe_charge_status', None)
+    if charge_status == 'setup_complete':
+        charge_status = None
+    bound = bool(user and getattr(user, 'stripe_payment_method_id', None))
+    if not bound:
+        return {
+            'has_card_on_file': False,
+            'stripe_customer_id': None,
+            'stripe_payment_method_id': None,
+            'stripe_card_brand': None,
+            'stripe_card_last4': None,
+            'stripe_charge_status': charge_status,
+        }
+    return {
+        'has_card_on_file': True,
+        'stripe_customer_id': user.stripe_customer_id,
+        'stripe_payment_method_id': user.stripe_payment_method_id,
+        'stripe_card_brand': user.stripe_card_brand,
+        'stripe_card_last4': user.stripe_card_last4,
+        'stripe_charge_status': charge_status,
+    }
 
 
 def stripe_order_bucket(order):
@@ -95,7 +125,7 @@ def stripe_order_bucket(order):
         return 'paid'
     if getattr(order, 'stripe_charge_status', None) == 'failed':
         return 'failed'
-    if getattr(order, 'stripe_payment_method_id', None) or getattr(order, 'stripe_charge_status', None) == 'setup_complete':
+    if card_on_file_for_order(order)['has_card_on_file']:
         return 'ready'
     return 'no_card'
 

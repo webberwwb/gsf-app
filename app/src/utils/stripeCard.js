@@ -23,11 +23,7 @@ export function customerPaymentDisplay(order) {
   if (order.payment_status === 'paid') return { key: 'paid', label: '已支付' }
   if (order.payment_method === 'card') {
     if (order.stripe_charge_status === 'failed') return { key: 'failed', label: '扣款失败' }
-    if (
-      order.stripe_payment_method_id
-      || order.stripe_card_last4
-      || order.stripe_charge_status === 'setup_complete'
-    ) {
+    if (order.has_card_on_file || order.stripe_payment_method_id || order.stripe_card_last4) {
       return { key: 'ready', label: '已绑卡，待扣款' }
     }
     return { key: 'no_card', label: '未绑卡' }

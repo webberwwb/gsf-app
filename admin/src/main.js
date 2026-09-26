@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import { checkAuth } from './utils/auth'
+import { installInAppLinkGuard } from '@shared/pwaStandalone'
 
 // Initialize app
 const app = createApp(App)
@@ -104,6 +105,8 @@ if ('serviceWorker' in navigator) {
 
 // Check authentication on app start
 checkAuth()
+
+installInAppLinkGuard(router)
 
 app.use(router)
 app.mount('#app')

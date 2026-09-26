@@ -442,7 +442,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%);
   border-bottom: 1px solid rgba(255, 165, 0, 0.2);
   position: relative;

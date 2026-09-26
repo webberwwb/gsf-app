@@ -74,6 +74,8 @@ class Order(BaseModel):
     delivered_at = db.Column(db.DateTime, nullable=True)
     third_party_note = db.Column(db.String(255), nullable=True)
     delivery_fee_earned = db.Column(Numeric(10, 2), nullable=True)
+    # Set only when the driver taps 确认收款. Not inferred from payment_status.
+    cash_collected_on_delivery = db.Column(Numeric(10, 2), nullable=True)
 
     # Notes
     notes = db.Column(db.Text, nullable=True)
@@ -118,6 +120,7 @@ class Order(BaseModel):
         data = super().to_dict()
 
         from utils.order_totals import calculate_amount_due
+        from utils.order_payment import card_on_file_for_order
 
         subtotal_f = float(self.subtotal) if self.subtotal is not None else 0.0
         adjustment = float(self.adjustment_amount) if self.adjustment_amount is not None else 0.0
@@ -126,6 +129,7 @@ class Order(BaseModel):
         credit_applied = float(self.store_credit_applied) if self.store_credit_applied is not None else 0.0
         amount_due = float(calculate_amount_due(self))
         final_total = base_total
+        card = card_on_file_for_order(self)
 
         data.update({
             'user_id': self.user_id,
@@ -148,13 +152,14 @@ class Order(BaseModel):
             'payment_method': self.payment_method,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'payment_transaction_id': self.payment_transaction_id,
-            'stripe_customer_id': self.stripe_customer_id,
-            'stripe_payment_method_id': self.stripe_payment_method_id,
-            'stripe_charge_status': self.stripe_charge_status,
+            'stripe_customer_id': card['stripe_customer_id'],
+            'stripe_payment_method_id': card['stripe_payment_method_id'],
+            'stripe_charge_status': card['stripe_charge_status'],
+            'has_card_on_file': card['has_card_on_file'],
             'stripe_last_error': self.stripe_last_error,
             'stripe_payment_link_url': self.stripe_payment_link_url,
-            'stripe_card_brand': self.stripe_card_brand,
-            'stripe_card_last4': self.stripe_card_last4,
+            'stripe_card_brand': card['stripe_card_brand'],
+            'stripe_card_last4': card['stripe_card_last4'],
             'stripe_amount_charged': float(self.stripe_amount_charged) if self.stripe_amount_charged is not None else None,
             'stripe_dashboard_url': None,
         })
@@ -175,6 +180,7 @@ class Order(BaseModel):
             'delivered_at': self.delivered_at.isoformat() if self.delivered_at else None,
             'third_party_note': self.third_party_note,
             'delivery_fee_earned': float(self.delivery_fee_earned) if self.delivery_fee_earned is not None else None,
+            'cash_collected_on_delivery': float(self.cash_collected_on_delivery) if self.cash_collected_on_delivery is not None else None,
             'merged_into_order_id': self.merged_into_order_id,
             'merged_at': self.merged_at.isoformat() if self.merged_at else None,
         })

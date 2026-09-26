@@ -434,7 +434,7 @@ export default {
 
 .sidebar-header {
   padding: var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   border-bottom: 1px solid var(--md-surface-variant);
   display: flex;
   align-items: center;
@@ -446,7 +446,7 @@ export default {
 @media (max-width: 1366px) {
   .sidebar-header {
     padding: var(--md-spacing-md);
-    padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+    padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
     gap: var(--md-spacing-sm);
   }
   
@@ -679,7 +679,7 @@ export default {
 .top-header {
   background: var(--md-surface);
   padding: var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   box-shadow: var(--md-elevation-1);
   z-index: 50;
   flex-shrink: 0;
@@ -694,7 +694,7 @@ export default {
 @media (max-width: 1366px) {
   .top-header {
     padding: var(--md-spacing-md);
-    padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+    padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   }
   
   .top-header h1 {
@@ -787,7 +787,7 @@ export default {
     padding-left: var(--md-spacing-sm);
     padding-right: var(--md-spacing-sm);
     padding-bottom: var(--md-spacing-sm);
-    padding-top: calc(var(--md-spacing-sm) + env(safe-area-inset-top));
+    padding-top: calc(var(--md-spacing-sm) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   }
 
   .top-header:not(.top-header--detail-nav) h1 {
@@ -803,7 +803,7 @@ export default {
     padding-left: var(--md-spacing-xs);
     padding-right: var(--md-spacing-xs);
     padding-bottom: var(--md-spacing-sm);
-    padding-top: calc(var(--md-spacing-sm) + env(safe-area-inset-top));
+    padding-top: calc(var(--md-spacing-sm) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   }
 
   .top-header--detail-nav .header-detail-desktop-menu {

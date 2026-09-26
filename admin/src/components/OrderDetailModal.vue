@@ -944,15 +944,13 @@ export default {
       return `${name} •••• ${last4}`
     },
     stripeStatusLabel() {
-      const map = {
-        setup_complete: '已绑卡，待扣款',
-        succeeded: '扣款成功',
-        failed: '扣款失败'
-      }
       if (this.order?.payment_status === 'paid' && this.order?.payment_method === 'card') {
         return '已付款'
       }
-      return map[this.order?.stripe_charge_status] || (this.order?.stripe_payment_method_id ? '已绑卡' : '未绑卡')
+      if (this.order?.stripe_charge_status === 'failed') return '扣款失败'
+      if (this.order?.stripe_charge_status === 'succeeded') return '扣款成功'
+      if (this.order?.has_card_on_file || this.order?.stripe_card_last4) return '已绑卡，待扣款'
+      return '未绑卡'
     },
     editableItemsSubtotal() {
       return this.editableItems.reduce((sum, i) => sum + resolveOrderLineTotal(i), 0)
@@ -2294,7 +2292,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   background: var(--gradient-primary);
   border-bottom: 1px solid rgba(255, 165, 0, 0.2);
   border-radius: 24px 24px 0 0;
@@ -4452,7 +4450,7 @@ export default {
     align-self: stretch;
     /* Single top inset for the full-screen sheet */
     box-sizing: border-box;
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: var(--app-safe-top, env(safe-area-inset-top, 0px));
     overflow: hidden;
   }
 

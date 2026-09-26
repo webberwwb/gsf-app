@@ -24,6 +24,13 @@
           </svg>
         </button>
       </div>
+      <select v-model="filterCategoryId" class="sort-select category-filter" aria-label="按分类筛选">
+        <option value="">全部分类</option>
+        <option value="unassigned">未分类</option>
+        <option v-for="category in categories" :key="category.id" :value="String(category.id)">
+          {{ category.name }}
+        </option>
+      </select>
       <select v-model="sortBy" @change="handleSortByChange" class="sort-select">
         <option value="custom">自定义排序</option>
         <option value="created_at">按创建时间</option>
@@ -146,7 +153,7 @@
         v-for="(product, index) in filteredProducts" 
         :key="product.id" 
         class="product-card"
-        :draggable="sortBy === 'custom' && !hasSearchQuery"
+        :draggable="canDragSort"
         @dragstart="handleDragStart(index, $event)"
         @dragover.prevent="handleDragOver(index, $event)"
         @dragenter="handleDragEnter(index)"
@@ -154,12 +161,12 @@
         @drop="handleDrop(index, $event)"
         @dragend="handleDragEnd"
         :class="{ 
-          'draggable': sortBy === 'custom' && !hasSearchQuery,
+          'draggable': canDragSort,
           'drag-over': dragOverIndex === index && draggedIndex !== index
         }"
       >
         <div class="product-image">
-          <div v-if="sortBy === 'custom' && !hasSearchQuery" class="drag-handle" title="拖动排序">
+          <div v-if="canDragSort" class="drag-handle" title="拖动排序">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
             </svg>
@@ -270,6 +277,8 @@ export default {
       sortBy: 'custom', // 'custom', 'created_at', 'popularity', 'name'
       customSortViewMode: 'grid', // 'grid' | 'table'
       searchQuery: '',
+      categories: [],
+      filterCategoryId: '',
       draggedIndex: null,
       dragOverIndex: null,
       hasUnsavedChanges: false,
@@ -282,10 +291,23 @@ export default {
     hasSearchQuery() {
       return !!this.searchQuery.trim()
     },
+    hasCategoryFilter() {
+      return this.filterCategoryId !== ''
+    },
+    canDragSort() {
+      return this.sortBy === 'custom' && !this.hasSearchQuery && !this.hasCategoryFilter
+    },
     filteredProducts() {
       const query = this.searchQuery.trim().toLowerCase()
-      if (!query) return this.products
+      const categoryFilter = this.filterCategoryId
+      if (!query && !categoryFilter) return this.products
       return this.products.filter((product) => {
+        if (categoryFilter === 'unassigned') {
+          if (product.category_id) return false
+        } else if (categoryFilter && String(product.category_id) !== categoryFilter) {
+          return false
+        }
+        if (!query) return true
         const name = product.name?.toLowerCase() || ''
         const category = product.category?.name?.toLowerCase() || ''
         const supplier = product.supplier?.name?.toLowerCase() || ''
@@ -298,6 +320,7 @@ export default {
   },
   mounted() {
     this.fetchProducts()
+    this.fetchCategories()
   },
   methods: {
     productHasCatalogSale(product) {
@@ -312,6 +335,14 @@ export default {
         return pd.sale_price_per_unit != null && pd.sale_price_per_unit !== ''
       }
       return false
+    },
+    async fetchCategories() {
+      try {
+        const response = await apiClient.get('/admin/product-categories')
+        this.categories = response.data.categories || []
+      } catch (error) {
+        console.error('Failed to fetch categories:', error)
+      }
     },
     async fetchProducts() {
       this.loading = true
@@ -660,6 +691,7 @@ export default {
   }
   
   .search-box,
+  .category-filter,
   .sort-select,
   .add-btn,
   .save-btn {

@@ -11,14 +11,14 @@ export default defineConfig({
     }
   },
   server: {
-    host: 'localhost',
+    // Listen on the LAN too, so phones on the same wifi can load the dev build
+    host: true,
     port: 3001,
     strictPort: true, // Exit if port is already in use
+    // HMR host is inferred from the page URL, so it works on localhost and LAN
     hmr: {
       protocol: 'ws',
-      host: 'localhost',
-      port: 3001,
-      clientPort: 3001
+      port: 3001
     },
     // Disable caching in development
     headers: {

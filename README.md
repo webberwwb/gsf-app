@@ -2,6 +2,12 @@
 
 A Progressive Web App (PWA) for ecommerce group buy poultry products that are only available on certain days. Users can place orders, optionally pay online, and track their orders.
 
+Both frontends are installed to the iOS home screen by real users. iOS has two
+non-obvious behaviours there — links escaping into an in-app browser, and
+status-bar safe-area padding — that are easy to re-break. **Read
+[docs/PWA.md](docs/PWA.md) before changing links, page headers, the PWA meta
+tags, or the service worker.** It also covers testing on a phone over wifi.
+
 ## Tech Stack
 
 ### Frontend

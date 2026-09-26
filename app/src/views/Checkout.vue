@@ -1467,7 +1467,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: calc(var(--md-spacing-lg) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   padding-left: var(--md-spacing-md);
   padding-right: var(--md-spacing-md);
 }

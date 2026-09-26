@@ -1517,7 +1517,7 @@ export default {
   .modal-head {
     flex-shrink: 0;
     padding: var(--md-spacing-md);
-    padding-top: max(var(--md-spacing-md), env(safe-area-inset-top, 0px));
+    padding-top: max(var(--md-spacing-md), var(--app-safe-top, env(safe-area-inset-top, 0px)));
   }
 
   .modal-head h2 {

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Purchase intent by organization</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --bg: #fafaf9;
+      --card: #ffffff;
+      --accent: #1d4ed8;
+      --warn-bg: #fffbeb;
+      --warn-ink: #92400e;
+      --warn-line: #fcd34d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    }
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 40px 28px 64px;
+    }
+    h1 {
+      font-size: 28px;
+      line-height: 1.2;
+      font-weight: 600;
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 32px 0 8px;
+    }
+    p { margin: 0 0 12px; }
+    .lede, .note, caption, .source {
+      color: var(--muted);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin: 20px 0 16px;
+    }
+    .kpi {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 14px 14px 12px;
+    }
+    .kpi strong {
+      display: block;
+      font-size: 22px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+    .kpi span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 12px;
+    }
+    .callout {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-line);
+      color: var(--warn-ink);
+      padding: 12px 14px;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+    .callout strong { display: block; margin-bottom: 4px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      margin: 8px 0 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+    th {
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    td.num, th.num { text-align: right; }
+    tr.total td { font-weight: 600; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 168px 1fr 52px;
+      gap: 10px;
+      align-items: center;
+      margin: 6px 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+    .track {
+      height: 10px;
+      background: #e7e5e4;
+    }
+    .fill {
+      height: 10px;
+      background: var(--accent);
+    }
+    .pct { text-align: right; font-variant-numeric: tabular-nums; }
+    .source { margin-top: 6px; }
+    @media print {
+      body { background: white; }
+      main { padding: 0; max-width: none; }
+      .kpi, table { break-inside: avoid; }
+    }
+    @media (max-width: 720px) {
+      .kpis { grid-template-columns: 1fr 1fr; }
+      .bar-row { grid-template-columns: 120px 1fr 48px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Purchase intent by organization</h1>
+    <p class="lede">Share of comments whose tag list includes Purchase Intent. Halara is one model run. Ballerina is the same comments tagged three ways.</p>
+
+    <section class="kpis" aria-label="Overall rates">
+      <div class="kpi"><strong>2.53%</strong><span>Halara · gpt-4.1-nano</span></div>
+      <div class="kpi"><strong>0.42%</strong><span>Ballerina · gpt-4.1-nano</span></div>
+      <div class="kpi"><strong>3.40%</strong><span>Ballerina · gpt-5.6-luna</span></div>
+      <div class="kpi"><strong>3.58%</strong><span>Ballerina · jev, 9,154 subset</span></div>
+      <div class="kpi"><strong>13.40%</strong><span>Rhode · gpt-5-nano</span></div>
+    </section>
+
+    <div class="callout">
+      <strong>Model changes the rate more than the organization does.</strong>
+      gpt-4.1-nano left 67.5% of Halara comments and 50.4% of Ballerina comments with no tag, so its purchase-intent rates sit well below the other models. On the 9,154 comments jev tagged, luna is 4.37% and jev is 3.58%. Those two models agree on whether a comment is purchase intent 98.0% of the time.
+    </div>
+
+    <h2>Halara pages</h2>
+    <p class="source">Purchase-intent share of comments. Source: halara-tagging-run-full-gpt-nano-4 · gpt-4.1-nano · 32,738 comments · 828 tagged Purchase Intent. Bars are scaled to a 5% axis.</p>
+
+    <div class="bar-row"><span>Halara Leggings</span><div class="track"><div class="fill" style="width:65.4%"></div></div><span class="pct">3.27%</span></div>
+    <div class="bar-row"><span>Halara Everyday</span><div class="track"><div class="fill" style="width:63.0%"></div></div><span class="pct">3.15%</span></div>
+    <div class="bar-row"><span>Halara Dress</span><div class="track"><div class="fill" style="width:59.2%"></div></div><span class="pct">2.96%</span></div>
+    <div class="bar-row"><span>Halara Official</span><div class="track"><div class="fill" style="width:52.4%"></div></div><span class="pct">2.62%</span></div>
+    <div class="bar-row"><span>Halara UK</span><div class="track"><div class="fill" style="width:48.8%"></div></div><span class="pct">2.44%</span></div>
+    <div class="bar-row"><span>Halara AU</span><div class="track"><div class="fill" style="width:44.2%"></div></div><span class="pct">2.21%</span></div>
+    <div class="bar-row"><span>Halara Canada</span><div class="track"><div class="fill" style="width:43.4%"></div></div><span class="pct">2.17%</span></div>
+    <div class="bar-row"><span>Halara Europe</span><div class="track"><div class="fill" style="width:42.8%"></div></div><span class="pct">2.14%</span></div>
+    <div class="bar-row"><span>Halara Deutschland</span><div class="track"><div class="fill" style="width:36.6%"></div></div><span class="pct">1.83%</span></div>
+    <div class="bar-row"><span>Halara France</span><div class="track"><div class="fill" style="width:34.8%"></div></div><span class="pct">1.74%</span></div>
+    <div class="bar-row"><span>Halara Spain</span><div class="track"><div class="fill" style="width:29.4%"></div></div><span class="pct">1.47%</span></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Organization</th>
+          <th class="num">Comments</th>
+          <th class="num">Purchase intent</th>
+          <th class="num">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Halara Leggings</td><td class="num">1,713</td><td class="num">56</td><td class="num">3.27%</td></tr>
+        <tr><td>Halara Everyday</td><td class="num">3,843</td><td class="num">121</td><td class="num">3.15%</td></tr>
+        <tr><td>Halara Dress</td><td class="num">1,825</td><td class="num">54</td><td class="num">2.96%</td></tr>
+        <tr><td>Halara Official</td><td class="num">12,864</td><td class="num">337</td><td class="num">2.62%</td></tr>
+        <tr><td>Halara UK</td><td class="num">2,915</td><td class="num">71</td><td class="num">2.44%</td></tr>
+        <tr><td>Halara AU</td><td class="num">2,348</td><td class="num">52</td><td class="num">2.21%</td></tr>
+        <tr><td>Halara Canada</td><td class="num">920</td><td class="num">20</td><td class="num">2.17%</td></tr>
+        <tr><td>Halara Europe</td><td class="num">1,358</td><td class="num">29</td><td class="num">2.14%</td></tr>
+        <tr><td>Halara Deutschland</td><td class="num">2,182</td><td class="num">40</td><td class="num">1.83%</td></tr>
+        <tr><td>Halara France</td><td class="num">2,702</td><td class="num">47</td><td class="num">1.74%</td></tr>
+        <tr><td>Halara Spain</td><td class="num">68</td><td class="num">1</td><td class="num">1.47%</td></tr>
+        <tr class="total"><td>All Halara pages</td><td class="num">32,738</td><td class="num">828</td><td class="num">2.53%</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Among Halara purchase-intent comments, the main subtags are Price Check (444), Access + Checkout (161), and Want to Buy (127). Halara Spain is 68 comments, so 1.47% is one comment.</p>
+
+    <h2>Ballerina pages</h2>
+    <p class="source">Nano and luna cover the same 25,322 comments. jev-latest covers a 9,154-comment subset of those ids. Sources: ballerina-tagging-run-full-gpt-nano-4, ballerina-tagging-run-full-gpt-luna-5, ballerina-tagging-run-full-jev.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Organization</th>
+          <th class="num">Comments (full)</th>
+          <th class="num">gpt-4.1-nano</th>
+          <th class="num">gpt-5.6-luna</th>
+          <th class="num">jev subset</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Ballerina Farm</td>
+          <td class="num">22,590</td>
+          <td class="num">0.20% (46)</td>
+          <td class="num">1.58% (358)</td>
+          <td class="num">1.51% (119 / 7,880)</td>
+        </tr>
+        <tr>
+          <td>Ballerina Farm Store</td>
+          <td class="num">2,294</td>
+          <td class="num">2.53% (58)</td>
+          <td class="num">21.53% (494)</td>
+          <td class="num">19.73% (206 / 1,044)</td>
+        </tr>
+        <tr>
+          <td>Hogfathering</td>
+          <td class="num">438</td>
+          <td class="num">0.46% (2)</td>
+          <td class="num">1.83% (8)</td>
+          <td class="num">1.30% (3 / 230)</td>
+        </tr>
+        <tr class="total">
+          <td>All Ballerina orgs</td>
+          <td class="num">25,322</td>
+          <td class="num">0.42% (106)</td>
+          <td class="num">3.40% (860)</td>
+          <td class="num">3.58% (328 / 9,154)</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Ballerina Farm Store is the outlier. Under luna and jev, about one in five of its comments is purchase intent, mostly Buy Interest and Where to Buy. The main Ballerina Farm page stays near 1.5%.</p>
+
+    <h2>Rhode</h2>
+    <p class="source">Source: rhode-tagging-run-full-gpt-nano-5 · gpt-5-nano-2025-08-07 · 40,034 comments · 5,363 tagged Purchase Intent. One organization only. 10.8% of comments have no tag.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Organization</th>
+          <th class="num">Comments</th>
+          <th class="num">Purchase intent</th>
+          <th class="num">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="total"><td>Rhode</td><td class="num">40,034</td><td class="num">5,363</td><td class="num">13.40%</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Main purchase-intent subtags: Market Expansion Question (1,579), Restock Request (1,160), Wants to Buy (874), and Launch Timing Question (657). This run uses gpt-5-nano, which leaves far fewer comments untagged than the gpt-4.1-nano Halara and Ballerina runs, so the higher share is not directly comparable to those 2.53% and 0.42% figures.</p>
+  </main>
+</body>
+</html>

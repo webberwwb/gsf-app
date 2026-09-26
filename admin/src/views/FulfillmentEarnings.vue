@@ -135,6 +135,7 @@
           <div>
             <strong>{{ row.order_number }}</strong>
             <div class="muted">{{ row.group_deal_title || '团购' }}<span v-if="row.city"> · {{ row.city }}</span> · {{ row.delivered_at || '' }}</div>
+            <div v-if="row.cash_collected" class="muted">代收现金 ${{ rateDisplay(row.cash_collected) }}</div>
             <div v-if="row.fee_overridden" class="muted">已更正（系统建议 ${{ rateDisplay(row.suggested_fee) }}）</div>
           </div>
           <div class="fee-cell">
@@ -186,6 +187,10 @@
               <div class="label">配送费</div>
               <div class="value">{{ cycle.totals.delivery_count }} 单</div>
               <div class="muted">${{ cycle.totals.delivery.toFixed(2) }}</div>
+            </div>
+            <div>
+              <div class="label">代收现金</div>
+              <div class="value">-${{ rateDisplay(cycle.totals.cash_collected) }}</div>
             </div>
             <div>
               <div class="label">已付</div>
@@ -580,7 +585,7 @@ export default {
     grid-template-columns: repeat(3, 1fr);
   }
   .billing-row--stats {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 .summary-grid {

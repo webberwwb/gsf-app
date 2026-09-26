@@ -86,7 +86,7 @@ export default {
 .page-header {
   background: var(--md-surface);
   padding: var(--md-spacing-md);
-  padding-top: calc(var(--md-spacing-md) + env(safe-area-inset-top));
+  padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   border-bottom: none;
   box-shadow: var(--md-elevation-1);
   position: sticky;

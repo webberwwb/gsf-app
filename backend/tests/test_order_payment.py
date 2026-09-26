@@ -12,7 +12,7 @@ from utils.order_payment import (
     payment_method_error,
     delivery_ship_blocked,
     mark_order_paid,
-    copy_user_card_to_order,
+    card_on_file_for_order,
     stripe_order_bucket,
 )
 
@@ -101,48 +101,76 @@ def test_pickup_never_ship_blocked():
     assert delivery_ship_blocked(order, OrderStatus.OUT_FOR_DELIVERY.value) is False
 
 
-def test_copy_user_card_to_order():
-    user = SimpleNamespace(
-        stripe_customer_id='cus_1',
-        stripe_payment_method_id='pm_1',
-        stripe_card_brand='visa',
-        stripe_card_last4='4242',
-    )
+def _card_user(**kwargs):
+    data = {
+        'stripe_customer_id': 'cus_1',
+        'stripe_payment_method_id': 'pm_1',
+        'stripe_card_brand': 'visa',
+        'stripe_card_last4': '4242',
+    }
+    data.update(kwargs)
+    return SimpleNamespace(**data)
+
+
+def test_card_on_file_comes_from_user_not_order_snapshot():
+    user = _card_user()
     order = SimpleNamespace(
+        user=user,
         stripe_customer_id=None,
         stripe_payment_method_id=None,
         stripe_card_brand=None,
         stripe_card_last4=None,
-        stripe_charge_status=None,
+        stripe_charge_status='setup_complete',
     )
-    copy_user_card_to_order(order, user)
-    assert order.stripe_customer_id == 'cus_1'
-    assert order.stripe_payment_method_id == 'pm_1'
-    assert order.stripe_card_brand == 'visa'
-    assert order.stripe_card_last4 == '4242'
-    assert order.stripe_charge_status == 'setup_complete'
+    card = card_on_file_for_order(order)
+    assert card['has_card_on_file'] is True
+    assert card['stripe_customer_id'] == 'cus_1'
+    assert card['stripe_payment_method_id'] == 'pm_1'
+    assert card['stripe_card_brand'] == 'visa'
+    assert card['stripe_card_last4'] == '4242'
+    assert card['stripe_charge_status'] is None
+    assert order.stripe_payment_method_id is None
+
+
+def test_unbound_user_hides_stale_order_card_snapshot():
+    user = _card_user(stripe_payment_method_id=None, stripe_card_last4=None, stripe_card_brand=None)
+    order = SimpleNamespace(
+        user=user,
+        stripe_payment_method_id='pm_old',
+        stripe_card_last4='1111',
+        stripe_charge_status='setup_complete',
+    )
+    card = card_on_file_for_order(order)
+    assert card['has_card_on_file'] is False
+    assert card['stripe_payment_method_id'] is None
+    assert card['stripe_card_last4'] is None
+    assert card['stripe_charge_status'] is None
 
 
 def test_stripe_order_bucket():
+    bound = _card_user()
+    unbound = _card_user(stripe_payment_method_id=None)
     assert stripe_order_bucket(SimpleNamespace(
         payment_status=PaymentStatus.PAID.value,
         stripe_charge_status='failed',
-        stripe_payment_method_id='pm_1',
+        user=unbound,
     )) == 'paid'
     assert stripe_order_bucket(SimpleNamespace(
         payment_status=PaymentStatus.UNPAID.value,
         stripe_charge_status='failed',
-        stripe_payment_method_id='pm_1',
+        user=bound,
     )) == 'failed'
     assert stripe_order_bucket(SimpleNamespace(
         payment_status=PaymentStatus.UNPAID.value,
         stripe_charge_status='setup_complete',
-        stripe_payment_method_id='pm_1',
+        stripe_payment_method_id=None,
+        user=bound,
     )) == 'ready'
     assert stripe_order_bucket(SimpleNamespace(
         payment_status=PaymentStatus.UNPAID.value,
-        stripe_charge_status=None,
-        stripe_payment_method_id=None,
+        stripe_charge_status='setup_complete',
+        stripe_payment_method_id='pm_old',
+        user=unbound,
     )) == 'no_card'
 
 

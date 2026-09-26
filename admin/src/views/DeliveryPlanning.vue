@@ -73,7 +73,7 @@
           <span class="lane-count">{{ plan.third_party.length }}</span>
         </button>
       </div>
-      <div class="mobile-cash-banner" :class="{ due: activeLaneCash.count }">{{ activeLaneCash.text }}</div>
+      <div class="mobile-cash-banner" :class="{ due: activeLaneCash.count, collected: !activeLaneCash.count && activeLaneCash.collectedCount }">{{ activeLaneCash.text }}</div>
 
       <DeliveryPlanMap
         class="plan-map"
@@ -89,7 +89,7 @@
         <section class="lane" :class="{ 'is-active': activeLane === 'unassigned' }">
           <div class="lane-header">
             <h3>未分配</h3>
-            <span class="lane-cash" :class="{ due: unassignedCash.count }">{{ unassignedCash.text }}</span>
+            <span class="lane-cash" :class="{ due: unassignedCash.count, collected: !unassignedCash.count && unassignedCash.collectedCount }">{{ unassignedCash.text }}</span>
             <span class="lane-count">{{ plan.unassigned.length }}</span>
           </div>
           <div v-if="!plan.unassigned.length" class="lane-empty">暂无</div>
@@ -114,7 +114,7 @@
         <section class="lane lane-self" :class="{ 'is-active': activeLane === 'self' }">
           <div class="lane-header">
             <h3>我来送</h3>
-            <span class="lane-cash" :class="{ due: selfCash.count }">{{ selfCash.text }}</span>
+            <span class="lane-cash" :class="{ due: selfCash.count, collected: !selfCash.count && selfCash.collectedCount }">{{ selfCash.text }}</span>
             <span class="lane-count">{{ plan.self.length }}</span>
           </div>
           <div v-if="!plan.self.length" class="lane-empty">把要自己送的订单点到这里，再调整顺序</div>
@@ -183,7 +183,7 @@
         <section class="lane" :class="{ 'is-active': activeLane === 'third_party' }">
           <div class="lane-header">
             <h3>第三方</h3>
-            <span class="lane-cash" :class="{ due: thirdPartyCash.count }">{{ thirdPartyCash.text }}</span>
+            <span class="lane-cash" :class="{ due: thirdPartyCash.count, collected: !thirdPartyCash.count && thirdPartyCash.collectedCount }">{{ thirdPartyCash.text }}</span>
             <span class="lane-count">{{ plan.third_party.length }}</span>
           </div>
           <div v-if="!plan.third_party.length" class="lane-empty">远单可交给第三方</div>
@@ -273,7 +273,7 @@
 
 <script>
 import apiClient from '../api/client'
-import { cashDueSummary, deliveryPayKind, deliveryPayText, shouldCollectCash } from '../utils/deliveryPay'
+import { cashDueSummary, deliveryPayKind, deliveryPayText, shouldCollectCash, wasCashCollected } from '../utils/deliveryPay'
 import { isOrderPhysicallyDelivered, OrderStatus } from '@shared/status-enums.js'
 import { nearestNeighborOrders, routeSeqLabel, sortSelfDeliveryOrders } from '../utils/deliveryRoute'
 import { depotFromConfig, distanceKm, fetchShippingConfig } from '../utils/shipping'
@@ -427,7 +427,9 @@ export default {
     },
     cashButtonLabel(order) {
       if (this.savingId === order.id && this.savingAction === 'cash') return '提交中...'
-      return this.canMarkCash(order) ? '确认收款' : '无需收款'
+      if (this.canMarkCash(order)) return '确认收款'
+      if (wasCashCollected(order)) return '已收现金'
+      return '无需收款'
     },
     orderStatusChip(order) {
       if (this.isCompleted(order)) return '已完成'
@@ -795,6 +797,11 @@ export default {
   background: #b71c1c;
   border-color: #b71c1c;
 }
+.lane-cash.collected {
+  color: #e65100;
+  background: #fff3e0;
+  border-color: #ef6c00;
+}
 .lane-header h3 {
   margin: 0;
   font-size: var(--md-title-size);
@@ -823,6 +830,10 @@ export default {
 .order-card.cash {
   border: 1.5px solid #b71c1c;
   background: #fff4f2;
+}
+.order-card.collected {
+  border: 1px solid #ef6c00;
+  background: #fff8f1;
 }
 .order-card.prepaid {
   border: 1px solid #2e7d32;
@@ -1155,6 +1166,11 @@ export default {
     color: #fff;
     background: #b71c1c;
     border-color: #b71c1c;
+  }
+  .mobile-cash-banner.collected {
+    color: #e65100;
+    background: #fff3e0;
+    border-color: #ef6c00;
   }
   .deal-select {
     max-width: none;

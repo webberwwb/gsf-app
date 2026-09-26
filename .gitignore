@@ -62,6 +62,8 @@ logs/
 *.json
 !package.json
 !package-lock.json
+!admin/public/manifest.json
+!app/public/manifest.json
 instance/service_accounts/
 
 # Database

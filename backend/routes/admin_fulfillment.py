@@ -10,7 +10,7 @@ from models.user import User
 from constants.status_enums import OrderStatus, PaymentMethod, PaymentStatus
 from routes.admin import require_admin_auth
 from services import fulfillment_service
-from utils.order_payment import mark_order_paid, maybe_complete_order
+from utils.order_payment import maybe_complete_order
 from services import influencer_service, referral_service
 
 admin_fulfillment_bp = Blueprint('admin_fulfillment', __name__)
@@ -206,7 +206,10 @@ def mark_cash_received(order_id):
         influencer_service.accrue_for_order(order)
         db.session.commit()
         return jsonify({'order': fulfillment_service._delivery_order_payload(order, actor, deal)}), 200
-    mark_order_paid(order)
+    try:
+        fulfillment_service.record_driver_cash(order)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     db.session.commit()
     return jsonify({'order': fulfillment_service._delivery_order_payload(order, actor, deal)}), 200
 
