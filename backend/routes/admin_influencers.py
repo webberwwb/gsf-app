@@ -122,7 +122,9 @@ def list_global_rates():
         return error_response, status_code
     influencer_service.ensure_default_global_rates()
     db.session.commit()
-    products = Product.query.order_by(Product.sort_order, Product.id).all()
+    products = Product.query.filter(Product.deleted_at.is_(None)).order_by(
+        Product.sort_order, Product.id
+    ).all()
     rates = {r.product_id: r for r in InfluencerProductRate.query.all()}
     rows = []
     for product in products:

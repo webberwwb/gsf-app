@@ -62,7 +62,7 @@ def serialize_loaded_deal_products(
     rows = []
     for dp in deal_products:
         product = dp.product
-        if not product:
+        if not product or product.deleted_at is not None:
             continue
         if active_products_only and not product.is_active:
             continue

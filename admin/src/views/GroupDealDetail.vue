@@ -548,6 +548,7 @@
         @status-change="handleOrderStatusChange"
         @payment-method-change="handlePaymentMethodChange"
         @order-updated="handleOrderUpdated"
+        @weight-saved="handleWeightSaved"
         @update-error="(msg) => { this.updateError = msg }"
         @products-loaded="handleProductsLoaded"
       />
@@ -618,6 +619,7 @@
 <script>
 import { ref, getCurrentInstance } from 'vue'
 import apiClient from '../api/client'
+import { orderUpdateErrorMessage, putOrderUpdate } from '../utils/orderUpdateRequest'
 import { formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import { usePullToRefresh } from '../composables/usePullToRefresh'
@@ -1798,33 +1800,46 @@ export default {
       }
     },
     async handleUpdateOrder(orderId, updateData) {
+      if (this.updatingOrder) return
       this.updatingOrder = true
       this.updateError = null
-      
+      let updatedOrder = null
+      let errorMessage = null
+
       try {
-        const response = await apiClient.put(`/admin/orders/${orderId}/update`, updateData)
-        const updatedOrder = response.data.order
-        
-        // Update store and local state
-        this.ordersStore.updateOrder(updatedOrder)
-        this.selectedOrder = updatedOrder
-        
-        await this.success('订单已更新')
-        await this.loadAvailableProducts()
-        if (this.groupDeal) {
-          this.groupDeal.products = this.availableProducts
-        }
+        const response = await putOrderUpdate(orderId, updateData)
+        updatedOrder = response.data.order
       } catch (error) {
-        this.updateError = error.response?.data?.message || error.response?.data?.error || '更新失败'
-        await this.showError(this.updateError)
+        errorMessage = orderUpdateErrorMessage(error)
+        this.updateError = errorMessage
         console.error('Failed to update order:', error)
       } finally {
         this.updatingOrder = false
+      }
+
+      if (!updatedOrder) {
+        if (errorMessage) await this.showError(errorMessage)
+        return
+      }
+
+      this.ordersStore.updateOrder(updatedOrder)
+      this.selectedOrder = updatedOrder
+      await this.success('订单已更新')
+      await this.loadAvailableProducts()
+      if (this.groupDeal) {
+        this.groupDeal.products = this.availableProducts
       }
     },
     handleOrderUpdated(order) {
       this.selectedOrder = order
       this.ordersStore.updateOrder(order)
+    },
+    handleWeightSaved(patch) {
+      if (!patch?.id) return
+      this.ordersStore.updateOrder(patch)
+      if (this.selectedOrder?.id === patch.id) {
+        Object.assign(this.selectedOrder, patch)
+      }
     },
     handleProductsLoaded(products) {
       this.availableProducts = products || []

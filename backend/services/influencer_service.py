@@ -54,7 +54,7 @@ def ensure_default_global_rates():
             existing = {row.product_id: row for row in InfluencerProductRate.query.all()}
 
     created = 0
-    for product in Product.query.order_by(Product.id).all():
+    for product in Product.query.filter(Product.deleted_at.is_(None)).order_by(Product.id).all():
         if product.id in existing:
             continue
         db.session.add(InfluencerProductRate(
@@ -375,7 +375,10 @@ def _apply_entry_details_to_items(items, entry):
 
 def effective_rates_for_influencer(influencer_user_id):
     """All products with a resolved rate (global or override), including $0."""
-    products = Product.query.filter_by(is_active=True).order_by(Product.sort_order, Product.id).all()
+    products = Product.query.filter(
+        Product.is_active.is_(True),
+        Product.deleted_at.is_(None),
+    ).order_by(Product.sort_order, Product.id).all()
     overrides = {
         row.product_id: row
         for row in InfluencerRateOverride.query.filter_by(influencer_user_id=influencer_user_id).all()

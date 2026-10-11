@@ -80,13 +80,10 @@ def get_products():
         sort_by = request.args.get('sort', 'custom')
         days = request.args.get('days', 30, type=int)
         
-        # Build base query
-        if show_all:
-            # Admin: show all products
-            query = Product.query
-        else:
-            # Public: show only active products
-            query = Product.query.filter_by(is_active=True)
+        # Deleted products stay out of every catalog. Auth still sees 下架.
+        query = Product.query.filter(Product.deleted_at.is_(None))
+        if not show_all:
+            query = query.filter_by(is_active=True)
         
         # Apply sorting
         if sort_by == 'popularity':

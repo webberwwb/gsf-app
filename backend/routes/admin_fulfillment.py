@@ -43,11 +43,15 @@ def update_profile(target_user_id):
         return error_response, status_code
     data = request.get_json() or {}
     profile = fulfillment_service.get_or_create_profile(target_user_id)
-    if 'hourly_rate' in data and data['hourly_rate'] is not None:
-        profile.hourly_rate = data['hourly_rate']
-    if 'delivery_fee_per_order' in data and data['delivery_fee_per_order'] is not None:
-        profile.delivery_fee_per_order = data['delivery_fee_per_order']
-    db.session.commit()
+    try:
+        if 'hourly_rate' in data and data['hourly_rate'] is not None:
+            profile.hourly_rate = fulfillment_service.parse_rate(data['hourly_rate'])
+        if 'delivery_fee_per_order' in data and data['delivery_fee_per_order'] is not None:
+            profile.delivery_fee_per_order = fulfillment_service.parse_rate(data['delivery_fee_per_order'])
+        db.session.commit()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
     return jsonify({'profile': profile.to_dict()}), 200
 
 
@@ -403,3 +407,23 @@ def create_payout():
     )
     db.session.commit()
     return jsonify({'payout': payout.to_dict()}), 201
+
+
+@admin_fulfillment_bp.route('/fulfillment/settlements', methods=['POST'])
+def set_settlement():
+    user_id, error_response, status_code = require_admin_auth()
+    if error_response:
+        return error_response, status_code
+    data = request.get_json() or {}
+    target_id = data.get('user_id')
+    if not target_id or 'settled' not in data:
+        return jsonify({'error': 'user_id 和 settled 必填'}), 400
+    group_deal_id = data.get('group_deal_id')
+    if group_deal_id is not None:
+        group_deal_id = int(group_deal_id)
+        deal = GroupDeal.query.filter(GroupDeal.id == group_deal_id, GroupDeal.deleted_at.is_(None)).first()
+        if not deal:
+            return jsonify({'error': '团购不存在'}), 404
+    fulfillment_service.set_cycle_settled(int(target_id), group_deal_id, bool(data.get('settled')), user_id)
+    db.session.commit()
+    return jsonify({'ok': True}), 200

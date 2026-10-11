@@ -138,3 +138,27 @@ class FulfillmentPayout(BaseModel):
                 'email': self.user.email,
             }
         return data
+
+
+class FulfillmentSettlement(BaseModel):
+    """A group-deal settlement marked paid for one 配货员."""
+    __tablename__ = 'fulfillment_settlements'
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'group_deal_id', name='uq_fulfillment_settlement_user_deal'),
+    )
+
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    group_deal_id = db.Column(db.Integer, db.ForeignKey('group_deals.id'), nullable=True, index=True)
+    settled_at = db.Column(db.DateTime, nullable=False)
+    settled_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    def to_dict(self):
+        data = super().to_dict()
+        settled_at = self.settled_at.isoformat() if isinstance(self.settled_at, datetime) else self.settled_at
+        data.update({
+            'user_id': self.user_id,
+            'group_deal_id': self.group_deal_id,
+            'settled_at': settled_at,
+            'settled_by_user_id': self.settled_by_user_id,
+        })
+        return data

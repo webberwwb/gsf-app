@@ -18,6 +18,7 @@ from models.base import est_now
 from models.fulfillment import (
     FulfillmentPayout,
     FulfillmentProfile,
+    FulfillmentSettlement,
     FulfillmentWorkSession,
     elapsed_minutes,
 )
@@ -112,62 +113,169 @@ def _as_date(value):
     return value
 
 
-def build_earnings_cycles(sessions, deliveries, payouts, today=None):
+_DEAL_STATUS_RANK = {
+    GroupDealStatus.PREPARING.value: 0,
+    GroupDealStatus.READY_FOR_PICKUP.value: 1,
+    GroupDealStatus.CLOSED.value: 2,
+    GroupDealStatus.ACTIVE.value: 3,
+    GroupDealStatus.UPCOMING.value: 4,
+    GroupDealStatus.COMPLETED.value: 5,
+    GroupDealStatus.DRAFT.value: 6,
+}
+
+
+def _pickup_day(deal):
+    picked = _as_date(getattr(deal, 'pickup_date', None))
+    if isinstance(picked, datetime):
+        return picked.date()
+    return picked
+
+
+def deal_for_work_date(work_date):
+    """Group deal packed and delivered on this pickup day."""
+    if isinstance(work_date, datetime):
+        work_date = work_date.date()
+    if not isinstance(work_date, date):
+        return None
+    start = datetime.combine(work_date, time.min)
+    deals = GroupDeal.query.filter(
+        GroupDeal.deleted_at.is_(None),
+        GroupDeal.pickup_date >= start,
+        GroupDeal.pickup_date < start + timedelta(days=1),
+    ).all()
+    if not deals:
+        return None
+    deals.sort(key=lambda deal: (_DEAL_STATUS_RANK.get(deal.status, 9), -deal.id))
+    return deals[0]
+
+
+def _settlement_deals(sessions, deliveries):
+    ids = set()
+    days = set()
+    for session in sessions:
+        if session.group_deal_id:
+            ids.add(session.group_deal_id)
+        elif session.work_date:
+            days.add(session.work_date)
+    for order in deliveries:
+        if order.group_deal_id:
+            ids.add(order.group_deal_id)
+
+    deals = []
+    known = set()
+    if ids:
+        for deal in GroupDeal.query.filter(
+            GroupDeal.id.in_(ids),
+            GroupDeal.deleted_at.is_(None),
+        ).all():
+            deals.append(deal)
+            known.add(deal.id)
+    if days:
+        earliest, latest = min(days), max(days)
+        extra = GroupDeal.query.filter(
+            GroupDeal.deleted_at.is_(None),
+            GroupDeal.pickup_date >= datetime.combine(earliest, time.min),
+            GroupDeal.pickup_date < datetime.combine(latest + timedelta(days=1), time.min),
+        ).all()
+        for deal in extra:
+            if deal.id not in known and _pickup_day(deal) in days:
+                deals.append(deal)
+                known.add(deal.id)
+    return deals
+
+
+def build_earnings_cycles(sessions, deliveries, payouts, today=None, rate_pair=None, settled_at_by_deal=None):
+    """One settlement per group deal. Payouts are not tied to a deal."""
+    del payouts
     today = today or est_now().date()
-    current = biweekly_billing(today)
+    deals = _settlement_deals(sessions, deliveries)
+    by_id = {deal.id: deal for deal in deals}
+    by_day = {}
+    for deal in deals:
+        by_day.setdefault(_pickup_day(deal), []).append(deal)
+
+    def resolve_session_deal(session):
+        linked = by_id.get(session.group_deal_id)
+        if linked:
+            return linked
+        candidates = list(by_day.get(session.work_date) or [])
+        if not candidates:
+            return None
+        candidates.sort(key=lambda deal: (_DEAL_STATUS_RANK.get(deal.status, 9), -deal.id))
+        return candidates[0]
+
     buckets = {}
 
-    def bucket_for(day):
-        info = biweekly_billing(day)
-        key = info['period_end']
+    def bucket_for(deal):
+        key = deal.id if deal is not None else None
         if key not in buckets:
+            pickup = _pickup_day(deal) if deal is not None else None
             buckets[key] = {
-                'period_start': info['period_start'],
-                'period_end': info['period_end'],
-                'pay_date': info['next_pay_date'],
-                'pay_weekday': info['next_pay_weekday'],
+                'group_deal_id': deal.id if deal is not None else None,
+                'group_deal_title': deal.title if deal is not None else None,
+                'group_deal_status': deal.status if deal is not None else None,
+                'group_deal_status_label': GroupDealStatus.get_label(deal.status) if deal is not None else None,
+                'pickup_date': pickup.isoformat() if pickup else None,
+                'pickup_sort': pickup,
+                'is_current': bool(
+                    deal is not None and (
+                        deal.status == GroupDealStatus.PREPARING.value or pickup == today
+                    )
+                ),
                 'labor': Decimal('0'),
                 'delivery': Decimal('0'),
                 'cash_collected': Decimal('0'),
-                'paid': Decimal('0'),
                 'hours': Decimal('0'),
                 'delivery_count': 0,
+                'sessions': [],
+                'deliveries': [],
             }
         return buckets[key]
 
-    bucket_for(today)
     for session in sessions:
-        row = bucket_for(session.work_date)
+        row = bucket_for(resolve_session_deal(session))
         row['labor'] += session.labor_amount or Decimal('0')
         row['hours'] += Decimal(str(session.hours or 0))
+        row['sessions'].append(session.to_dict())
     for order in deliveries:
-        row = bucket_for(_as_date(order.delivered_at) or today)
-        row['delivery'] += Decimal(str(order.delivery_fee_earned or 0))
-        row['cash_collected'] += driver_cash_collected(order)
+        row = bucket_for(by_id.get(order.group_deal_id))
+        fee = Decimal(str(order.delivery_fee_earned or 0))
+        cash = driver_cash_collected(order)
+        row['delivery'] += fee
+        row['cash_collected'] += cash
         row['delivery_count'] += 1
-    for payout in payouts:
-        row = bucket_for(_as_date(payout.paid_at) or today)
-        row['paid'] += Decimal(str(payout.amount or 0))
+        row['deliveries'].append(_driver_fee_line(order, fee, cash_collected=cash, rate_pair=rate_pair))
 
+    settled_at_by_deal = settled_at_by_deal or {}
     cycles = []
-    for key in sorted(buckets, reverse=True):
-        row = buckets[key]
+    ordered = sorted(
+        buckets.values(),
+        key=lambda row: (row['pickup_sort'] is None, -(row['pickup_sort'].toordinal() if row['pickup_sort'] else 0)),
+    )
+    for row in ordered:
         labor = row['labor']
         delivery = row['delivery']
         cash_collected = row['cash_collected']
-        paid = row['paid']
+        net = (labor + delivery - cash_collected).quantize(Decimal('0.01'))
+        settled_at = settled_at_by_deal.get(row['group_deal_id'])
+        settled = row['group_deal_id'] in settled_at_by_deal
         cycles.append({
-            'period_start': row['period_start'],
-            'period_end': row['period_end'],
-            'pay_date': row['pay_date'],
-            'pay_weekday': row['pay_weekday'],
-            'is_current': key == current['period_end'],
+            'group_deal_id': row['group_deal_id'],
+            'group_deal_title': row['group_deal_title'],
+            'group_deal_status': row['group_deal_status'],
+            'group_deal_status_label': row['group_deal_status_label'],
+            'pickup_date': row['pickup_date'],
+            'is_current': row['is_current'],
+            'settled': settled,
+            'settled_at': settled_at,
+            'sessions': row['sessions'],
+            'deliveries': row['deliveries'],
             'totals': {
                 'labor': float(labor),
                 'delivery': float(delivery),
                 'cash_collected': float(cash_collected),
-                'paid': float(paid),
-                'outstanding': float((labor + delivery - cash_collected - paid).quantize(Decimal('0.01'))),
+                'paid': float(net) if settled else 0.0,
+                'outstanding': 0.0 if settled else float(net),
                 'hours': float(row['hours']),
                 'delivery_count': row['delivery_count'],
             },
@@ -183,19 +291,42 @@ def _city_key(city):
     return ''.join(ch for ch in (city or '').lower() if ch.isalnum())
 
 
-def delivery_fee_for_address(address):
+def delivery_fee_for_address(address, nearby_fee=None, other_fee=None):
     city_key = _city_key(getattr(address, 'city', None))
+    nearby = NEARBY_DELIVERY_FEE if nearby_fee is None else Decimal(str(nearby_fee))
+    other = DEFAULT_DELIVERY_FEE if other_fee is None else Decimal(str(other_fee))
     if city_key in NEARBY_DELIVERY_CITIES:
-        return NEARBY_DELIVERY_FEE
-    return DEFAULT_DELIVERY_FEE
+        return nearby
+    return other
 
 
-def delivery_fee_rates():
+def profile_region_fees(profile):
+    """Driver region rates, falling back to the default schedule."""
+    nearby = getattr(profile, 'nearby_fee', None) if profile is not None else None
+    other = getattr(profile, 'other_fee', None) if profile is not None else None
+    return (
+        NEARBY_DELIVERY_FEE if nearby is None else Decimal(str(nearby)),
+        DEFAULT_DELIVERY_FEE if other is None else Decimal(str(other)),
+    )
+
+
+def delivery_fee_rates(profile=None):
+    nearby, other = profile_region_fees(profile)
     return {
         'nearby_cities': ['Markham', 'Richmond Hill'],
-        'nearby_fee': float(NEARBY_DELIVERY_FEE),
-        'other_fee': float(DEFAULT_DELIVERY_FEE),
+        'nearby_fee': float(nearby),
+        'other_fee': float(other),
     }
+
+
+def parse_rate(value):
+    try:
+        fee = Decimal(str(value)).quantize(Decimal('0.01'))
+    except Exception:
+        raise ValueError('请输入有效金额')
+    if fee < 0:
+        raise ValueError('费率不能为负数')
+    return fee
 
 
 def deal_is_fulfillable(deal):
@@ -359,6 +490,9 @@ def clock_in(user_id, actor_id, notes=None, group_deal_id=None):
     if existing:
         raise ValueError('已有未结束的工时，请先下班打卡')
     now = est_now()
+    if group_deal_id is None:
+        matched = deal_for_work_date(now.date())
+        group_deal_id = matched.id if matched else None
     session = FulfillmentWorkSession(
         user_id=user_id,
         work_date=now.date(),
@@ -402,6 +536,10 @@ def create_session(user_id, actor_id, payload):
         created_by_user_id=actor_id,
         updated_by_user_id=actor_id,
     )
+    if session.group_deal_id is None:
+        matched = deal_for_work_date(work_date)
+        if matched:
+            session.group_deal_id = matched.id
     apply_session_hours(session)
     db.session.add(session)
     return session
@@ -478,6 +616,8 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
     ).all()
     payouts = payouts_q.order_by(FulfillmentPayout.paid_at.desc()).all()
     deliveries = deliveries_q.order_by(Order.delivered_at.desc(), Order.id.desc()).all()
+    profile = get_or_create_profile(user_id)
+    rate_pair = profile_region_fees(profile)
 
     labor_total = Decimal('0')
     for session in sessions:
@@ -492,14 +632,24 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
         delivery_total += fee
         cash_collected_total += cash
         deal = order.group_deal
-        delivery_lines.append(_driver_fee_line(order, fee, deal, cash))
+        delivery_lines.append(_driver_fee_line(order, fee, deal, cash, rate_pair=rate_pair))
 
     paid_total = Decimal('0')
     for payout in payouts:
         paid_total += Decimal(str(payout.amount or 0))
 
     outstanding = (labor_total + delivery_total - cash_collected_total - paid_total).quantize(Decimal('0.01'))
-    profile = get_or_create_profile(user_id)
+    settlement_rows = FulfillmentSettlement.query.filter_by(user_id=user_id).all()
+    settled_at_by_deal = {
+        row.group_deal_id: row.settled_at.isoformat() if row.settled_at else None
+        for row in settlement_rows
+    }
+    cycles = build_earnings_cycles(
+        sessions, deliveries, payouts, rate_pair=rate_pair, settled_at_by_deal=settled_at_by_deal,
+    )
+    settled_paid = sum((Decimal(str(cycle['totals']['paid'])) for cycle in cycles), Decimal('0'))
+    paid_total = (paid_total + settled_paid).quantize(Decimal('0.01'))
+    outstanding = (outstanding - settled_paid).quantize(Decimal('0.01'))
     user = User.query.get(user_id)
     open_session = open_session_for(user_id)
 
@@ -510,9 +660,9 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
             'email': user.email,
         } if user else None,
         'profile': profile.to_dict(),
-        'delivery_fees': delivery_fee_rates(),
+        'delivery_fees': delivery_fee_rates(profile),
         'billing': biweekly_billing(),
-        'cycles': build_earnings_cycles(sessions, deliveries, payouts),
+        'cycles': cycles,
         'open_session': open_session.to_dict() if open_session else None,
         'sessions': [s.to_dict() for s in sessions],
         'deliveries': delivery_lines,
@@ -528,6 +678,29 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
             'delivery_count': len(delivery_lines),
         },
     }
+
+
+def set_cycle_settled(user_id, group_deal_id, settled, actor_id):
+    row = FulfillmentSettlement.query.filter_by(
+        user_id=user_id,
+        group_deal_id=group_deal_id,
+    ).first()
+    if not settled:
+        if row is not None:
+            db.session.delete(row)
+        return None
+    if row is None:
+        row = FulfillmentSettlement(
+            user_id=user_id,
+            group_deal_id=group_deal_id,
+            settled_at=est_now(),
+            settled_by_user_id=actor_id,
+        )
+        db.session.add(row)
+    else:
+        row.settled_at = est_now()
+        row.settled_by_user_id = actor_id
+    return row
 
 
 def create_payout(user_id, actor_id, amount, notes=None, paid_at=None):
@@ -605,7 +778,9 @@ def mark_delivered(order, actor, photo_url=None):
         if not order.delivery_assignee_id:
             order.delivery_assignee_id = actor.id
         if order.delivery_fee_earned is None:
-            order.delivery_fee_earned = delivery_fee_for_address(order.address)
+            assignee_id = order.delivery_assignee_id or actor.id
+            nearby, other = profile_region_fees(get_or_create_profile(assignee_id))
+            order.delivery_fee_earned = delivery_fee_for_address(order.address, nearby, other)
     if photo_url:
         order.delivery_photo_url = photo_url
     order.delivered_at = est_now()
@@ -627,17 +802,49 @@ def override_driver_delivery_fee(order, amount):
     return order
 
 
-def _driver_fee_line(order, fee, deal=None, cash_collected=None):
+def _full_address(address):
+    if not address:
+        return None
+    city_line = ', '.join(
+        part for part in (getattr(address, 'city', None), getattr(address, 'postal_code', None)) if part
+    )
+    parts = [getattr(address, 'address_line1', None), getattr(address, 'address_line2', None), city_line or None]
+    text = ', '.join(str(part).strip() for part in parts if part and str(part).strip())
+    return text or None
+
+
+def _driver_fee_line(order, fee, deal=None, cash_collected=None, rate_pair=None):
+    from utils.order_totals import calculate_amount_due
+
     deal = deal if deal is not None else order.group_deal
-    suggested = delivery_fee_for_address(order.address)
+    address = order.address
+    if rate_pair is None:
+        suggested = delivery_fee_for_address(address)
+    else:
+        suggested = delivery_fee_for_address(address, rate_pair[0], rate_pair[1])
     cash = driver_cash_collected(order) if cash_collected is None else cash_collected
+    paid_on_delivery = cash > 0
+    payment_label = '现金' if paid_on_delivery else (
+        PaymentMethod.get_label(order.payment_method) if order.payment_method else None
+    )
+    paid_amount = cash if paid_on_delivery else calculate_amount_due(order)
+    recipient = None
+    if address and address.recipient_name:
+        recipient = address.recipient_name
+    elif order.user and order.user.nickname:
+        recipient = order.user.nickname
     return {
         'order_id': order.id,
         'order_number': order.order_number,
         'group_deal_id': order.group_deal_id,
         'group_deal_title': deal.title if deal else None,
-        'city': order.address.city if order.address else None,
+        'recipient_name': recipient,
+        'address': _full_address(address),
+        'city': address.city if address else None,
         'delivered_at': order.delivered_at.isoformat() if order.delivered_at else None,
+        'payment_method': order.payment_method,
+        'payment_label': payment_label,
+        'paid_amount': float(paid_amount),
         'fee': float(fee),
         'suggested_fee': float(suggested),
         'fee_overridden': fee != suggested,

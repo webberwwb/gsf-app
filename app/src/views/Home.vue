@@ -1,7 +1,7 @@
 <template>
   <div class="shop-page">
     <!-- Header -->
-    <header class="shop-header">
+    <header ref="shopHeader" class="shop-header">
       <div class="header-content">
         <img src="/logos/gsf-icon.png" alt="谷语农庄" class="logo" />
         <div class="header-text">
@@ -18,23 +18,37 @@
         <div class="loading">加载中...</div>
       </div>
       <template v-if="!loading">
+      <p v-if="usesCategoryGroups" class="section-subtitle page-intro">浏览商品信息，下单请前往「团购下单」</p>
+      <CategoryTabs
+        v-if="visibleCategories.length > 0"
+        :categories="visibleCategories"
+        :show-discount="discountProducts.length > 0"
+        header-selector=".shop-header"
+        :sticky-top="tabsOffset"
+        :bleed="false"
+        pin-on-ios
+      />
       <section
         v-for="section in productSections"
         :key="section.id"
         class="products-section"
-        :class="{ 'specials-section': section.id === 'special' }"
+        :class="{ 'specials-section': section.special }"
       >
-        <h2 class="section-title">
-          <svg v-if="section.id === 'special'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon special-icon">
+        <h2
+          class="section-title"
+          :class="{ 'category-header': section.tabId != null }"
+          :data-category-id="section.tabId != null ? section.tabId : undefined"
+        >
+          <svg v-if="section.special" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon special-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
-          <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
+          <svg v-else-if="section.showIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="title-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
           </svg>
           {{ section.title }}
         </h2>
-        <p class="section-subtitle">{{ section.subtitle }}</p>
+        <p v-if="section.subtitle" class="section-subtitle">{{ section.subtitle }}</p>
         <div v-if="section.products.length === 0" class="empty-state">
           <p>暂无商品</p>
         </div>
@@ -120,18 +134,22 @@
 import apiClient from '../api/client'
 import { parseDateEST, getNowEST } from '../utils/date'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
+import CategoryTabs from '../components/CategoryTabs.vue'
 import { formatMoneyRangeDisplay, formatMoney, formatProductCompareAt, getProductPaidAmount, isProductOnSale } from '../utils/productPriceDisplay'
 
 export default {
   name: 'Home',
   components: {
-    ProductDetailModal
+    ProductDetailModal,
+    CategoryTabs
   },
   data() {
     return {
       loading: true,
       products: [],
       deals: [],
+      categories: [],
+      tabsOffset: null,
       showProductModal: false,
       selectedProduct: null
     }
@@ -151,27 +169,75 @@ export default {
       }
       return products
     },
+    visibleCategories() {
+      return this.categories.filter(category => {
+        return this.products.some(product => this.sameCategory(product.category_id, category.id))
+      })
+    },
+    usesCategoryGroups() {
+      return this.visibleCategories.length > 0
+    },
     productSections() {
       const sections = []
       if (this.discountProducts.length) {
         sections.push({
-          id: 'special',
+          id: 'discount',
+          tabId: 'discount',
           title: '特价商品',
           subtitle: '当前团购中的折扣商品，下单请前往对应团购',
-          products: this.discountProducts
+          products: this.discountProducts,
+          special: true,
+          showIcon: true
         })
       }
-      sections.push({
-        id: 'hot',
-        title: '热门商品',
-        subtitle: '浏览商品信息，下单请前往「团购下单」',
-        products: this.products
+      if (!this.usesCategoryGroups) {
+        sections.push({
+          id: 'hot',
+          tabId: null,
+          title: '热门商品',
+          subtitle: '浏览商品信息，下单请前往「团购下单」',
+          products: this.products,
+          special: false,
+          showIcon: true
+        })
+        return sections
+      }
+      this.visibleCategories.forEach(category => {
+        const products = this.products.filter(product => this.sameCategory(product.category_id, category.id))
+        if (!products.length) return
+        sections.push({
+          id: category.id,
+          tabId: category.id,
+          title: category.name,
+          subtitle: '',
+          products,
+          special: false,
+          showIcon: false
+        })
       })
+      const uncategorized = this.products.filter(product => !product.category_id)
+      if (uncategorized.length) {
+        sections.push({
+          id: 'uncategorized',
+          tabId: null,
+          title: '其他',
+          subtitle: '',
+          products: uncategorized,
+          special: false,
+          showIcon: false
+        })
+      }
       return sections
     }
   },
   async mounted() {
+    this.syncTabsOffset()
+    window.addEventListener('resize', this.syncTabsOffset)
     await this.loadData()
+    this.$nextTick(() => this.syncTabsOffset())
+  },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.syncTabsOffset)
   },
   methods: {
     formatMoney,
@@ -184,19 +250,31 @@ export default {
     isOnSale(product) {
       return isProductOnSale(product)
     },
+    sameCategory(productCategoryId, categoryId) {
+      if (productCategoryId == null || categoryId == null) return false
+      return String(productCategoryId) === String(categoryId)
+    },
+    syncTabsOffset() {
+      const header = this.$refs.shopHeader
+      if (!header) return
+      this.tabsOffset = `${header.offsetHeight}px`
+    },
     async loadData() {
       this.loading = true
       try {
-        const [productsRes, dealsRes] = await Promise.all([
+        const [productsRes, dealsRes, categoriesRes] = await Promise.all([
           apiClient.get('/products?sort=popularity&days=30&include_stats=true'),
-          apiClient.get('/group-deals')
+          apiClient.get('/group-deals'),
+          apiClient.get('/product-categories').catch(() => ({ data: { categories: [] } }))
         ])
         this.products = (productsRes.data.products || []).filter(product => product.is_active === true)
         this.deals = dealsRes.data.deals || []
+        this.categories = categoriesRes.data.categories || []
       } catch (error) {
         console.error('Failed to load data:', error)
         this.products = []
         this.deals = []
+        this.categories = []
       } finally {
         this.loading = false
       }
@@ -353,7 +431,7 @@ export default {
   box-shadow: var(--md-elevation-2);
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 200;
 }
 
 .header-content {
@@ -420,6 +498,10 @@ export default {
   color: var(--md-on-surface-variant);
   margin-bottom: var(--md-spacing-md);
   text-align: center;
+}
+
+.page-intro {
+  margin-top: var(--md-spacing-md);
 }
 
 .products-section {

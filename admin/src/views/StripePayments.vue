@@ -159,6 +159,7 @@
       @status-change="handleOrderStatusChange"
       @payment-method-change="handlePaymentMethodChange"
       @order-updated="handleOrderUpdated"
+      @weight-saved="handleWeightSaved"
       @update-error="(msg) => { this.updateError = msg }"
       @products-loaded="(products) => { this.availableProducts = products }"
     />
@@ -167,6 +168,7 @@
 
 <script>
 import apiClient from '../api/client'
+import { orderUpdateErrorMessage, putOrderUpdate } from '../utils/orderUpdateRequest'
 import OrderDetailModal from '../components/OrderDetailModal.vue'
 import { useModal } from '../composables/useModal'
 import { formatDateEST_CN } from '../utils/date'
@@ -343,21 +345,34 @@ export default {
       this.fetchPayments({ silent: true })
     },
     async handleUpdateOrder(orderId, updateData) {
+      if (this.updatingOrder) return
       this.updatingOrder = true
       this.updateError = null
+      let updatedOrder = null
+      let errorMessage = null
       try {
-        const response = await apiClient.put(`/admin/orders/${orderId}/update`, updateData)
-        this.applyUpdatedOrder(response.data.order)
-        await this.success('订单已更新')
+        const response = await putOrderUpdate(orderId, updateData)
+        updatedOrder = response.data.order
       } catch (error) {
-        this.updateError = error.response?.data?.message || error.response?.data?.error || '更新失败'
-        await this.showError(`更新失败: ${this.updateError}`)
+        errorMessage = orderUpdateErrorMessage(error)
+        this.updateError = errorMessage
+        console.error('Failed to update order:', error)
       } finally {
         this.updatingOrder = false
       }
+      if (!updatedOrder) {
+        if (errorMessage) await this.showError(errorMessage)
+        return
+      }
+      this.applyUpdatedOrder(updatedOrder)
+      await this.success('订单已更新')
     },
     handleOrderUpdated(order) {
       if (order) this.applyUpdatedOrder(order)
+    },
+    handleWeightSaved(patch) {
+      if (!patch?.id || !this.selectedOrder || this.selectedOrder.id !== patch.id) return
+      Object.assign(this.selectedOrder, patch)
     },
     async handlePaymentMethodChange(paymentMethod) {
       if (

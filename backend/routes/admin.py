@@ -431,7 +431,7 @@ def update_product(product_id):
 
 @admin_bp.route('/products/<int:product_id>', methods=['DELETE'])
 def delete_product(product_id):
-    """Delete a product (soft delete by setting is_active=False)"""
+    """Remove a product from the catalog. Order lines keep the row."""
     user_id, error_response, status_code = require_admin_auth()
     if error_response:
         return error_response, status_code
@@ -439,9 +439,12 @@ def delete_product(product_id):
     product = Product.query.get_or_404(product_id)
     
     try:
-        # Soft delete - set is_active to False
-        product.is_active = False
-        db.session.commit()
+        if product.deleted_at is None:
+            GroupDealProduct.query.filter_by(product_id=product.id).delete(
+                synchronize_session=False
+            )
+            product.deleted_at = utc_now()
+            db.session.commit()
         
         current_app.logger.info(f'Deleted product: {product.id} - {product.name}')
         
@@ -1717,8 +1720,8 @@ def get_admin_products():
         sort_by = request.args.get('sort', 'custom')  # 'custom', 'created_at', 'popularity', 'name'
         days = request.args.get('days', 30, type=int)  # Days for popularity calculation
         
-        # Base query
-        query = Product.query
+        # Catalog only. 下架 (is_active=False) stays; deleted products do not.
+        query = Product.query.filter(Product.deleted_at.is_(None))
         
         # Apply sorting
         if sort_by == 'popularity':
@@ -1817,7 +1820,10 @@ def get_dashboard_stats():
     
     try:
         # Count products
-        products_count = Product.query.filter_by(is_active=True).count()
+        products_count = Product.query.filter(
+            Product.is_active.is_(True),
+            Product.deleted_at.is_(None),
+        ).count()
         
         # Count users
         users_count = User.query.filter_by(status=UserStatus.ACTIVE.value).count()
@@ -2853,10 +2859,11 @@ def get_order_by_pickup_code(pickup_code):
 
 @admin_bp.route('/orders/<int:order_id>/update-weights', methods=['PUT'])
 def update_order_weights(order_id):
-    """Update order items with final weights and recalculate prices (admin only)"""
-    user_id, error_response, status_code = require_admin_auth()
+    """Set final_weight on existing lines. Does not add, remove, or replace items."""
+    user_id, error_response, status_code = require_admin_auth(allow_fulfillment=True)
     if error_response:
         return error_response, status_code
+    acting_user = User.query.get(user_id)
     
     # Validate request data using schema
     validated_data, error_response, status_code = validate_request(UpdateOrderWeightsSchema)
@@ -2867,10 +2874,15 @@ def update_order_weights(order_id):
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
-        
-        # Check if order is ready for pickup
-        if order.status != OrderStatus.READY_FOR_PICKUP.value:
-            return jsonify({'error': 'Order must be in ready_for_pickup status to update weights'}), 400
+        if order.status == OrderStatus.CANCELLED.value:
+            return jsonify({'error': 'Cannot update a cancelled order'}), 400
+        group_deal = GroupDeal.query.filter(
+            GroupDeal.id == order.group_deal_id,
+            GroupDeal.deleted_at.is_(None),
+        ).first()
+        write_block = fulfillment_service.fulfillment_write_blocked(acting_user, group_deal)
+        if write_block:
+            return jsonify({'error': write_block}), 403
         
         item_ids = [item_update.get('item_id') for item_update in items_data if item_update.get('item_id')]
         items_by_id = {
@@ -2881,21 +2893,19 @@ def update_order_weights(order_id):
                 OrderItem.active(),
             ).all()
         } if item_ids else {}
+        missing = [item_id for item_id in item_ids if item_id not in items_by_id]
+        if missing or len(item_ids) != len(items_data):
+            return jsonify({'error': '订单行不存在或已删除'}), 400
         products = products_by_ids(item.product_id for item in items_by_id.values())
 
         for item_update in items_data:
             item_id = item_update.get('item_id')
             final_weight = item_update.get('final_weight')
-            if not item_id:
-                continue
             order_item = items_by_id.get(item_id)
-            if not order_item:
-                continue
             product = products.get(order_item.product_id)
             if not product:
-                continue
-            if final_weight is not None:
-                order_item.final_weight = float(final_weight)
+                return jsonify({'error': '商品不存在'}), 400
+            order_item.final_weight = float(final_weight)
             recalculate_existing_item(order_item, product)
 
         sync_order_pricing(order, reprice_lines=False)

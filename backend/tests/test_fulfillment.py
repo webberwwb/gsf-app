@@ -164,6 +164,45 @@ def test_fulfillment_can_list_and_update_weights(app):
     assert res.get_json()['order']['status'] == 'packing_complete'
 
 
+def test_fulfillment_can_save_one_weight_without_removing_lines(app):
+    staff = _fulfillment(email='weigher@example.com')
+    customer = _user('+10000000121', 'CustW')
+    deal = _deal('preparing')
+    other = _product()
+    weighed = Product(
+        name='肉',
+        pricing_type='unit_weight',
+        pricing_data={'price_per_unit': 5, 'unit': 'lb'},
+        is_active=True,
+    )
+    db.session.add(weighed)
+    db.session.flush()
+    order = _order(customer, deal, other, status=OrderStatus.PREPARING.value)
+    line = OrderItem(
+        order_id=order.id,
+        product_id=weighed.id,
+        quantity=1,
+        unit_price=Decimal('5'),
+        total_price=Decimal('5'),
+    )
+    db.session.add(line)
+    db.session.flush()
+    client = app.test_client()
+
+    res = client.put(
+        f'/api/admin/orders/{order.id}/update-weights',
+        json={'items': [{'item_id': line.id, 'final_weight': 2.5}]},
+        headers=_headers(staff),
+    )
+    assert res.status_code == 200
+    items = res.get_json()['order']['items']
+    assert len(items) == 2
+    saved = next(item for item in items if item['id'] == line.id)
+    assert float(saved['final_weight']) == 2.5
+    assert float(saved['total_price']) == 12.5
+    assert any(item['id'] != line.id for item in items)
+
+
 def test_completed_deal_redacts_pii_and_blocks_updates(app):
     staff = _fulfillment()
     customer = _user('+10000000112', 'Cust2', email='c2@example.com')
@@ -504,9 +543,17 @@ def test_self_delivery_cash_is_deducted_at_settlement(app):
     assert earnings['totals']['delivery'] == 7.0
     assert earnings['totals']['outstanding'] == -3.0
     assert earnings['deliveries'][0]['cash_collected'] == 10.0
+    assert earnings['deliveries'][0]['recipient_name'] == '收件人'
+    assert earnings['deliveries'][0]['address'] == '1 Main St, Toronto, M1M1M1'
+    assert earnings['deliveries'][0]['payment_label'] == '现金'
+    assert earnings['deliveries'][0]['paid_amount'] == 10.0
     cycle = next(row for row in earnings['cycles'] if row['totals']['delivery_count'])
+    assert cycle['group_deal_id'] == order.group_deal_id
     assert cycle['totals']['cash_collected'] == 10.0
     assert cycle['totals']['outstanding'] == -3.0
+    assert [row['order_id'] for row in cycle['deliveries']] == [order.id]
+    assert cycle['deliveries'][0]['fee'] == 7.0
+    assert cycle['deliveries'][0]['cash_collected'] == 10.0
 
 
 def test_admin_can_override_driver_delivery_fee(app):
@@ -576,29 +623,99 @@ def test_biweekly_billing_next_pay_date(app):
     assert before_anchor['period_end'] == '2026-08-28'
 
 
-def test_earnings_cycles_group_by_pay_period(app):
+def test_earnings_cycles_group_by_group_deal(app):
     staff = _fulfillment()
-    fulfillment_service.create_session(staff.id, staff.id, {
-        'work_date': '2026-08-20',
-        'start_time': '16:00',
-        'end_time': '18:00',
+    previous = _deal('completed')
+    previous.title = '上一团'
+    previous.pickup_date = datetime(2026, 9, 12)
+    current = _deal('preparing')
+    current.title = '这一团'
+    current.pickup_date = datetime(2026, 10, 8)
+    previous_session = fulfillment_service.create_session(staff.id, staff.id, {
+        'work_date': '2026-09-12',
+        'start_time': '09:00',
+        'end_time': '12:00',
     })
+    previous_session.group_deal_id = None
+    current_session = fulfillment_service.create_session(staff.id, staff.id, {
+        'work_date': '2026-10-08',
+        'start_time': '11:30',
+        'end_time': '15:00',
+    })
+    order = _order(
+        _user('+10000000119', 'DealSettle'),
+        previous,
+        _product(),
+        delivery=True,
+        status=OrderStatus.COMPLETED.value,
+    )
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    order.delivered_at = datetime(2026, 10, 8, 18, 0)
+    order.delivery_fee_earned = Decimal('7.00')
+    db.session.commit()
+
+    assert current_session.group_deal_id == current.id
+    cycles = fulfillment_service.earnings_for_user(staff.id)['cycles']
+    by_deal = {row['group_deal_id']: row for row in cycles}
+    assert by_deal[previous.id]['group_deal_title'] == '上一团'
+    assert by_deal[previous.id]['pickup_date'] == '2026-09-12'
+    assert by_deal[previous.id]['totals']['hours'] == 3.0
+    assert [row['work_date'] for row in by_deal[previous.id]['sessions']] == ['2026-09-12']
+    assert [row['order_id'] for row in by_deal[previous.id]['deliveries']] == [order.id]
+    assert by_deal[previous.id]['deliveries'][0]['recipient_name'] == '收件人'
+    assert by_deal[previous.id]['deliveries'][0]['payment_label'] == '信用卡'
+    assert by_deal[previous.id]['deliveries'][0]['paid_amount'] == 10.0
+    assert by_deal[current.id]['is_current'] is True
+    assert by_deal[current.id]['totals']['hours'] == 3.5
+    assert [row['work_date'] for row in by_deal[current.id]['sessions']] == ['2026-10-08']
+    assert by_deal[current.id]['deliveries'] == []
+    assert cycles[0]['group_deal_id'] == current.id
+    assert by_deal[previous.id]['settled'] is False
+
+
+def test_admin_can_mark_group_deal_settled(app):
+    staff = _fulfillment()
+    admin = _admin()
+    deal = _deal('completed')
+    deal.title = '待结算团'
+    profile = fulfillment_service.get_or_create_profile(staff.id)
+    profile.hourly_rate = Decimal('20')
+    db.session.flush()
     fulfillment_service.create_session(staff.id, staff.id, {
-        'work_date': '2026-09-06',
-        'start_time': '16:00',
-        'end_time': '19:00',
+        'work_date': '2026-09-12',
+        'start_time': '09:00',
+        'end_time': '12:00',
+        'group_deal_id': deal.id,
     })
     db.session.commit()
 
-    cycles = fulfillment_service.earnings_for_user(staff.id)['cycles']
-    by_end = {row['period_end']: row for row in cycles}
-    assert '2026-08-28' in by_end
-    assert '2026-09-11' in by_end
-    assert by_end['2026-08-28']['pay_date'] == '2026-08-28'
-    assert by_end['2026-08-28']['totals']['hours'] == 2.0
-    assert by_end['2026-09-11']['totals']['hours'] == 3.0
-    current_end = fulfillment_service.biweekly_billing()['period_end']
-    assert by_end[current_end]['is_current'] is True
+    client = app.test_client()
+    marked = client.post(
+        '/api/admin/fulfillment/settlements',
+        json={'user_id': staff.id, 'group_deal_id': deal.id, 'settled': True},
+        headers=_headers(admin),
+    )
+    assert marked.status_code == 200
+
+    earnings = fulfillment_service.earnings_for_user(staff.id)
+    cycle = next(row for row in earnings['cycles'] if row['group_deal_id'] == deal.id)
+    assert cycle['settled'] is True
+    assert cycle['totals']['outstanding'] == 0.0
+    assert cycle['totals']['paid'] == cycle['totals']['labor']
+    assert earnings['totals']['paid'] == cycle['totals']['labor']
+    assert earnings['totals']['outstanding'] == 0.0
+
+    undone = client.post(
+        '/api/admin/fulfillment/settlements',
+        json={'user_id': staff.id, 'group_deal_id': deal.id, 'settled': False},
+        headers=_headers(admin),
+    )
+    assert undone.status_code == 200
+    earnings = fulfillment_service.earnings_for_user(staff.id)
+    cycle = next(row for row in earnings['cycles'] if row['group_deal_id'] == deal.id)
+    assert cycle['settled'] is False
+    assert cycle['totals']['paid'] == 0.0
+    assert cycle['totals']['outstanding'] == cycle['totals']['labor']
 
 
 def test_timesheet_hours_and_ownership(app):

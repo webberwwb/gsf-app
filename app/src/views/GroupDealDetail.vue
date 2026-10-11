@@ -111,32 +111,11 @@
       <div class="products-section">
         <h3 class="section-title">可选商品</h3>
         
-        <!-- Category Tabs -->
-        <div v-if="visibleCategories.length > 0" class="category-tabs-sticky-container">
-          <div class="category-tabs-wrapper">
-            <div class="category-tabs-container">
-              <div class="category-tabs" ref="categoryTabs">
-                <button
-                  v-if="hasDiscountProducts"
-                  type="button"
-                  class="category-tab discount-tab"
-                  :class="{ 'active': selectedCategoryId === 'discount' }"
-                  @click="selectCategory('discount')"
-                >
-                  折扣
-                </button>
-                <button
-                  v-for="category in visibleCategories"
-                  :key="category.id"
-                  :class="['category-tab', { 'active': selectedCategoryId === category.id }]"
-                  @click="selectCategory(category.id)"
-                >
-                  {{ category.name }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CategoryTabs
+          v-if="visibleCategories.length > 0"
+          :categories="visibleCategories"
+          :show-discount="hasDiscountProducts"
+        />
         
         <div v-if="deal.products && deal.products.length === 0" class="empty-products">
           <p>暂无商品</p>
@@ -573,6 +552,7 @@ import { useModal } from '../composables/useModal'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
+import CategoryTabs from '../components/CategoryTabs.vue'
 import {
   estimateLinePrice,
   estimateSelectionTotal,
@@ -607,7 +587,8 @@ export default {
   components: {
     ProductDetailModal,
     Modal,
-    ProductDetailsSection
+    ProductDetailsSection,
+    CategoryTabs
   },
   data() {
     return {
@@ -621,7 +602,6 @@ export default {
       priceInfoMessage: '',
       expandedPricing: {}, // Track which products have expanded pricing details
       categories: [],
-      selectedCategoryId: null,
       stickyOriginalTop: null // Store original position of sticky container
     }
   },
@@ -714,36 +694,23 @@ export default {
     await this.loadDeal()
     await this.loadCategories()
     
-    // Setup scroll indicator detection
     this.$nextTick(() => {
-      this.setupScrollIndicators()
       this.setupStickyFallback()
-      this.setupScrollSpy()
     })
   },
   watch: {
     '$route.params.id': {
       async handler() {
         await this.loadDeal()
+        this.stickyOriginalTop = null
         this.$nextTick(() => {
-          this.setupScrollIndicators()
           this.setupStickyFallback()
-          this.setupScrollSpy()
         })
       }
     }
   },
   beforeUnmount() {
-    // Cleanup scroll listener
-    if (this.$refs.categoryTabs) {
-      const container = this.$refs.categoryTabs.parentElement
-      container?.removeEventListener('scroll', this.updateScrollIndicators)
-      window.removeEventListener('resize', this.updateScrollIndicators)
-    }
-    // Cleanup sticky fallback
     window.removeEventListener('scroll', this.handleStickyScroll)
-    // Cleanup scroll spy
-    window.removeEventListener('scroll', this.handleScrollSpy)
   },
   methods: {
     async loadDeal() {
@@ -780,12 +747,6 @@ export default {
     goBack() {
       this.$router.push('/')
     },
-    normalizeCategoryId(id) {
-      if (id == null || id === '') return null
-      if (id === 'discount') return 'discount'
-      const n = parseInt(id, 10)
-      return Number.isNaN(n) ? id : n
-    },
     async loadCategories() {
       try {
         const response = await apiClient.get('/product-categories')
@@ -793,46 +754,6 @@ export default {
       } catch (error) {
         console.error('Failed to load categories:', error)
       }
-    },
-    selectCategory(categoryId) {
-      this.selectedCategoryId = this.normalizeCategoryId(categoryId)
-      
-      // Scroll to the category section
-      this.$nextTick(() => {
-        // Find the category header for this category
-        const categoryHeader = document.querySelector(`.category-header[data-category-id="${categoryId}"]`)
-        
-        if (categoryHeader) {
-          // Calculate dynamic offset based on actual header and tab heights
-          const header = document.querySelector('.page-header')
-          const stickyContainer = document.querySelector('.category-tabs-sticky-container')
-          
-          let offset = 140 // Default fallback
-          if (header && stickyContainer) {
-            const headerHeight = header.offsetHeight
-            const tabsHeight = stickyContainer.offsetHeight
-            offset = headerHeight + tabsHeight + 10 // 10px padding
-          }
-          
-          const elementPosition = categoryHeader.getBoundingClientRect().top
-          const offsetPosition = elementPosition + window.pageYOffset - offset
-          
-          window.scrollTo({
-            top: offsetPosition,
-            behavior: 'smooth'
-          })
-        }
-      })
-    },
-    setupScrollIndicators() {
-      const container = this.$refs.categoryTabs?.parentElement
-      if (!container) return
-      
-      this.updateScrollIndicators()
-      container.addEventListener('scroll', this.updateScrollIndicators)
-      
-      // Also update on window resize
-      window.addEventListener('resize', this.updateScrollIndicators)
     },
     setupStickyFallback() {
       // Check if we're in iOS PWA standalone mode
@@ -849,6 +770,7 @@ export default {
             // Store the initial offset from top of document
             this.stickyOriginalTop = stickyContainer.offsetTop
           }
+          window.removeEventListener('scroll', this.handleStickyScroll)
           window.addEventListener('scroll', this.handleStickyScroll, { passive: true })
           this.handleStickyScroll()
         }, 500)
@@ -918,126 +840,6 @@ export default {
         stickyContainer.style.zIndex = ''
         stickyContainer.style.margin = ''
         stickyContainer.style.boxSizing = ''
-      }
-    },
-    setupScrollSpy() {
-      window.addEventListener('scroll', this.handleScrollSpy, { passive: true })
-      // Initial call
-      this.handleScrollSpy()
-    },
-    handleScrollSpy() {
-      // Throttle the scroll spy for performance
-      if (this._scrollSpyTimeout) return
-      
-      this._scrollSpyTimeout = setTimeout(() => {
-        this._scrollSpyTimeout = null
-        
-        const header = document.querySelector('.page-header')
-        const stickyContainer = document.querySelector('.category-tabs-sticky-container')
-        
-        if (!header || !stickyContainer) return
-        
-        const headerHeight = header.offsetHeight
-        const tabsHeight = stickyContainer.offsetHeight
-        const offset = headerHeight + tabsHeight + 20 // Offset from top where we check
-        
-        // Get all category headers
-        const categoryHeaders = document.querySelectorAll('.category-header[data-category-id]')
-        
-        if (categoryHeaders.length === 0) return
-        
-        // Find which category is currently in view
-        let currentCategoryId = null
-        
-        for (const categoryHeader of categoryHeaders) {
-          const rect = categoryHeader.getBoundingClientRect()
-          
-          // If the category header is above the offset point, it's the active one
-          if (rect.top <= offset) {
-            currentCategoryId = categoryHeader.getAttribute('data-category-id')
-          } else {
-            // Once we find one that's below, stop
-            break
-          }
-        }
-        
-        // Update selected category if changed
-        const normalizedId = this.normalizeCategoryId(currentCategoryId)
-        if (normalizedId != null && this.selectedCategoryId !== normalizedId) {
-          this.selectedCategoryId = normalizedId
-          
-          // Auto-scroll the tab bar to show the active tab
-          this.$nextTick(() => {
-            this.scrollTabIntoView(normalizedId)
-          })
-        }
-      }, 100) // 100ms throttle
-    },
-    scrollTabIntoView(categoryId) {
-      const tabsContainer = this.$refs.categoryTabs?.parentElement
-      if (!tabsContainer) return
-      
-      // Find the active tab button
-      const activeTab = tabsContainer.querySelector(`.category-tab[class*="active"]`)
-      if (!activeTab) return
-      
-      // Get positions relative to the scroll container
-      const containerScrollLeft = tabsContainer.scrollLeft
-      const tabOffsetLeft = activeTab.offsetLeft
-      const tabWidth = activeTab.offsetWidth
-      const containerWidth = tabsContainer.clientWidth
-      
-      // Calculate visible range
-      const visibleStart = containerScrollLeft
-      const visibleEnd = containerScrollLeft + containerWidth
-      const tabStart = tabOffsetLeft
-      const tabEnd = tabOffsetLeft + tabWidth
-      
-      // Check if tab is out of view
-      const isOutOfViewLeft = tabStart < visibleStart
-      const isOutOfViewRight = tabEnd > visibleEnd
-      
-      // Only scroll if the tab is out of view
-      if (isOutOfViewLeft) {
-        // Tab is off to the left - scroll to show it with some padding
-        const targetScrollLeft = Math.max(0, tabOffsetLeft - 20) // 20px padding, don't go below 0
-        tabsContainer.scrollTo({
-          left: targetScrollLeft,
-          behavior: 'smooth'
-        })
-      } else if (isOutOfViewRight) {
-        // Tab is off to the right - scroll to show it with some padding
-        const targetScrollLeft = tabOffsetLeft - containerWidth + tabWidth + 20 // 20px padding from right
-        tabsContainer.scrollTo({
-          left: targetScrollLeft,
-          behavior: 'smooth'
-        })
-      }
-      // If tab is already visible, don't scroll
-    },
-    updateScrollIndicators() {
-      const container = this.$refs.categoryTabs?.parentElement
-      const wrapper = container?.parentElement
-      if (!container) return
-      
-      const canScrollLeft = container.scrollLeft > 10
-      const canScrollRight = container.scrollLeft < container.scrollWidth - container.clientWidth - 10
-      
-      if (canScrollLeft) {
-        container.classList.add('can-scroll-left')
-      } else {
-        container.classList.remove('can-scroll-left')
-      }
-      
-      if (canScrollRight) {
-        container.classList.add('can-scroll-right')
-      } else {
-        container.classList.remove('can-scroll-right')
-      }
-      
-      // Hide animation hint after user scrolls
-      if (container.scrollLeft > 0 && wrapper) {
-        wrapper.classList.add('user-has-scrolled')
       }
     },
     formatDate(dateString) {
@@ -1733,148 +1535,6 @@ export default {
   color: var(--md-on-surface);
   margin-bottom: var(--md-spacing-md);
   font-weight: 500;
-}
-
-.category-tabs-sticky-container {
-  position: -webkit-sticky;
-  position: sticky;
-  top: 85px;
-  z-index: 100;
-  margin: 0 calc(-1 * var(--md-spacing-lg));
-  margin-bottom: var(--md-spacing-lg);
-  background: var(--md-surface);
-  box-sizing: border-box;
-}
-
-.category-tabs-sticky-container::before {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: 0;
-  right: 0;
-  height: 5px;
-  background: var(--md-surface);
-  z-index: -1;
-}
-
-.category-tabs-wrapper {
-  background: var(--md-surface);
-  padding: var(--md-spacing-lg) var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-lg) + 5px);
-  padding-bottom: var(--md-spacing-md);
-  box-shadow: none;
-  position: relative;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.category-tabs-wrapper::before {
-  display: none;
-}
-
-/* Hide animation when user has scrolled */
-.category-tabs-wrapper.user-has-scrolled::before {
-  display: none;
-}
-
-.category-tabs-wrapper::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--md-outline-variant);
-  opacity: 0.3;
-}
-
-.category-tabs-container {
-  position: relative;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
-}
-
-.category-tabs-container::-webkit-scrollbar {
-  display: none;
-}
-
-.scroll-indicator {
-  display: none;
-}
-
-.category-tabs {
-  display: flex;
-  gap: var(--md-spacing-sm);
-  min-width: min-content;
-  padding-bottom: var(--md-spacing-xs);
-  padding-left: 2px;
-  padding-right: 2px;
-}
-
-.category-tab {
-  flex-shrink: 0;
-  padding: var(--md-spacing-md) var(--md-spacing-lg);
-  border: none;
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  border-radius: var(--md-radius-md);
-  font-size: var(--md-label-size);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  white-space: nowrap;
-  position: relative;
-  -webkit-tap-highlight-color: transparent;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  overflow: visible;
-}
-
-.category-tab:hover {
-  background: var(--md-outline-variant);
-}
-
-.category-tab.active {
-  background: var(--md-primary);
-  color: white;
-}
-
-.category-tab.discount-tab {
-  background: #FFEBEE;
-  color: #E53935;
-}
-
-.category-tab.discount-tab:hover {
-  background: #FFCDD2;
-}
-
-.category-tab.discount-tab.active {
-  background: #FF4444;
-  color: #fff;
-}
-
-.category-tab:active {
-  transform: scale(0.96);
-}
-
-@media (max-width: 480px) {
-  .category-tab {
-    padding: var(--md-spacing-xs) var(--md-spacing-md);
-    font-size: 0.8125rem;
-  }
-  
-  .category-tabs-sticky-container {
-    top: 85px;
-    margin-left: calc(-1 * var(--md-spacing-md));
-    margin-right: calc(-1 * var(--md-spacing-md));
-  }
-  
-  .category-tabs-wrapper {
-    padding: var(--md-spacing-sm) var(--md-spacing-md);
-  }
 }
 
 .empty-products {

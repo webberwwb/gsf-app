@@ -15,7 +15,30 @@
         <div class="overview-grid">
           <div>
             <div class="label">时薪</div>
-            <div class="value">${{ rateDisplay(earnings.profile?.hourly_rate) }}</div>
+            <input
+              v-if="isAdmin && editingRate"
+              v-model="rateForm.hourly_rate"
+              type="number"
+              min="0"
+              step="0.01"
+              class="date-input rate-input"
+              aria-label="时薪"
+            />
+            <div v-else class="value rate-value">
+              <span>${{ rateDisplay(earnings.profile?.hourly_rate) }}</span>
+              <button
+                v-if="isAdmin"
+                type="button"
+                class="session-icon-btn"
+                title="编辑时薪"
+                aria-label="编辑时薪"
+                @click="startRateEdit"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div>
             <div class="label">万锦 / 列治文山</div>
@@ -38,11 +61,9 @@
             <div class="value highlight-text">${{ rateDisplay(totalEarned) }}</div>
           </div>
         </div>
-        <div v-if="isAdmin" class="session-form rate-edit">
-          <label>时薪
-            <input v-model="rateForm.hourly_rate" type="number" min="0" step="0.01" class="date-input" />
-          </label>
-          <button class="add-btn compact" @click="saveRates">保存费率</button>
+        <div v-if="isAdmin && editingRate" class="rate-edit">
+          <button type="button" class="ghost-btn" :disabled="savingRate" @click="cancelRateEdit">取消</button>
+          <button type="button" class="add-btn" :disabled="savingRate" @click="saveRates">保存</button>
         </div>
       </section>
 
@@ -129,52 +150,111 @@
         </div>
       </section>
 
-      <section v-else-if="activeTab === 'delivery'" class="panel">
-        <div v-if="!earnings.deliveries.length" class="empty-inline">暂无已完成的自己配送订单</div>
-        <div v-for="row in earnings.deliveries" :key="row.order_id" class="row-card">
-          <div>
-            <strong>{{ row.order_number }}</strong>
-            <div class="muted">{{ row.group_deal_title || '团购' }}<span v-if="row.city"> · {{ row.city }}</span> · {{ row.delivered_at || '' }}</div>
-            <div v-if="row.cash_collected" class="muted">代收现金 ${{ rateDisplay(row.cash_collected) }}</div>
-            <div v-if="row.fee_overridden" class="muted">已更正（系统建议 ${{ rateDisplay(row.suggested_fee) }}）</div>
-          </div>
-          <div class="fee-cell">
-            <template v-if="isAdmin && editingFeeId === row.order_id">
-              <input
-                v-model="editingFeeAmount"
-                type="number"
-                min="0"
-                step="0.01"
-                class="date-input fee-input"
-              />
-              <button type="button" class="add-btn compact" :disabled="savingFee" @click="saveFee(row)">保存</button>
-              <button type="button" class="ghost-btn" :disabled="savingFee" @click="cancelFeeEdit">取消</button>
-            </template>
-            <template v-else>
-              <strong>${{ row.fee.toFixed(2) }}</strong>
-              <button v-if="isAdmin" type="button" class="ghost-btn" @click="startFeeEdit(row)">更正</button>
-            </template>
-          </div>
-        </div>
-      </section>
-
-      <div v-else class="settlement-tab">
+      <div v-else-if="activeTab === 'delivery'" class="settlement-tab">
+        <div v-if="!deliveryCycles.length" class="empty-inline">暂无已完成的自己配送订单</div>
         <section
-          v-for="cycle in (earnings.cycles || [])"
-          :key="cycle.period_end"
+          v-for="cycle in deliveryCycles"
+          :key="`delivery-deal-${cycle.group_deal_id || 'unassigned'}`"
           class="billing-card"
         >
-          <div class="billing-row">
-            <div>
-              <div class="label">结算周期</div>
-              <div class="value">{{ cycle.period_start }} 至 {{ cycle.period_end }}</div>
-            </div>
-            <div>
-              <div class="label">结算日期</div>
-              <div class="value highlight-text">
-                {{ cycle.pay_date }}
-                <span v-if="cycle.pay_weekday">（{{ cycle.pay_weekday }}）</span>
+          <button
+            type="button"
+            class="cycle-toggle"
+            :aria-expanded="deliveryOpen(cycle) ? 'true' : 'false'"
+            @click="toggleLog('delivery', cycle)"
+          >
+            <div class="cycle-heading">
+              <div class="value">{{ cycle.group_deal_title || '未关联团购' }}</div>
+              <div v-if="cycle.pickup_date" class="muted">
+                取货 {{ cycle.pickup_date }}
+                <span v-if="cycle.group_deal_status_label"> · {{ cycle.group_deal_status_label }}</span>
               </div>
+            </div>
+            <span class="cycle-toggle-side">
+              <span class="cycle-earn">${{ rateDisplay(cycle.totals?.delivery) }}</span>
+              <span class="cycle-toggle-meta">
+                <span>{{ cycle.deliveries.length }} 单</span>
+                <span class="cycle-chevron" :class="{ open: deliveryOpen(cycle) }" aria-hidden="true"></span>
+              </span>
+            </span>
+          </button>
+          <div v-show="deliveryOpen(cycle)">
+          <div
+            v-for="row in cycle.deliveries"
+            :key="row.order_id"
+            class="row-card delivery-row"
+            :class="{ 'is-editing': isAdmin && editingFeeId === row.order_id }"
+          >
+            <div class="delivery-head">
+              <strong>{{ row.recipient_name || '客户' }}</strong>
+              <span v-if="Number(row.cash_collected) > 0" class="delivery-cash">${{ rateDisplay(row.cash_collected) }}</span>
+            </div>
+            <div class="fee-cell">
+              <template v-if="isAdmin && editingFeeId === row.order_id">
+                <input
+                  v-model="editingFeeAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="date-input fee-input"
+                />
+                <button type="button" class="add-btn compact" :disabled="savingFee" @click="saveFee(row)">保存</button>
+                <button type="button" class="ghost-btn" :disabled="savingFee" @click="cancelFeeEdit">取消</button>
+              </template>
+              <template v-else>
+                <span class="fee-readout">${{ Number(row.fee).toFixed(2) }}</span>
+                <button
+                  v-if="isAdmin"
+                  type="button"
+                  class="session-icon-btn"
+                  :title="row.fee_overridden ? `已更正，系统建议 $${rateDisplay(row.suggested_fee)}` : '更正配送费'"
+                  aria-label="更正配送费"
+                  @click="startFeeEdit(row)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                  </svg>
+                </button>
+              </template>
+            </div>
+            <div class="delivery-address">{{ row.address || '无地址' }}</div>
+          </div>
+          </div>
+        </section>
+      </div>
+
+      <div v-else class="settlement-tab">
+        <div v-if="!(earnings.cycles || []).length" class="empty-inline">暂无团购结算</div>
+        <section
+          v-for="cycle in (earnings.cycles || [])"
+          :key="cycle.group_deal_id || 'unassigned'"
+          class="billing-card"
+        >
+          <div class="cycle-heading-row">
+            <div class="cycle-heading">
+              <div class="label">团购</div>
+              <div class="value">{{ cycle.group_deal_title || '未关联团购' }}</div>
+              <div v-if="cycle.pickup_date" class="muted">
+                取货 {{ cycle.pickup_date }}
+                <span v-if="cycle.group_deal_status_label"> · {{ cycle.group_deal_status_label }}</span>
+              </div>
+            </div>
+            <div class="cycle-settle">
+              <span v-if="cycle.settled" class="settled-badge">已结算</span>
+              <button
+                v-if="isAdmin && !cycle.settled"
+                type="button"
+                class="add-btn"
+                :disabled="settlingId === (cycle.group_deal_id || 'unassigned')"
+                @click="markSettled(cycle, true)"
+              >标为已结算</button>
+              <button
+                v-else-if="isAdmin && cycle.settled"
+                type="button"
+                class="ghost-btn"
+                :disabled="settlingId === (cycle.group_deal_id || 'unassigned')"
+                @click="markSettled(cycle, false)"
+              >撤销</button>
             </div>
           </div>
           <div class="billing-row billing-row--stats">
@@ -199,6 +279,38 @@
             <div>
               <div class="label">待付</div>
               <div class="value highlight-text">${{ cycle.totals.outstanding.toFixed(2) }}</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="log-toggle"
+            :aria-expanded="logOpen('settlement', cycle) ? 'true' : 'false'"
+            @click="toggleLog('settlement', cycle)"
+          >
+            <span>{{ logOpen('settlement', cycle) ? '收起明细' : '展开明细' }}</span>
+            <span class="muted">{{ (cycle.sessions || []).length }} 次配货 · {{ (cycle.deliveries || []).length }} 单配送</span>
+            <span class="cycle-chevron" :class="{ open: logOpen('settlement', cycle) }" aria-hidden="true"></span>
+          </button>
+          <div v-show="logOpen('settlement', cycle)" class="cycle-detail">
+            <div class="cycle-detail-title">配货记录</div>
+            <div v-if="!(cycle.sessions || []).length" class="empty-inline">这个团购没有配货时间</div>
+            <div v-for="session in cycle.sessions" :key="`session-${session.id}`" class="session-card">
+              <div class="session-row">
+                <strong>{{ session.work_date }}</strong>
+                <strong>${{ rateDisplay(session.labor_amount) }}</strong>
+              </div>
+              <div class="muted">{{ session.start_time }} – {{ session.end_time || '进行中' }}<span v-if="session.hours != null"> · {{ hoursDisplay(session.hours) }} 小时</span></div>
+              <div v-if="session.notes" class="muted">{{ session.notes }}</div>
+            </div>
+            <div class="cycle-detail-title">配送记录</div>
+            <div v-if="!(cycle.deliveries || []).length" class="empty-inline">这个团购没有配送订单</div>
+            <div v-for="row in cycle.deliveries" :key="`delivery-${row.order_id}`" class="row-card delivery-row">
+              <div class="delivery-head">
+                <strong>{{ row.recipient_name || '客户' }}</strong>
+                <span class="delivery-earn">${{ Number(row.fee || 0).toFixed(2) }}</span>
+                <span v-if="Number(row.cash_collected) > 0" class="delivery-cash">${{ rateDisplay(row.cash_collected) }}</span>
+              </div>
+              <div class="delivery-address">{{ row.address || '无地址' }}</div>
             </div>
           </div>
         </section>
@@ -250,10 +362,14 @@ export default {
         notes: ''
       },
       rateForm: { hourly_rate: 0 },
+      editingRate: false,
+      savingRate: false,
       payoutForm: { amount: '', notes: '' },
       editingFeeId: null,
       editingFeeAmount: '',
-      savingFee: false
+      savingFee: false,
+      settlingId: null,
+      expandedLogs: {}
     }
   },
   computed: {
@@ -261,12 +377,32 @@ export default {
       const totals = this.earnings?.totals || {}
       if (totals.earned != null) return totals.earned
       return Number(totals.labor || 0) + Number(totals.delivery || 0)
+    },
+    deliveryCycles() {
+      return (this.earnings?.cycles || []).filter((cycle) => (cycle.deliveries || []).length)
     }
   },
   mounted() {
     this.init()
   },
   methods: {
+    logKey(scope, cycle) {
+      return `${scope}:${cycle.group_deal_id || 'unassigned'}`
+    },
+    logOpen(scope, cycle) {
+      return !!this.expandedLogs[this.logKey(scope, cycle)]
+    },
+    toggleLog(scope, cycle) {
+      const key = this.logKey(scope, cycle)
+      this.expandedLogs = {
+        ...this.expandedLogs,
+        [key]: !this.expandedLogs[key]
+      }
+    },
+    deliveryOpen(cycle) {
+      if (this.logOpen('delivery', cycle)) return true
+      return (cycle.deliveries || []).some((row) => row.order_id === this.editingFeeId)
+    },
     async init() {
       if (this.isAdmin) {
         const res = await apiClient.get('/admin/fulfillment/staff')
@@ -403,13 +539,49 @@ export default {
         this.savingFee = false
       }
     },
+    startRateEdit() {
+      this.rateForm.hourly_rate = this.earnings?.profile?.hourly_rate ?? 0
+      this.editingRate = true
+    },
+    cancelRateEdit() {
+      this.editingRate = false
+      this.rateForm.hourly_rate = this.earnings?.profile?.hourly_rate ?? 0
+    },
     async saveRates() {
+      this.savingRate = true
       try {
-        await apiClient.put(`/admin/fulfillment/profiles/${this.selectedUserId}`, this.rateForm)
-        await this.success('费率已更新')
+        await apiClient.put(`/admin/fulfillment/profiles/${this.selectedUserId}`, {
+          hourly_rate: this.rateForm.hourly_rate
+        })
+        this.editingRate = false
+        await this.success('时薪已更新')
         await this.loadEarnings()
       } catch (e) {
         await this.showError(e.response?.data?.error || '保存失败')
+      } finally {
+        this.savingRate = false
+      }
+    },
+    async markSettled(cycle, settled) {
+      const title = cycle.group_deal_title || '未关联团购'
+      const ok = await this.confirm(
+        settled ? `把「${title}」标为已结算？这一期的待付会记成已付。` : `撤销「${title}」的已结算？`,
+        { type: 'warning' }
+      )
+      if (!ok) return
+      const key = cycle.group_deal_id || 'unassigned'
+      this.settlingId = key
+      try {
+        await apiClient.post('/admin/fulfillment/settlements', {
+          user_id: this.selectedUserId,
+          group_deal_id: cycle.group_deal_id,
+          settled
+        })
+        await this.loadEarnings()
+      } catch (e) {
+        await this.showError(e.response?.data?.error || '结算失败')
+      } finally {
+        this.settlingId = null
       }
     },
     async savePayout() {
@@ -545,9 +717,42 @@ export default {
   padding-top: 1rem;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
+.overview-card .rate-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+}
+.overview-card .rate-value .session-icon-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+}
+.overview-card .rate-input {
+  width: 6.5rem;
+  max-width: 100%;
+  height: 36px;
+  margin-top: 0.15rem;
+  text-align: center;
+  box-sizing: border-box;
+}
 .rate-edit {
-  margin-top: var(--md-spacing-md);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
   margin-bottom: 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.rate-edit .add-btn,
+.rate-edit .ghost-btn {
+  width: auto;
+  min-height: 42px;
+  height: 42px;
+  padding: 0 0.9rem;
 }
 .lane-tabs {
   display: flex;
@@ -579,6 +784,125 @@ export default {
 }
 .billing-row--stats {
   margin-top: var(--md-spacing-md);
+}
+.cycle-heading .value {
+  overflow-wrap: anywhere;
+}
+.cycle-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.cycle-heading {
+  min-width: 0;
+}
+.cycle-settle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+.cycle-settle .add-btn,
+.cycle-settle .ghost-btn {
+  width: auto;
+  min-height: 36px;
+  padding: 0.35rem 0.7rem;
+  white-space: nowrap;
+}
+.settled-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  background: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cycle-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cycle-toggle-side,
+.log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+  color: var(--md-on-surface-variant);
+  font-size: 13px;
+}
+.log-toggle {
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--md-spacing-md);
+  padding: 0.65rem 0 0;
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.cycle-toggle-side {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+.cycle-earn {
+  color: var(--md-on-surface);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.cycle-toggle-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.log-toggle .muted {
+  font-weight: 400;
+  margin-right: auto;
+}
+.cycle-chevron {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  margin-top: -0.15rem;
+  flex: 0 0 auto;
+}
+.cycle-chevron.open {
+  transform: rotate(-135deg);
+  margin-top: 0.15rem;
+}
+.cycle-detail {
+  margin-top: var(--md-spacing-md);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.cycle-detail-title {
+  margin-top: var(--md-spacing-md);
+  font-size: var(--md-label-size);
+  font-weight: 600;
+  color: var(--md-on-surface);
 }
 @media (min-width: 800px) {
   .billing-row--rates {
@@ -673,6 +997,64 @@ export default {
 .row-card > div {
   min-width: 0;
 }
+.delivery-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.75rem;
+  row-gap: 0.2rem;
+  align-items: center;
+  padding: 0.8rem 0;
+}
+.delivery-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.delivery-head strong {
+  flex: 1 1 auto;
+  min-width: 2.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.delivery-earn {
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1.3;
+  color: var(--md-on-surface);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.delivery-cash {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 14px;
+  line-height: 1.3;
+  color: #c62828;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.delivery-address {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--md-on-surface-variant);
+  font-weight: 400;
+}
+.delivery-row.is-editing {
+  grid-template-columns: minmax(0, 1fr);
+}
+.delivery-row.is-editing .fee-cell {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+}
 .session-card {
   padding: 1rem 0;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
@@ -752,9 +1134,34 @@ export default {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.4rem;
+  gap: 0.35rem;
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+.fee-readout {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--md-on-surface);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.fee-cell .ghost-btn,
+.fee-cell .add-btn {
+  min-height: 32px;
+  width: auto;
+  padding: 0.2rem 0.5rem;
+  font-size: 12px;
+}
+.fee-cell .fee-edit {
+  min-height: 32px;
+  height: auto;
+  min-width: 3.6rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface);
 }
 .fee-input {
   width: 96px;
@@ -822,6 +1229,50 @@ export default {
     min-height: 44px;
     width: 100%;
   }
+  .cycle-settle .add-btn,
+  .cycle-settle .ghost-btn {
+    width: auto;
+    min-height: 36px;
+  }
+  .rate-edit {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .rate-edit .add-btn,
+  .rate-edit .ghost-btn {
+    width: auto;
+    min-width: 72px;
+    min-height: 42px;
+  }
+  .fee-cell .ghost-btn,
+  .fee-cell .add-btn {
+    min-height: 36px;
+    width: auto;
+    padding: 0.2rem 0.55rem;
+  }
+  .fee-cell .fee-edit {
+    min-height: 32px;
+    height: auto;
+    min-width: 3.6rem;
+    width: auto;
+    padding: 0.2rem 0.5rem;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .delivery-head strong {
+    font-size: 15px;
+  }
+  .delivery-earn {
+    font-size: 16px;
+  }
+  .delivery-cash {
+    font-size: 14px;
+  }
+  .delivery-address {
+    font-size: 13px;
+  }
   .session-form {
     flex-direction: column;
     align-items: stretch;
@@ -840,6 +1291,10 @@ export default {
   .fee-cell .ghost-btn {
     width: auto;
     min-width: 72px;
+  }
+  .fee-cell .fee-edit {
+    min-width: 3.6rem;
+    width: auto;
   }
   .session-icon-btn {
     width: 33px;

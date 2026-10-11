@@ -515,9 +515,15 @@
                       type="number" 
                       step="0.001"
                       v-model.number="item.final_weight"
-                      @input="recalculateItemPrice(index)"
+                      @input="onWeightInput(index)"
+                      @blur="persistItemWeight(index)"
+                      @keydown.enter.prevent="$event.target.blur()"
                       :placeholder="item.final_weight ? item.final_weight.toString() : '输入重量'"
                       class="weight-input" />
+                    <span
+                      class="weight-save-status"
+                      :class="'weight-save-status--' + weightStatus(item)"
+                    >{{ weightStatusText(item) }}</span>
                   </div>
                 </div>
                 <div class="item-side-actions">
@@ -795,6 +801,7 @@
 
 <script>
 import apiClient from '../api/client'
+import { putOrderWeights } from '../utils/orderUpdateRequest'
 import { useModal } from '../composables/useModal'
 import {
   editableRowMissingFinalWeight as rowNeedsFinalWeight
@@ -851,7 +858,7 @@ export default {
       default: null
     }
   },
-  emits: ['close', 'update', 'mark-paid', 'mark-unpaid', 'mark-complete', 'status-change', 'payment-method-change', 'order-updated', 'update-error', 'products-loaded'],
+  emits: ['close', 'update', 'mark-paid', 'mark-unpaid', 'mark-complete', 'status-change', 'payment-method-change', 'order-updated', 'weight-saved', 'update-error', 'products-loaded'],
   data() {
     return {
       localOrderStatus: '',
@@ -901,7 +908,9 @@ export default {
       auditError: null,
       shippingConfigReady: false,
       viewingPhoto: '',
-      deletingPhoto: false
+      deletingPhoto: false,
+      weightSaveState: {},
+      savedWeights: {}
     }
   },
   computed: {
@@ -1322,6 +1331,7 @@ export default {
         this.isInitializingOrder = false
         this.hydrateItemProductsFromDeal()
         this.recalculateAllItemPrices()
+        this.rememberSavedWeights()
         this.captureBaseline()
         this.loadAuditTrail()
       })
@@ -1354,6 +1364,8 @@ export default {
         longitude: null,
         place_id: null
       }
+      this.weightSaveState = {}
+      this.savedWeights = {}
       this.editableItems = []
       this.cachedBuyerPricing = null
       this.showAddProductModal = false
@@ -1507,6 +1519,7 @@ export default {
         if (!this.isInitializingOrder) {
           this.hydrateItemProductsFromDeal()
           this.recalculateAllItemPrices()
+          this.rememberSavedWeights()
           this.captureBaseline()
           this.loadAuditTrail()
         }
@@ -1904,6 +1917,81 @@ export default {
     },
     isOutOfStock(product) {
       return !this.canIncreaseProduct(product)
+    },
+    onWeightInput(index) {
+      this.recalculateItemPrice(index)
+      const item = this.editableItems[index]
+      if (!item?.id) return
+      const weight = this.snapshotWeight(item.final_weight)
+      const status = weight === this.savedWeights[item.id] ? 'saved' : 'draft'
+      this.weightSaveState = { ...this.weightSaveState, [item.id]: status }
+    },
+    rememberSavedWeights() {
+      const saved = {}
+      for (const item of this.editableItems) {
+        if (!item?.id) continue
+        saved[item.id] = this.snapshotWeight(item.final_weight)
+      }
+      this.savedWeights = saved
+      this.weightSaveState = {}
+    },
+    weightStatus(item) {
+      if (!item?.id) return 'hint'
+      return this.weightSaveState[item.id] || 'hint'
+    },
+    weightStatusText(item) {
+      const status = this.weightStatus(item)
+      if (status === 'draft') return '还没保存'
+      if (status === 'saving') return '保存中'
+      if (status === 'saved') return '已保存'
+      if (status === 'error') return '没保存上，再点到输入框外'
+      return '离开输入框后自动保存'
+    },
+    async persistItemWeight(index) {
+      const item = this.editableItems[index]
+      if (!item?.id || !this.order?.id) return
+      const weight = this.snapshotWeight(item.final_weight)
+      if (typeof weight !== 'number' || weight <= 0) return
+      if (this.savedWeights[item.id] === weight) return
+      if (this.weightSaveState[item.id] === 'saving') return
+      this.weightSaveState = { ...this.weightSaveState, [item.id]: 'saving' }
+      try {
+        const response = await putOrderWeights(this.order.id, [{ item_id: item.id, final_weight: weight }])
+        const current = this.snapshotWeight(this.editableItems[index]?.final_weight)
+        if (current !== weight) {
+          this.weightSaveState = { ...this.weightSaveState, [item.id]: 'draft' }
+          return
+        }
+        this.savedWeights = { ...this.savedWeights, [item.id]: weight }
+        this.weightSaveState = { ...this.weightSaveState, [item.id]: 'saved' }
+        this.noteWeightInBaseline(item.id, weight)
+        const order = response.data?.order
+        if (order) {
+          this.$emit('weight-saved', {
+            id: order.id,
+            subtotal: order.subtotal,
+            total: order.total,
+            tax: order.tax,
+            shipping_fee: order.shipping_fee,
+            points_earned: order.points_earned
+          })
+        }
+      } catch (error) {
+        this.weightSaveState = { ...this.weightSaveState, [item.id]: 'error' }
+        console.error('Failed to save weight:', error)
+      }
+    },
+    noteWeightInBaseline(itemId, weight) {
+      if (!this.formBaseline) return
+      try {
+        const baseline = JSON.parse(this.formBaseline)
+        const row = (baseline.items || []).find((entry) => entry.id === itemId)
+        if (!row) return
+        row.final_weight = weight
+        this.formBaseline = JSON.stringify(baseline)
+      } catch {
+        // Leave the close warning in place if the baseline cannot be updated.
+      }
     },
     onQuantityInput(index) {
       const item = this.editableItems[index]
@@ -3897,6 +3985,28 @@ export default {
   background: var(--md-surface);
   color: var(--md-on-surface);
   max-width: 200px;
+}
+
+.weight-save-status {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.weight-save-status--hint,
+.weight-save-status--draft {
+  color: #9a3412;
+}
+
+.weight-save-status--saving {
+  color: #6b7280;
+}
+
+.weight-save-status--saved {
+  color: #15803d;
+}
+
+.weight-save-status--error {
+  color: #b91c1c;
 }
 
 .weight-input:focus {

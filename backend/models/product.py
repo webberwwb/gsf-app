@@ -27,8 +27,10 @@ class Product(BaseModel):
     # Stock limit: None/null means unlimited, otherwise number available
     stock_limit = db.Column(db.Integer, nullable=True)
     
-    # Product status
+    # Product status. 下架 is is_active=False and still listed in admin.
+    # deleted_at removes it from the catalog; order history keeps the row.
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
     
     # Supplier relationship (optional)
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True, index=True)
@@ -78,7 +80,7 @@ class Product(BaseModel):
     @property
     def is_available(self):
         """Check if product is available (active and in stock)"""
-        if not self.is_active:
+        if self.deleted_at is not None or not self.is_active:
             return False
         if self.stock_limit is None:
             return True
