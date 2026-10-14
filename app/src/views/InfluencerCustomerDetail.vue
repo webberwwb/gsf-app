@@ -92,7 +92,7 @@ export default {
   padding-bottom: calc(80px + env(safe-area-inset-bottom));
 }
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   display: flex;
@@ -137,7 +137,7 @@ export default {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.12);
+  background: rgba(245, 155, 52, 0.12);
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
 }

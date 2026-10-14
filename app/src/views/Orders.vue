@@ -769,7 +769,7 @@ export default {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   position: sticky;
   top: 0;
@@ -872,7 +872,7 @@ export default {
 
 .signup-btn {
   padding: var(--md-spacing-md) var(--md-spacing-xl);
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
   border: none;
   border-radius: var(--md-radius-md);
@@ -930,7 +930,7 @@ export default {
 .tab.active {
   background: var(--md-primary);
   color: white;
-  box-shadow: 0 2px 4px rgba(255, 140, 0, 0.3);
+  box-shadow: 0 2px 4px rgba(245, 155, 52, 0.3);
 }
 
 .orders-container {
@@ -999,7 +999,7 @@ export default {
 
 .status-badge.pending {
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
 }
 
 .status-badge.confirmed {
@@ -1234,7 +1234,7 @@ export default {
   gap: var(--md-spacing-xs);
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border: 2px solid transparent;
-  background: #FFA500;
+  background: #F59B34;
   color: white;
   border-radius: var(--md-radius-md);
   font-size: calc(var(--md-label-size) + 2px);
@@ -1252,7 +1252,7 @@ export default {
 }
 
 .edit-order-btn:hover {
-  background: #FF8C00;
+  background: var(--md-primary);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(255, 165, 0, 0.3);
 }
@@ -1388,7 +1388,7 @@ export default {
 
 .payment-badge.pending {
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
 }
 
 .payment-badge.paid {
@@ -1402,8 +1402,8 @@ export default {
 }
 
 .payment-badge.card-on-file {
-  background: rgba(255, 140, 0, 0.12);
-  color: #E65100;
+  background: rgba(245, 155, 52, 0.12);
+  color: #D27529;
 }
 
 .bound-card-mini {
@@ -1573,7 +1573,7 @@ export default {
 }
 
 .warning-text {
-  color: #E65100 !important;
+  color: #D27529 !important;
   font-weight: 500;
 }
 
@@ -1810,8 +1810,8 @@ export default {
   border-radius: 999px;
   background: linear-gradient(
     145deg,
-    rgba(255, 140, 0, 0.14) 0%,
-    rgba(255, 140, 0, 0.07) 100%
+    rgba(245, 155, 52, 0.14) 0%,
+    rgba(245, 155, 52, 0.07) 100%
   );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
@@ -1842,7 +1842,7 @@ export default {
 
 .emt-bold-text {
   font-weight: 600;
-  color: #E65100;
+  color: #D27529;
 }
 
 .emt-info-lines {

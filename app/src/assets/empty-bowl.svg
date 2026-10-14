@@ -1,0 +1,14 @@
+<!-- Open bowl empty-state drawing. Saved for later use. Rim is the top ellipse so it does not read as an upside-down dish. -->
+<svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="200" fill="#f3f1ee"/>
+  <ellipse cx="160" cy="162" rx="74" ry="10" fill="#e7e1da"/>
+  <path d="M92 108h136c0 36-28 56-68 56s-68-20-68-56z" fill="#F59B34"/>
+  <ellipse cx="160" cy="108" rx="74" ry="20" fill="#ffffff"/>
+  <ellipse cx="160" cy="108" rx="60" ry="13" fill="#F9D561"/>
+  <circle cx="144" cy="106" r="8" fill="#7CB342"/>
+  <circle cx="166" cy="102" r="7" fill="#E25B4A"/>
+  <circle cx="182" cy="110" r="5" fill="#ffffff"/>
+  <path d="M136 74c6 8 6 8 0 16" fill="none" stroke="#F59B34" stroke-width="3" stroke-linecap="round"/>
+  <path d="M160 60c6 8 6 8 0 16" fill="none" stroke="#F59B34" stroke-width="3" stroke-linecap="round"/>
+  <path d="M184 74c6 8 6 8 0 16" fill="none" stroke="#F59B34" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -36,6 +36,30 @@ const router = createRouter({
       meta: { requiresAuth: false, showBottomNav: true }
     },
     {
+      path: '/recipes/new',
+      name: 'RecipeNew',
+      component: () => import('../views/RecipeComposer.vue'),
+      meta: { requiresAuth: true, showBottomNav: false }
+    },
+    {
+      path: '/recipes/:id/edit',
+      name: 'RecipeEdit',
+      component: () => import('../views/RecipeComposer.vue'),
+      meta: { requiresAuth: true, showBottomNav: false }
+    },
+    {
+      path: '/recipes/:id',
+      name: 'RecipeDetail',
+      component: () => import('../views/RecipeDetail.vue'),
+      meta: { requiresAuth: false, showBottomNav: true }
+    },
+    {
+      path: '/recipes',
+      name: 'Recipes',
+      component: () => import('../views/Recipes.vue'),
+      meta: { requiresAuth: false, showBottomNav: true }
+    },
+    {
       path: '/favorites',
       name: 'Favorites',
       component: () => import('../views/Favorites.vue'),

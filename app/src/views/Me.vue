@@ -14,6 +14,7 @@
         <h2>未登录</h2>
         <p>请先登录以查看您的账号信息</p>
         <button @click="goToLogin" class="signup-btn">立即登录</button>
+        <button type="button" class="outline-btn contact-link" @click="$router.push('/contact')">联系我们</button>
         <DeliveryAgreementLink @open="openDeliveryAgreement" />
       </div>
       
@@ -125,6 +126,34 @@
         </div>
 
         <div class="menu-section">
+        <div class="menu-item" @click="$router.push({ path: '/recipes', query: { mine: '1' } })">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span class="menu-label">我的菜谱</span>
+          <span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" @click="$router.push({ path: '/recipes', query: { liked: '1' } })">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+          <span class="menu-label">我喜欢的</span>
+          <span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" @click="$router.push({ path: '/recipes', query: { collected: '1' } })">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+          </svg>
+          <span class="menu-label">我收藏的</span>
+          <span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" @click="$router.push('/contact')">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <span class="menu-label">联系我们</span>
+          <span class="menu-arrow">›</span>
+        </div>
         <div class="menu-item" @click="$router.push('/orders')">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -825,7 +854,7 @@ export default {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   box-shadow: var(--md-elevation-2);
   position: sticky;
@@ -1163,7 +1192,7 @@ export default {
 
 .signup-btn {
   padding: var(--md-spacing-md) var(--md-spacing-xl);
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
   border: none;
   border-radius: var(--md-radius-md);
@@ -1181,6 +1210,9 @@ export default {
   box-shadow: var(--md-elevation-4);
 }
 
+.contact-link {
+  margin-top: 0.75rem;
+}
 .signup-btn:active {
   transform: translateY(0);
   box-shadow: var(--md-elevation-2);
@@ -1499,7 +1531,7 @@ export default {
 }
 
 .primary-mini {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
   font-weight: 600;
   white-space: nowrap;

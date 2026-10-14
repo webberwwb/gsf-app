@@ -1458,7 +1458,7 @@ export default {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   box-shadow: var(--md-elevation-2);
   position: sticky;
@@ -1614,7 +1614,7 @@ export default {
 .credit-referral-section .credit-promo-row .form-input.credit-input:focus {
   outline: none;
   border-color: var(--md-primary);
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  box-shadow: 0 0 0 3px rgba(245, 155, 52, 0.1);
 }
 
 .credit-promo-field-label {
@@ -1737,7 +1737,7 @@ export default {
 .notes-input:focus {
   outline: none;
   border-color: var(--md-primary);
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  box-shadow: 0 0 0 3px rgba(245, 155, 52, 0.1);
 }
 
 .notes-input::placeholder {
@@ -1962,7 +1962,7 @@ export default {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 140, 0, 0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgba(245, 155, 52, 0.1), transparent);
   transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1979,8 +1979,8 @@ export default {
 
 .payment-option.active {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
+  background: rgba(245, 155, 52, 0.05);
+  box-shadow: 0 4px 12px rgba(245, 155, 52, 0.2);
   animation: optionSelect 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2024,8 +2024,8 @@ export default {
 .card-on-file {
   padding: 12px 14px;
   border-radius: 12px;
-  background: rgba(255, 140, 0, 0.08);
-  border: 1px solid rgba(255, 140, 0, 0.25);
+  background: rgba(245, 155, 52, 0.08);
+  border: 1px solid rgba(245, 155, 52, 0.25);
   font-size: 0.9375rem;
 }
 
@@ -2101,7 +2101,7 @@ export default {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 140, 0, 0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgba(245, 155, 52, 0.1), transparent);
   transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -2118,8 +2118,8 @@ export default {
 
 .delivery-option.active {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
+  background: rgba(245, 155, 52, 0.05);
+  box-shadow: 0 4px 12px rgba(245, 155, 52, 0.2);
   animation: optionSelect 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2161,7 +2161,7 @@ export default {
 }
 
 .delivery-option.active .option-icon svg {
-  filter: drop-shadow(0 2px 4px rgba(255, 140, 0, 0.3));
+  filter: drop-shadow(0 2px 4px rgba(245, 155, 52, 0.3));
 }
 
 @keyframes iconPulse {
@@ -2265,7 +2265,7 @@ export default {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 140, 0, 0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgba(245, 155, 52, 0.1), transparent);
   transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -2282,8 +2282,8 @@ export default {
 
 .pickup-location-card.active {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
+  background: rgba(245, 155, 52, 0.05);
+  box-shadow: 0 4px 12px rgba(245, 155, 52, 0.2);
   animation: locationSelect 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2337,7 +2337,7 @@ export default {
 }
 
 .pickup-location-card.active .location-icon svg {
-  filter: drop-shadow(0 2px 4px rgba(255, 140, 0, 0.3));
+  filter: drop-shadow(0 2px 4px rgba(245, 155, 52, 0.3));
 }
 
 .location-content {
@@ -2366,13 +2366,13 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(245, 155, 52, 0.1);
   border-radius: 50%;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .pickup-location-card.active .location-check {
-  background: rgba(255, 140, 0, 0.2);
+  background: rgba(245, 155, 52, 0.2);
   animation: checkmarkCircle 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2644,7 +2644,7 @@ export default {
 }
 
 .add-first-address-btn:hover {
-  background: #FF7F00;
+  background: var(--md-primary);
   box-shadow: var(--md-elevation-2);
 }
 
@@ -2674,8 +2674,8 @@ export default {
 
 .address-card-modal.active {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
+  background: rgba(245, 155, 52, 0.05);
+  box-shadow: 0 4px 12px rgba(245, 155, 52, 0.2);
 }
 
 .address-header {
@@ -2731,13 +2731,13 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(245, 155, 52, 0.1);
   border-radius: 50%;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .address-card-modal.active .address-check {
-  background: rgba(255, 140, 0, 0.2);
+  background: rgba(245, 155, 52, 0.2);
   animation: checkmarkCircle 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2780,7 +2780,7 @@ export default {
 }
 
 .add-new-address-btn:hover {
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(245, 155, 52, 0.1);
   border-style: solid;
 }
 
@@ -2823,7 +2823,7 @@ export default {
 .confirm-order-btn {
   width: 100%;
   padding: var(--md-spacing-lg) var(--md-spacing-md);
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
   border: none;
   border-radius: var(--md-radius-lg);
@@ -2979,7 +2979,7 @@ export default {
   outline: none;
   border-color: var(--md-primary);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 4px rgba(245, 155, 52, 0.12);
 }
 
 .form-input:disabled {
@@ -3016,7 +3016,7 @@ export default {
 }
 
 .auth-btn.primary {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
   box-shadow: var(--md-elevation-2);
 }

@@ -172,7 +172,7 @@ export default {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   box-shadow: var(--md-elevation-2);
   position: sticky;
@@ -296,7 +296,7 @@ export default {
 }
 
 .add-first-btn:hover {
-  background: #FF7F00;
+  background: var(--md-primary);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -323,7 +323,7 @@ export default {
 
 .address-card.default {
   border-color: var(--md-primary);
-  background: linear-gradient(to bottom, rgba(255, 140, 0, 0.05), var(--md-surface));
+  background: linear-gradient(to bottom, rgba(245, 155, 52, 0.05), var(--md-surface));
 }
 
 .address-header {
@@ -464,7 +464,7 @@ export default {
 }
 
 .floating-add-btn:hover {
-  background: #FF7F00;
+  background: var(--md-primary);
   box-shadow: var(--md-elevation-6);
   transform: scale(1.1);
 }

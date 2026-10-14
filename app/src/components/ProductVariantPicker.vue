@@ -90,7 +90,7 @@ export default {
   padding: 0.2rem 0.45rem;
   border-radius: 999px;
   color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.12);
+  background: rgba(245, 155, 52, 0.12);
 }
 
 .chip-row {
@@ -126,8 +126,8 @@ export default {
 
 .option-chip.selected {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.1);
-  box-shadow: 0 1px 4px rgba(255, 140, 0, 0.15);
+  background: rgba(245, 155, 52, 0.1);
+  box-shadow: 0 1px 4px rgba(245, 155, 52, 0.15);
   padding-right: 0.65rem;
 }
 

@@ -341,7 +341,7 @@ export default {
 }
 
 .copy-btn:hover {
-  background: #FF7F00;
+  background: var(--md-primary);
   transform: scale(1.05);
 }
 
@@ -383,7 +383,7 @@ export default {
 
 .error-details p {
   font-size: var(--md-label-size);
-  color: #E65100;
+  color: #D27529;
   margin: 0;
 }
 
@@ -431,14 +431,14 @@ export default {
 }
 
 .primary-btn {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
-  box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
+  box-shadow: 0 4px 15px rgba(245, 155, 52, 0.3);
 }
 
 .primary-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(255, 140, 0, 0.4);
+  box-shadow: 0 6px 20px rgba(245, 155, 52, 0.4);
 }
 
 .primary-btn:active {

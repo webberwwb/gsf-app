@@ -45,7 +45,7 @@ export default {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   box-shadow: var(--md-elevation-2);
   position: sticky;
@@ -135,7 +135,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.1) 0%, rgba(255, 215, 0, 0.1) 100%);
+  background: linear-gradient(135deg, rgba(245, 155, 52, 0.1) 0%, rgba(255, 215, 0, 0.1) 100%);
   border-radius: 50%;
   color: var(--md-primary);
 }

@@ -246,7 +246,7 @@ export default {
   border-radius: 12px;
   background: linear-gradient(
     145deg,
-    rgba(255, 140, 0, 0.05) 0%,
+    rgba(245, 155, 52, 0.05) 0%,
     rgba(255, 255, 255, 0.4) 42%,
     rgba(0, 0, 0, 0.015) 100%
   );
@@ -347,7 +347,7 @@ export default {
 }
 
 .mini-chip:hover {
-  border-color: rgba(255, 140, 0, 0.28);
+  border-color: rgba(245, 155, 52, 0.28);
   background: rgba(255, 255, 255, 0.85);
   color: var(--md-on-surface);
 }
@@ -357,11 +357,11 @@ export default {
 }
 
 .mini-chip.selected {
-  border-color: rgba(255, 140, 0, 0.45);
-  background: rgba(255, 140, 0, 0.09);
+  border-color: rgba(245, 155, 52, 0.45);
+  background: rgba(245, 155, 52, 0.09);
   color: var(--md-primary);
   font-weight: 500;
-  box-shadow: 0 1px 3px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 1px 3px rgba(245, 155, 52, 0.12);
 }
 
 .chip-extra {
@@ -438,15 +438,15 @@ export default {
 
 .vq-btn.at-limit:not(:disabled) {
   border-color: rgba(230, 81, 0, 0.45);
-  color: #E65100;
-  background: rgba(255, 140, 0, 0.1);
+  color: #D27529;
+  background: rgba(245, 155, 52, 0.1);
 }
 
 .stock-limit-hint {
   margin: 0.15rem 0 0;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #E65100;
+  color: #D27529;
 }
 
 .vq-input {

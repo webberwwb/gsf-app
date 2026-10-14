@@ -2050,7 +2050,7 @@ export default {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   box-shadow: var(--md-elevation-2);
@@ -2155,7 +2155,7 @@ export default {
 
 .status-badge.pending {
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
 }
 
 .status-badge.confirmed {
@@ -2218,7 +2218,7 @@ export default {
 .payment-badge.pending,
 .payment-badge.unpaid {
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
 }
 
 .payment-badge.paid {
@@ -2232,8 +2232,8 @@ export default {
 }
 
 .payment-badge.card-on-file {
-  background: rgba(255, 140, 0, 0.12);
-  color: #E65100;
+  background: rgba(245, 155, 52, 0.12);
+  color: #D27529;
 }
 
 .deal-info-section {
@@ -2409,7 +2409,7 @@ export default {
 .credit-referral-section .credit-promo-row .form-input.credit-input:focus {
   outline: none;
   border-color: var(--md-primary);
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  box-shadow: 0 0 0 3px rgba(245, 155, 52, 0.1);
 }
 
 .credit-promo-field-label {
@@ -2603,7 +2603,7 @@ export default {
   font-size: 11px;
   font-weight: 500;
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
   flex-shrink: 0;
 }
 
@@ -2671,7 +2671,7 @@ export default {
 }
 
 .stock-info.at-limit {
-  color: #E65100;
+  color: #D27529;
   font-weight: 600;
 }
 
@@ -2733,7 +2733,7 @@ export default {
   margin: 0;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #E65100;
+  color: #D27529;
 }
 
 .qty-btn {
@@ -2758,8 +2758,8 @@ export default {
 
 .qty-btn.at-limit:not(:disabled) {
   border-color: rgba(230, 81, 0, 0.45);
-  color: #E65100;
-  background: rgba(255, 140, 0, 0.1);
+  color: #D27529;
+  background: rgba(245, 155, 52, 0.1);
 }
 
 .qty-input {
@@ -2954,7 +2954,7 @@ export default {
 .card-on-file {
   padding: 12px 14px;
   border-radius: 12px;
-  background: rgba(255, 140, 0, 0.08);
+  background: rgba(245, 155, 52, 0.08);
 }
 
 .card-on-file--empty {
@@ -3198,7 +3198,7 @@ export default {
 }
 
 .update-order-btn {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
 }
 
@@ -3257,7 +3257,7 @@ export default {
   justify-content: center;
   box-shadow: var(--md-elevation-2);
   border: none;
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   color: white;
 }
 
@@ -3281,7 +3281,7 @@ export default {
 .deal-closed-note {
   text-align: center;
   font-size: var(--md-label-size);
-  color: #E65100;
+  color: #D27529;
   margin-top: var(--md-spacing-sm);
   padding: var(--md-spacing-sm);
   background: #FFF3E0;
@@ -3292,7 +3292,7 @@ export default {
   flex: 1 1 100%;
   width: 100%;
   font-size: var(--md-label-size);
-  color: #E65100;
+  color: #D27529;
   margin-top: var(--md-spacing-xs);
   padding: var(--md-spacing-xs) var(--md-spacing-sm);
   background: #FFF3E0;
@@ -3503,7 +3503,7 @@ export default {
 }
 
 .warning-text {
-  color: #E65100 !important;
+  color: #D27529 !important;
   font-weight: 500;
 }
 

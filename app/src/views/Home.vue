@@ -110,6 +110,7 @@
                   <span class="sale-price">${{ product.price }}</span>
                 </template>
               </div>
+              <RecipeProductEntry :product-id="product.id" :count="recipeCount(product.id)" @open="openRecipeBrowser(product.id)" />
               <div v-if="getNextSaleDate(product)" :class="['next-sale-badge', { 'active-deal': isProductInActiveDeal(product) }]">
                 {{ getNextSaleDate(product) }}
               </div>
@@ -127,6 +128,11 @@
       :product="selectedProduct"
       @close="closeProductModal"
     />
+    <RecipeBrowserModal
+      :show="showRecipeModal"
+      :product-id="recipeProductId"
+      @close="closeRecipeBrowser"
+    />
   </div>
 </template>
 
@@ -135,13 +141,17 @@ import apiClient from '../api/client'
 import { parseDateEST, getNowEST } from '../utils/date'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import CategoryTabs from '../components/CategoryTabs.vue'
+import RecipeProductEntry from '../components/RecipeProductEntry.vue'
+import RecipeBrowserModal from '../components/RecipeBrowserModal.vue'
 import { formatMoneyRangeDisplay, formatMoney, formatProductCompareAt, getProductPaidAmount, isProductOnSale } from '../utils/productPriceDisplay'
 
 export default {
   name: 'Home',
   components: {
     ProductDetailModal,
-    CategoryTabs
+    CategoryTabs,
+    RecipeProductEntry,
+    RecipeBrowserModal
   },
   data() {
     return {
@@ -151,7 +161,10 @@ export default {
       categories: [],
       tabsOffset: null,
       showProductModal: false,
-      selectedProduct: null
+      selectedProduct: null,
+      recipeCounts: {},
+      showRecipeModal: false,
+      recipeProductId: null
     }
   },
   computed: {
@@ -234,6 +247,8 @@ export default {
     this.syncTabsOffset()
     window.addEventListener('resize', this.syncTabsOffset)
     await this.loadData()
+    this.openRequestedProduct()
+    this.loadRecipeCounts()
     this.$nextTick(() => this.syncTabsOffset())
   },
   beforeUnmount() {
@@ -395,6 +410,23 @@ export default {
                deal.products.some(p => p.id === productId)
       })
     },
+    recipeCount(productId) {
+      return Number(this.recipeCounts[productId] || this.recipeCounts[String(productId)] || 0)
+    },
+    async loadRecipeCounts() {
+      try {
+        const response = await apiClient.get('/recipes/counts')
+        this.recipeCounts = response.data.counts || {}
+      } catch (error) {
+        this.recipeCounts = {}
+      }
+    },
+    openRequestedProduct() {
+      const raw = this.$route.query.product
+      if (!raw) return
+      const product = this.products.find((item) => String(item.id) === String(raw))
+      if (product) this.openProductModal(product)
+    },
     openProductModal(product) {
       this.selectedProduct = product
       this.showProductModal = true
@@ -402,6 +434,13 @@ export default {
     closeProductModal() {
       this.showProductModal = false
       this.selectedProduct = null
+    },
+    openRecipeBrowser(productId) {
+      this.recipeProductId = productId
+      this.showRecipeModal = true
+    },
+    closeRecipeBrowser() {
+      this.showRecipeModal = false
     },
     getProductImage(product) {
       // Support both old single image format and new multiple images format
@@ -425,7 +464,7 @@ export default {
 }
 
 .shop-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   box-shadow: var(--md-elevation-2);
@@ -679,7 +718,7 @@ export default {
   font-size: 11px;
   font-weight: 500;
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
   margin-bottom: var(--md-spacing-xs);
   width: fit-content;
 }
@@ -750,7 +789,7 @@ export default {
 
 .next-sale-badge {
   width: 100%;
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.15), rgba(255, 215, 0, 0.15));
+  background: linear-gradient(135deg, rgba(245, 155, 52, 0.15), rgba(255, 215, 0, 0.15));
   color: var(--md-on-surface-variant);
   border: 1.5px solid var(--md-primary-variant);
   padding: 0.625rem;

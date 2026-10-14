@@ -1,12 +1,21 @@
 <template>
   <div
     class="category-tabs-sticky-container"
-    :class="{ 'no-bleed': !bleed }"
+    :class="{ 'no-bleed': !bleed, flush, inline }"
     :style="stickyTop ? { top: stickyTop } : null"
   >
     <div class="category-tabs-wrapper" ref="wrapper">
       <div class="category-tabs-container" ref="scroller">
         <div class="category-tabs">
+          <button
+            v-if="showAll"
+            type="button"
+            class="category-tab"
+            :class="{ active: selectedId == null }"
+            @click="selectCategory(null)"
+          >
+            {{ allLabel }}
+          </button>
           <button
             v-if="showDiscount"
             type="button"
@@ -58,8 +67,33 @@ export default {
     pinOnIos: {
       type: Boolean,
       default: false
+    },
+    mode: {
+      type: String,
+      default: 'scroll'
+    },
+    showAll: {
+      type: Boolean,
+      default: false
+    },
+    allLabel: {
+      type: String,
+      default: '全部'
+    },
+    value: {
+      type: [Number, String],
+      default: null
+    },
+    flush: {
+      type: Boolean,
+      default: false
+    },
+    inline: {
+      type: Boolean,
+      default: false
     }
   },
+  emits: ['select'],
   data() {
     return {
       selectedId: null,
@@ -75,14 +109,21 @@ export default {
     showDiscount() {
       this.$nextTick(() => this.updateScrollIndicators())
     },
+    value: {
+      handler(id) {
+        if (this.mode !== 'filter') return
+        this.selectedId = this.normalizeCategoryId(id)
+      },
+      immediate: true
+    },
     selectedId() {
       this.$nextTick(() => this.scrollTabIntoView())
     }
   },
   mounted() {
     this.setupScrollIndicators()
-    this.setupScrollSpy()
-    if (this.pinOnIos) this.setupIosPin()
+    if (this.mode !== 'filter') this.setupScrollSpy()
+    if (this.pinOnIos && !this.inline) this.setupIosPin()
   },
   beforeUnmount() {
     this.$refs.scroller?.removeEventListener('scroll', this.updateScrollIndicators)
@@ -99,12 +140,17 @@ export default {
   methods: {
     normalizeCategoryId(id) {
       if (id == null || id === '') return null
-      if (id === 'discount') return 'discount'
+      if (id === 'discount' || id === 'none') return id
       const n = parseInt(id, 10)
       return Number.isNaN(n) ? id : n
     },
     selectCategory(categoryId) {
       const normalized = this.normalizeCategoryId(categoryId)
+      if (this.mode === 'filter') {
+        this.selectedId = normalized
+        this.$emit('select', normalized)
+        return
+      }
       this.selectedId = normalized
       this._scrollLockId = normalized
       this.$nextTick(() => this.scrollToSection(categoryId))
@@ -353,6 +399,33 @@ export default {
   margin-right: calc(-1 * var(--md-spacing-md));
 }
 
+.category-tabs-sticky-container.flush,
+.category-tabs-sticky-container.inline {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.category-tabs-sticky-container.inline {
+  position: static;
+  top: auto;
+  z-index: auto;
+  margin-bottom: 0;
+  background: transparent;
+}
+
+.category-tabs-sticky-container.inline::before {
+  display: none;
+}
+
+.category-tabs-sticky-container.inline .category-tabs-wrapper {
+  padding: 0.45rem 1rem 0;
+  background: transparent;
+}
+
+.category-tabs-sticky-container.inline .category-tabs-wrapper::after {
+  display: none;
+}
+
 .category-tabs-sticky-container::before {
   content: '';
   position: absolute;
@@ -366,9 +439,7 @@ export default {
 
 .category-tabs-wrapper {
   background: var(--md-surface);
-  padding: var(--md-spacing-lg) var(--md-spacing-lg);
-  padding-top: calc(var(--md-spacing-lg) + 5px);
-  padding-bottom: var(--md-spacing-md);
+  padding: 0.55rem 1rem;
   box-shadow: none;
   position: relative;
   overflow: hidden;
@@ -408,54 +479,53 @@ export default {
 
 .category-tabs {
   display: flex;
-  gap: var(--md-spacing-sm);
+  gap: 0.4rem;
   min-width: min-content;
-  padding-bottom: var(--md-spacing-xs);
-  padding-left: 2px;
-  padding-right: 2px;
+  margin-top: 4px;
+  padding: 8px 0;
 }
 
 .category-tab {
   flex-shrink: 0;
-  padding: var(--md-spacing-md) var(--md-spacing-lg);
+  padding: 0.4rem 0.8rem;
   border: none;
-  background: var(--md-surface-variant);
+  background: transparent;
   color: var(--md-on-surface-variant);
-  border-radius: var(--md-radius-md);
-  font-size: var(--md-label-size);
-  font-weight: 500;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   position: relative;
   -webkit-tap-highlight-color: transparent;
-  min-height: 44px;
+  min-height: 0;
   display: flex;
   align-items: center;
   overflow: visible;
 }
 
 .category-tab:hover {
-  background: var(--md-outline-variant);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .category-tab.active {
-  background: var(--md-primary);
-  color: white;
+  background: #FFF3E4;
+  color: #C46A12;
 }
 
 .category-tab.discount-tab {
-  background: #FFEBEE;
+  background: transparent;
   color: #E53935;
 }
 
 .category-tab.discount-tab:hover {
-  background: #FFCDD2;
+  background: rgba(229, 57, 53, 0.06);
 }
 
 .category-tab.discount-tab.active {
-  background: #FF4444;
-  color: #fff;
+  background: #FFEBEE;
+  color: #E53935;
 }
 
 .category-tab:active {
@@ -463,19 +533,25 @@ export default {
 }
 
 @media (max-width: 480px) {
-  .category-tab {
-    padding: var(--md-spacing-xs) var(--md-spacing-md);
-    font-size: 0.8125rem;
-  }
-
   .category-tabs-sticky-container {
     top: 85px;
     margin-left: calc(-1 * var(--md-spacing-md));
     margin-right: calc(-1 * var(--md-spacing-md));
   }
 
+  .category-tabs-sticky-container.flush,
+  .category-tabs-sticky-container.inline {
+    margin-left: 0;
+    margin-right: 0;
+    top: auto;
+  }
+
+  .category-tabs-sticky-container.inline .category-tabs-wrapper {
+    padding: 0.45rem 1rem 0;
+  }
+
   .category-tabs-wrapper {
-    padding: var(--md-spacing-sm) var(--md-spacing-md);
+    padding: 0.55rem 1rem;
   }
 }
 </style>

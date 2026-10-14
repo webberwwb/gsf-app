@@ -480,7 +480,7 @@ export default {
 .form-input:focus, .form-textarea:focus {
   outline: none;
   border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  box-shadow: 0 0 0 2px rgba(245, 155, 52, 0.2);
 }
 
 .form-textarea {
@@ -568,7 +568,7 @@ export default {
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: var(--md-primary);
   box-shadow: var(--md-elevation-2);
 }
 

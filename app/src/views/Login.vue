@@ -365,9 +365,9 @@ export default {
 }
 
 .verify-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: #EB8E2A;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(245, 155, 52, 0.4);
 }
 
 .verify-btn:active:not(:disabled) {
@@ -439,7 +439,7 @@ export default {
   outline: none;
   border-color: var(--md-primary);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 4px rgba(245, 155, 52, 0.12);
 }
 
 .otp-section {
@@ -525,9 +525,9 @@ export default {
 
 .guest-btn:hover:not(:disabled) {
   border-color: var(--md-primary);
-  background: #FF7F00;
+  background: #EB8E2A;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(245, 155, 52, 0.2);
 }
 
 .guest-btn:active:not(:disabled) {

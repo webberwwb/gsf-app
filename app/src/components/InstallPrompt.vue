@@ -239,7 +239,7 @@ export default {
 }
 
 .install-btn:hover {
-  background: #FF7F00;
+  background: var(--md-primary);
   box-shadow: var(--md-elevation-2);
 }
 

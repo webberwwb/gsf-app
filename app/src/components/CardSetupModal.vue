@@ -96,7 +96,7 @@ export default {
           appearance: {
             theme: 'stripe',
             variables: {
-              colorPrimary: '#ff8c00',
+              colorPrimary: '#f59b34',
               borderRadius: '10px'
             }
           }
@@ -232,7 +232,7 @@ export default {
   padding: 12px 16px;
   border: none;
   border-radius: 12px;
-  background: #ff8c00;
+  background: var(--md-primary);
   color: #fff;
   font-weight: 600;
 }

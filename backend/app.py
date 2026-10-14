@@ -173,6 +173,16 @@ def create_app(config_class=Config):
         app.register_blueprint(admin_fulfillment_bp, url_prefix='/api/admin')
     except ImportError:
         pass
+    try:
+        from routes.recipes import recipes_bp
+        app.register_blueprint(recipes_bp, url_prefix='/api')
+    except ImportError:
+        pass
+    try:
+        from routes.admin_recipes import admin_recipes_bp
+        app.register_blueprint(admin_recipes_bp, url_prefix='/api/admin')
+    except ImportError:
+        pass
     app.register_blueprint(api_bp, url_prefix='/api')
 
     @app.route('/invite/<code>')
@@ -201,6 +211,50 @@ def create_app(config_class=Config):
 <meta http-equiv="refresh" content="0;url={redirect_url}" />
 </head>
 <body><p><a href="{redirect_url}">点击进入谷语农庄</a></p></body>
+</html>'''
+        return Response(html, mimetype='text/html; charset=utf-8')
+
+    @app.route('/share/recipes/<int:recipe_id>')
+    def recipe_share_landing(recipe_id):
+        """HTML landing so WeChat can read a preview card, then open the app."""
+        from flask import Response
+        import html as html_module
+        from services.recipe_service import COOK_TIME_LABELS, DIFFICULTY_LABELS, get_live_recipe
+
+        recipe = get_live_recipe(recipe_id)
+        app_url = config.APP_FRONTEND_URL.rstrip('/')
+        if not recipe:
+            missing = '''<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>菜谱不可用</title></head>
+<body><p>这份菜谱不可用</p></body></html>'''
+            return Response(missing, status=404, mimetype='text/html; charset=utf-8')
+        title = html_module.escape(recipe.title or '菜谱')
+        facts = ' · '.join(
+            label for label in (
+                DIFFICULTY_LABELS.get(recipe.difficulty),
+                COOK_TIME_LABELS.get(recipe.cook_time),
+            ) if label
+        )
+        steps = (recipe.body or '').strip().replace('\n', ' ')
+        desc = html_module.escape(' '.join(part for part in (facts, steps) if part)[:80] or '谷语农庄菜谱')
+        image = html_module.escape(recipe.cover_image or '')
+        redirect_url = f'{app_url}/recipes/{recipe.id}'
+        image_tag = f'<meta property="og:image" content="{image}" />' if image else ''
+        html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+<meta property="og:title" content="{title}" />
+<meta property="og:description" content="{desc}" />
+<meta property="og:type" content="article" />
+{image_tag}
+<meta http-equiv="refresh" content="0;url={redirect_url}" />
+</head>
+<body><p><a href="{redirect_url}">打开菜谱</a></p></body>
 </html>'''
         return Response(html, mimetype='text/html; charset=utf-8')
 

@@ -91,8 +91,8 @@ export default {
 :root {
   --app-safe-top: env(safe-area-inset-top, 0px);
   /* Material Design 3 Colors */
-  --md-primary: #FF8C00;
-  --md-primary-variant: #FFD700;
+  --md-primary: #F59B34;
+  --md-primary-variant: #F9D561;
   --md-surface: #FFFFFF;
   --md-surface-variant: #F5F5F5;
   --md-background: #FAFAFA;

@@ -284,7 +284,7 @@ export default {
 .wechat-input:focus {
   outline: none;
   border-color: var(--md-primary);
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 4px rgba(245, 155, 52, 0.12);
 }
 
 .wechat-input:disabled {
@@ -323,9 +323,9 @@ export default {
 }
 
 .wechat-submit-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: var(--md-primary);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(245, 155, 52, 0.4);
 }
 
 .wechat-submit-btn:active:not(:disabled) {

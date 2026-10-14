@@ -103,6 +103,12 @@ const router = createRouter({
           name: 'WorkArrangement',
           component: () => import('../views/WorkArrangement.vue'),
           meta: { roles: ['admin'] }
+        },
+        {
+          path: 'recipes',
+          name: 'Recipes',
+          component: () => import('../views/Recipes.vue'),
+          meta: { roles: ['admin'] }
         }
       ]
     },

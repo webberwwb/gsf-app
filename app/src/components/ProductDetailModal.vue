@@ -750,7 +750,7 @@ export default {
 }
 .discount-product-badge.influencer-rate {
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
 }
 
 .qty-break-hint {

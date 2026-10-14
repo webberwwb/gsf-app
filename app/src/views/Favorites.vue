@@ -166,7 +166,7 @@ export default {
 }
 
 .browse-btn {
-  background: #FF8C00;
+  background: var(--md-primary);
   color: white;
   border: none;
   padding: 0.75rem 2rem;
@@ -311,19 +311,19 @@ export default {
   letter-spacing: 0.5px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 4px rgba(255, 140, 0, 0.2);
+  box-shadow: 0 2px 4px rgba(245, 155, 52, 0.2);
   text-transform: uppercase;
 }
 
 .add-cart-btn:hover {
-  background: #FF7F00;
-  box-shadow: 0 4px 8px rgba(255, 140, 0, 0.3);
+  background: var(--md-primary);
+  box-shadow: 0 4px 8px rgba(245, 155, 52, 0.3);
   transform: translateY(-1px);
 }
 
 .add-cart-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(255, 140, 0, 0.2);
+  box-shadow: 0 2px 4px rgba(245, 155, 52, 0.2);
 }
 </style>
 

@@ -156,6 +156,8 @@
               :key="product.id"
               class="product-item"
               :data-category-id="product.category_id"
+              :data-product-id="product.id"
+              :class="{ 'recipe-highlight': String(highlightId) === String(product.id) }"
             >
             <div class="product-image" @click="openProductModal(product)">
               <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" />
@@ -178,6 +180,7 @@
                   不计入免运
                 </span>
               </div>
+              <RecipeProductEntry :product-id="product.id" :count="recipeCount(product.id)" @open="openRecipeBrowser(product.id)" />
               <p v-if="product.description" class="product-description-preview" @click="openProductModal(product)">
                 {{ product.description.length > 80 ? product.description.substring(0, 80) + '...' : product.description }}
               </p>
@@ -526,6 +529,11 @@
       :product="selectedProduct"
       @close="closeProductModal"
     />
+    <RecipeBrowserModal
+      :show="showRecipeModal"
+      :product-id="recipeProductId"
+      @close="closeRecipeBrowser"
+    />
 
     <!-- Price Info Modal -->
     <Modal
@@ -550,6 +558,8 @@ import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN } from 
 import { getGroupDealStatusLabel } from '@shared/status-enums.js'
 import { useModal } from '../composables/useModal'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
+import RecipeProductEntry from '../components/RecipeProductEntry.vue'
+import RecipeBrowserModal from '../components/RecipeBrowserModal.vue'
 import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
 import CategoryTabs from '../components/CategoryTabs.vue'
@@ -586,6 +596,8 @@ export default {
   name: 'GroupDealDetail',
   components: {
     ProductDetailModal,
+    RecipeProductEntry,
+    RecipeBrowserModal,
     Modal,
     ProductDetailsSection,
     CategoryTabs
@@ -602,7 +614,10 @@ export default {
       priceInfoMessage: '',
       expandedPricing: {}, // Track which products have expanded pricing details
       categories: [],
-      stickyOriginalTop: null // Store original position of sticky container
+      stickyOriginalTop: null, // Store original position of sticky container
+      recipeCounts: {},
+      showRecipeModal: false,
+      recipeProductId: null
     }
   },
   setup() {
@@ -612,6 +627,9 @@ export default {
     return { checkoutStore, authStore, warning, showError }
   },
   computed: {
+    highlightId() {
+      return this.$route.query.highlight || ''
+    },
     isAuthenticated() {
       return this.authStore.isAuthenticated
     },
@@ -742,7 +760,33 @@ export default {
         console.error('Failed to load deal:', error)
       } finally {
         this.loading = false
+        this.loadRecipeCounts()
+        this.$nextTick(() => this.scrollToHighlight())
       }
+    },
+    recipeCount(productId) {
+      return Number(this.recipeCounts[productId] || this.recipeCounts[String(productId)] || 0)
+    },
+    openRecipeBrowser(productId) {
+      this.recipeProductId = productId
+      this.showRecipeModal = true
+    },
+    closeRecipeBrowser() {
+      this.showRecipeModal = false
+    },
+    async loadRecipeCounts() {
+      try {
+        const response = await apiClient.get('/recipes/counts')
+        this.recipeCounts = response.data.counts || {}
+      } catch (error) {
+        this.recipeCounts = {}
+      }
+    },
+    scrollToHighlight() {
+      if (!this.highlightId) return
+      const el = this.$el.querySelector(`[data-product-id="${this.highlightId}"]`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     },
     goBack() {
       this.$router.push('/')
@@ -1177,7 +1221,7 @@ export default {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
   padding: var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
   box-shadow: var(--md-elevation-2);
@@ -1639,6 +1683,11 @@ export default {
   padding-bottom: 0;
 }
 
+.product-item.recipe-highlight {
+  background: rgba(245, 155, 52, 0.12);
+  border-radius: 12px;
+}
+
 .product-image {
   position: relative;
   width: 100px;
@@ -1719,7 +1768,7 @@ export default {
   font-size: 11px;
   font-weight: 500;
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
   flex-shrink: 0;
 }
 
@@ -1735,7 +1784,7 @@ export default {
 }
 .discount-product-badge.influencer-rate {
   background: #FFF3E0;
-  color: #E65100;
+  color: #D27529;
 }
 
 .qty-break-hint {
@@ -2014,7 +2063,7 @@ export default {
 }
 
 .stock-info.at-limit {
-  color: #E65100;
+  color: #D27529;
   font-weight: 600;
 }
 
@@ -2169,7 +2218,7 @@ export default {
   margin: 0;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #E65100;
+  color: #D27529;
 }
 
 .qty-btn {
@@ -2198,8 +2247,8 @@ export default {
 
 .qty-btn.at-limit:not(:disabled) {
   border-color: rgba(230, 81, 0, 0.45);
-  color: #E65100;
-  background: rgba(255, 140, 0, 0.1);
+  color: #D27529;
+  background: rgba(245, 155, 52, 0.1);
 }
 
 .qty-input {
@@ -2408,7 +2457,7 @@ export default {
 }
 
 .confirm-order-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: var(--md-primary);
   box-shadow: var(--md-elevation-2);
 }
 
@@ -2437,7 +2486,7 @@ export default {
 
 .deal-status-notice .notice-content strong {
   display: block;
-  color: #E65100;
+  color: #D27529;
   font-size: var(--md-body-size);
   margin-bottom: var(--md-spacing-xs);
 }
