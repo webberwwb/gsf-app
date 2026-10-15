@@ -173,7 +173,7 @@
           </svg>
         </button>
       </header>
-      <div class="content-area" :class="{ 'content-area--clock': showClockBar && !clockBarCollapsed }">
+      <div class="content-area" :class="{ 'content-area--clock': showClockBar && !clockBarCollapsed, 'content-area--flush': isRecipes }">
         <router-view />
       </div>
       <FulfillmentClockBar v-if="showClockBar" @collapsed-change="clockBarCollapsed = $event" />
@@ -206,6 +206,9 @@ export default {
   computed: {
     isGroupDealDetail() {
       return this.$route.name === 'GroupDealDetail'
+    },
+    isRecipes() {
+      return this.$route.name === 'Recipes'
     },
     showAdminNav() {
       return !isFulfillmentOnly(this.user)
@@ -892,6 +895,12 @@ export default {
     padding: var(--md-spacing-sm);
     padding-bottom: calc(var(--md-spacing-sm) + env(safe-area-inset-bottom));
   }
+}
+
+/* Recipes sticks its own bar to this edge. Padding here leaves a gap the list scrolls through. */
+.content-area.content-area--flush {
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 </style>
 

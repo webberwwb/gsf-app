@@ -1,6 +1,7 @@
 """Public and customer recipe APIs."""
 from flask import Blueprint, jsonify, request
 
+from constants.feature_flags import is_enabled
 from models import db
 from models.user import AuthToken, User
 from services import recipe_service
@@ -39,6 +40,15 @@ def _payload():
 def _error(exc):
     status = getattr(exc, 'status', 400)
     return jsonify({'error': str(exc)}), status
+
+
+@recipes_bp.before_request
+def _gate_recipes_feature():
+    if request.method == 'OPTIONS':
+        return None
+    if not is_enabled('recipes', _optional_user()):
+        return jsonify({'error': '菜谱不存在'}), 404
+    return None
 
 
 @recipes_bp.route('/recipes/counts', methods=['GET'])

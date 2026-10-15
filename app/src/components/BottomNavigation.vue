@@ -16,16 +16,18 @@
 
 <script>
 import { useCartStore } from '../stores/cart'
+import { useFeatureStore } from '../stores/features'
 
 export default {
   name: 'BottomNavigation',
   setup() {
     const cartStore = useCartStore()
-    return { cartStore }
+    const featureStore = useFeatureStore()
+    return { cartStore, featureStore }
   },
   computed: {
     navItems() {
-      return [
+      const items = [
         {
           path: '/products',
           label: '产品介绍',
@@ -57,6 +59,10 @@ export default {
           badge: null
         }
       ]
+      if (!this.featureStore.loaded || !this.featureStore.flags.recipes) {
+        return items.filter((item) => item.path !== '/recipes')
+      }
+      return items
     }
   },
   mounted() {

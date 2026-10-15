@@ -110,7 +110,7 @@
                   <span class="sale-price">${{ product.price }}</span>
                 </template>
               </div>
-              <RecipeProductEntry :product-id="product.id" :count="recipeCount(product.id)" @open="openRecipeBrowser(product.id)" />
+              <RecipeProductEntry v-if="recipesEnabled" :product-id="product.id" :count="recipeCount(product.id)" @open="openRecipeBrowser(product.id)" />
               <div v-if="getNextSaleDate(product)" :class="['next-sale-badge', { 'active-deal': isProductInActiveDeal(product) }]">
                 {{ getNextSaleDate(product) }}
               </div>
@@ -129,6 +129,7 @@
       @close="closeProductModal"
     />
     <RecipeBrowserModal
+      v-if="recipesEnabled"
       :show="showRecipeModal"
       :product-id="recipeProductId"
       @close="closeRecipeBrowser"
@@ -144,6 +145,7 @@ import CategoryTabs from '../components/CategoryTabs.vue'
 import RecipeProductEntry from '../components/RecipeProductEntry.vue'
 import RecipeBrowserModal from '../components/RecipeBrowserModal.vue'
 import { formatMoneyRangeDisplay, formatMoney, formatProductCompareAt, getProductPaidAmount, isProductOnSale } from '../utils/productPriceDisplay'
+import { useFeatureStore } from '../stores/features'
 
 export default {
   name: 'Home',
@@ -152,6 +154,10 @@ export default {
     CategoryTabs,
     RecipeProductEntry,
     RecipeBrowserModal
+  },
+  setup() {
+    const featureStore = useFeatureStore()
+    return { featureStore }
   },
   data() {
     return {
@@ -168,6 +174,9 @@ export default {
     }
   },
   computed: {
+    recipesEnabled() {
+      return !!(this.featureStore.loaded && this.featureStore.flags.recipes)
+    },
     discountProducts() {
       const seen = new Set()
       const products = []
@@ -241,6 +250,12 @@ export default {
         })
       }
       return sections
+    }
+  },
+  watch: {
+    recipesEnabled(enabled) {
+      if (enabled) this.loadRecipeCounts()
+      else this.recipeCounts = {}
     }
   },
   async mounted() {
@@ -414,6 +429,10 @@ export default {
       return Number(this.recipeCounts[productId] || this.recipeCounts[String(productId)] || 0)
     },
     async loadRecipeCounts() {
+      if (!this.recipesEnabled) {
+        this.recipeCounts = {}
+        return
+      }
       try {
         const response = await apiClient.get('/recipes/counts')
         this.recipeCounts = response.data.counts || {}

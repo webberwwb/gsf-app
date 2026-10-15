@@ -1,7 +1,7 @@
 // Service Worker for Admin PWA with Version Management and iOS-specific fixes
 // UPDATE THIS VERSION NUMBER WHEN DEPLOYING NEW CHANGES
 // This version is automatically updated by update-version.sh script
-const VERSION = '2026.10.10.2110'
+const VERSION = '2026.10.14.1814'
 const CACHE_NAME = `gsf-admin-v${VERSION}`
 const urlsToCache = [
   '/',

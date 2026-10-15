@@ -29,7 +29,23 @@ def admin_list_recipes():
         page = int(request.args.get('page') or 1)
     except ValueError:
         page = 1
-    data = recipe_service.list_recipes(user_id=admin_id, sort='latest', page=page)
+    product_raw = (request.args.get('product_id') or '').strip()
+    product_id = None
+    if product_raw:
+        try:
+            product_id = int(product_raw)
+        except ValueError:
+            return jsonify({'error': '商品无效'}), 400
+    sort = request.args.get('sort') or 'latest'
+    if sort not in ('latest', 'hearts'):
+        sort = 'latest'
+    data = recipe_service.list_recipes(
+        user_id=admin_id,
+        product_id=product_id,
+        sort=sort,
+        page=page,
+        per_page=request.args.get('per_page'),
+    )
     return jsonify(data), 200
 
 

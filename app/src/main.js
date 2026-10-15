@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import { useFeatureStore } from './stores/features'
 import { installInAppLinkGuard } from '@shared/pwaStandalone'
 
 // Initialize app
@@ -18,6 +19,9 @@ const authStore = useAuthStore()
 
 // Load auth from storage
 authStore.loadFromStorage()
+
+// Flags depend on the stored token, so load them after auth is restored.
+useFeatureStore().load()
 
 // Check authentication on app start
 authStore.checkAuth().catch((error) => {

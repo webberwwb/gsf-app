@@ -126,6 +126,7 @@
         </div>
 
         <div class="menu-section">
+        <template v-if="recipesEnabled">
         <div class="menu-item" @click="$router.push({ path: '/recipes', query: { mine: '1' } })">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -147,6 +148,7 @@
           <span class="menu-label">我收藏的</span>
           <span class="menu-arrow">›</span>
         </div>
+        </template>
         <div class="menu-item" @click="$router.push('/contact')">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="menu-icon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -267,6 +269,7 @@ import { getAppPublicOrigin } from '@/config/api'
 import { formatDateTimeEST_CN } from '../utils/date'
 import { useModal } from '../composables/useModal'
 import { useAuthStore } from '../stores/auth'
+import { useFeatureStore } from '../stores/features'
 import { REFERRAL_BIND_DEBOUNCE_MS } from '../utils/referralLiveBind'
 import { getUserHasCompletedOrderCached } from '../utils/referralInviteUi'
 import { formatOrderMoney2 } from '../utils/orderPricing'
@@ -281,7 +284,8 @@ export default {
   setup() {
     const { confirm, error: showError, success, alert: showAlert } = useModal()
     const authStore = useAuthStore()
-    return { confirm, showError, success, showAlert, authStore }
+    const featureStore = useFeatureStore()
+    return { confirm, showError, success, showAlert, authStore, featureStore }
   },
   data() {
     return {
@@ -307,6 +311,9 @@ export default {
   computed: {
     isAuthenticated() {
       return this.authStore.isAuthenticated
+    },
+    recipesEnabled() {
+      return !!(this.featureStore.loaded && this.featureStore.flags.recipes)
     },
     user() {
       return this.authStore.currentUser

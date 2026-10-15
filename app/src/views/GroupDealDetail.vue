@@ -180,7 +180,7 @@
                   不计入免运
                 </span>
               </div>
-              <RecipeProductEntry :product-id="product.id" :count="recipeCount(product.id)" @open="openRecipeBrowser(product.id)" />
+              <RecipeProductEntry v-if="recipesEnabled" :product-id="product.id" :count="recipeCount(product.id)" @open="openRecipeBrowser(product.id)" />
               <p v-if="product.description" class="product-description-preview" @click="openProductModal(product)">
                 {{ product.description.length > 80 ? product.description.substring(0, 80) + '...' : product.description }}
               </p>
@@ -530,6 +530,7 @@
       @close="closeProductModal"
     />
     <RecipeBrowserModal
+      v-if="recipesEnabled"
       :show="showRecipeModal"
       :product-id="recipeProductId"
       @close="closeRecipeBrowser"
@@ -554,6 +555,7 @@
 import apiClient from '../api/client'
 import { useCheckoutStore } from '../stores/checkout'
 import { useAuthStore } from '../stores/auth'
+import { useFeatureStore } from '../stores/features'
 import { formatDateEST_CN, formatDateTimeEST_CN, formatPickupDateTime_CN } from '../utils/date'
 import { getGroupDealStatusLabel } from '@shared/status-enums.js'
 import { useModal } from '../composables/useModal'
@@ -623,8 +625,9 @@ export default {
   setup() {
     const checkoutStore = useCheckoutStore()
     const authStore = useAuthStore()
+    const featureStore = useFeatureStore()
     const { warning, error: showError } = useModal()
-    return { checkoutStore, authStore, warning, showError }
+    return { checkoutStore, authStore, featureStore, warning, showError }
   },
   computed: {
     highlightId() {
@@ -635,6 +638,9 @@ export default {
     },
     isAdmin() {
       return this.authStore.isAdmin
+    },
+    recipesEnabled() {
+      return !!(this.featureStore.loaded && this.featureStore.flags.recipes)
     },
     dealFulfillmentPhase() {
       return this.deal && ['preparing', 'ready_for_pickup'].includes(this.deal.status)
@@ -725,6 +731,10 @@ export default {
           this.setupStickyFallback()
         })
       }
+    },
+    recipesEnabled(enabled) {
+      if (enabled) this.loadRecipeCounts()
+      else this.recipeCounts = {}
     }
   },
   beforeUnmount() {
@@ -775,6 +785,10 @@ export default {
       this.showRecipeModal = false
     },
     async loadRecipeCounts() {
+      if (!this.recipesEnabled) {
+        this.recipeCounts = {}
+        return
+      }
       try {
         const response = await apiClient.get('/recipes/counts')
         this.recipeCounts = response.data.counts || {}

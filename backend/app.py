@@ -174,6 +174,11 @@ def create_app(config_class=Config):
     except ImportError:
         pass
     try:
+        from routes.features import features_bp
+        app.register_blueprint(features_bp)
+    except ImportError:
+        pass
+    try:
         from routes.recipes import recipes_bp
         app.register_blueprint(recipes_bp, url_prefix='/api')
     except ImportError:
@@ -221,15 +226,22 @@ def create_app(config_class=Config):
         import html as html_module
         from services.recipe_service import COOK_TIME_LABELS, DIFFICULTY_LABELS, get_live_recipe
 
-        recipe = get_live_recipe(recipe_id)
-        app_url = config.APP_FRONTEND_URL.rstrip('/')
-        if not recipe:
+        from constants.feature_flags import is_enabled
+
+        def unavailable():
             missing = '''<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>菜谱不可用</title></head>
 <body><p>这份菜谱不可用</p></body></html>'''
             return Response(missing, status=404, mimetype='text/html; charset=utf-8')
+
+        if not is_enabled('recipes', None):
+            return unavailable()
+        recipe = get_live_recipe(recipe_id)
+        app_url = config.APP_FRONTEND_URL.rstrip('/')
+        if not recipe:
+            return unavailable()
         title = html_module.escape(recipe.title or '菜谱')
         facts = ' · '.join(
             label for label in (

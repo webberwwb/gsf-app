@@ -54,6 +54,16 @@
           </div>
         </div>
 
+        <button
+          v-if="showDevLogin"
+          type="button"
+          class="login-btn dev-btn"
+          :disabled="loading"
+          @click="devCustomerLogin"
+        >
+          普通用户登录
+        </button>
+
         <!-- Guest Browsing Option -->
         <div class="guest-section">
           <div class="divider">
@@ -86,6 +96,7 @@
 import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
 import { useAuthStore } from '../stores/auth'
+import { useFeatureStore } from '../stores/features'
 
 export default {
   name: 'Login',
@@ -108,6 +119,14 @@ export default {
     refFromQuery() {
       const r = this.$route.query.ref
       return r ? String(r).trim() : ''
+    },
+    showDevLogin() {
+      const hostname = window.location.hostname
+      return hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.startsWith('192.168.') ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('172.')
     },
     isPhoneValid() {
       if (!this.phone) return false
@@ -254,6 +273,22 @@ export default {
     },
     visitAsGuest() {
       this.$router.push('/products')
+    },
+    async devCustomerLogin() {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await apiClient.post('/auth/dev-customer-login')
+        const { token, user, expires_at } = response.data
+        this.authStore.setAuth(token, user, expires_at)
+        await useFeatureStore().whenReady()
+        this.$router.push('/')
+      } catch (error) {
+        const errorData = error.response?.data || {}
+        this.error = errorData.message || errorData.error || '普通用户登录失败'
+      } finally {
+        this.loading = false
+      }
     }
   }
 }
@@ -362,6 +397,17 @@ export default {
 .verify-btn {
   background: var(--md-primary);
   color: white;
+}
+
+.dev-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-transform: none;
+  font-size: 0.875rem;
+}
+
+.dev-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5568d3 0%, #63408a 100%);
 }
 
 .verify-btn:hover:not(:disabled) {

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import apiClient from '../api/client'
+import { useFeatureStore } from './features'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -45,6 +46,7 @@ export const useAuthStore = defineStore('auth', {
       if (expiresAt) {
         localStorage.setItem('auth_token_expires_at', expiresAt)
       }
+      useFeatureStore().reload()
     },
     
     /**
@@ -94,6 +96,7 @@ export const useAuthStore = defineStore('auth', {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('user')
       localStorage.removeItem('auth_token_expires_at')
+      useFeatureStore().reload()
     },
     
     /**

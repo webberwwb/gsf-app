@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useFeatureStore } from '../stores/features'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -39,25 +40,25 @@ const router = createRouter({
       path: '/recipes/new',
       name: 'RecipeNew',
       component: () => import('../views/RecipeComposer.vue'),
-      meta: { requiresAuth: true, showBottomNav: false }
+      meta: { requiresAuth: true, showBottomNav: false, feature: 'recipes' }
     },
     {
       path: '/recipes/:id/edit',
       name: 'RecipeEdit',
       component: () => import('../views/RecipeComposer.vue'),
-      meta: { requiresAuth: true, showBottomNav: false }
+      meta: { requiresAuth: true, showBottomNav: false, feature: 'recipes' }
     },
     {
       path: '/recipes/:id',
       name: 'RecipeDetail',
       component: () => import('../views/RecipeDetail.vue'),
-      meta: { requiresAuth: false, showBottomNav: true }
+      meta: { requiresAuth: false, showBottomNav: true, feature: 'recipes' }
     },
     {
       path: '/recipes',
       name: 'Recipes',
       component: () => import('../views/Recipes.vue'),
-      meta: { requiresAuth: false, showBottomNav: true }
+      meta: { requiresAuth: false, showBottomNav: true, feature: 'recipes' }
     },
     {
       path: '/favorites',
@@ -163,6 +164,18 @@ const router = createRouter({
 // Track if we've validated auth on app startup
 let authValidatedOnStartup = false
 
+async function continueIfEnabled(to, next) {
+  if (to.meta.feature) {
+    const featureStore = useFeatureStore()
+    await featureStore.whenReady()
+    if (!featureStore.isEnabled(to.meta.feature)) {
+      next('/')
+      return
+    }
+  }
+  next()
+}
+
 // Navigation guard to check authentication
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
@@ -216,12 +229,12 @@ router.beforeEach(async (to, from, next) => {
     }
     
     // Token exists, allow navigation
-    next()
+    await continueIfEnabled(to, next)
     return
   }
   
   // No token, continue navigation (will be handled by requiresAuth check above)
-  next()
+  await continueIfEnabled(to, next)
 })
 
 // Ensure scroll to top after navigation completes (especially important for mobile)

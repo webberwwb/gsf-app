@@ -2,7 +2,10 @@
 import io
 from datetime import timedelta
 
+import pytest
 from PIL import Image
+
+from constants import feature_flags
 
 from constants.status_enums import UserStatus
 from models import db
@@ -14,6 +17,12 @@ from models.user import AuthToken, User, UserRole
 from utils.recipe_images import resize_to_jpeg
 
 IMAGE = 'https://backend.grainstoryfarm.ca/api/images/recipes/test-photo.jpg'
+
+
+@pytest.fixture(autouse=True)
+def recipes_open_to_everyone(monkeypatch):
+    """Existing recipe tests assume customers can see the feed."""
+    monkeypatch.setitem(feature_flags.FEATURE_FLAGS, 'recipes', 'all')
 
 
 def _user(phone, nickname='用户'):
@@ -247,6 +256,28 @@ def test_filter_recipes_by_product_category(app, db_session):
     assert client.get('/api/recipes?category_id=nope').status_code == 400
 
 
+def test_admin_list_filters_by_product(app, db_session):
+    admin = _admin()
+    author = _user('+15551110011', '厨')
+    tomato = _product('番茄')
+    pork = _product('猪肉')
+    db.session.commit()
+    client = app.test_client()
+    headers = _headers(author)
+    tomato_id = _create(client, headers, tomato, title='番茄炒蛋').get_json()['recipe']['id']
+    _create(client, headers, pork, title='红烧肉')
+
+    listed = client.get(
+        f'/api/admin/recipes?product_id={tomato.id}&sort=latest',
+        headers=_headers(admin),
+    )
+    assert listed.status_code == 200, listed.get_json()
+    body = listed.get_json()
+    assert [row['id'] for row in body['recipes']] == [tomato_id]
+    assert body['total'] == 1
+    assert client.get('/api/admin/recipes?product_id=nope', headers=_headers(admin)).status_code == 400
+
+
 def test_admin_reward_tags_recipe(app, db_session):
     admin = _admin()
     author = _user('+15551110009', '作者')
@@ -272,3 +303,64 @@ def test_admin_reward_tags_recipe(app, db_session):
         headers=_headers(admin),
     )
     assert again.status_code == 400
+
+
+def test_recipes_stay_hidden_until_opened_to_everyone(app, db_session, monkeypatch):
+    monkeypatch.setitem(feature_flags.FEATURE_FLAGS, 'recipes', 'admins')
+    admin = _admin()
+    customer = _user('+15551110020', '顾客')
+    product = _product()
+    db.session.commit()
+    client = app.test_client()
+    created = _create(client, _headers(admin), product)
+    assert created.status_code == 201, created.get_json()
+    recipe_id = created.get_json()['recipe']['id']
+
+    assert client.get('/api/features').get_json()['recipes'] is False
+    assert client.get('/api/recipes').status_code == 404
+    assert client.get('/api/recipes', headers=_headers(customer)).status_code == 404
+    assert client.get('/api/recipes/counts').status_code == 404
+    listed = client.get('/api/recipes', headers=_headers(admin))
+    assert listed.status_code == 200
+    assert listed.get_json()['recipes'][0]['id'] == recipe_id
+    assert client.get('/api/features', headers=_headers(admin)).get_json()['recipes'] is True
+
+    share = client.get(f'/share/recipes/{recipe_id}')
+    assert share.status_code == 404
+    assert '不可用' in share.get_data(as_text=True)
+
+    monkeypatch.setitem(feature_flags.FEATURE_FLAGS, 'recipes', 'all')
+    assert client.get('/api/features').get_json()['recipes'] is True
+    opened = client.get(f'/share/recipes/{recipe_id}')
+    assert opened.status_code == 200
+    assert '红烧番茄' in opened.get_data(as_text=True)
+
+
+def test_dev_customer_login_is_a_normal_user(app, db_session, monkeypatch):
+    client = app.test_client()
+    first = client.post('/api/auth/dev-customer-login')
+    assert first.status_code == 200, first.get_json()
+    body = first.get_json()
+    assert body['token']
+    assert body['user']['phone'] == '+15555550100'
+    assert body['user']['nickname'] == '测试顾客'
+    assert body['user']['is_admin'] is False
+    assert 'admin' not in (body['user'].get('roles') or [])
+
+    second = client.post('/api/auth/dev-customer-login')
+    assert second.status_code == 200
+    assert second.get_json()['user']['id'] == body['user']['id']
+
+    monkeypatch.setenv('K_SERVICE', 'gsf-backend')
+    denied = client.post('/api/auth/dev-customer-login')
+    assert denied.status_code == 403
+
+
+def test_dev_customer_login_refuses_privileged_phone(app, db_session):
+    user = _user('+15555550100', '不该是管理员')
+    db.session.add(UserRole(user_id=user.id, role='admin'))
+    db.session.commit()
+    client = app.test_client()
+    denied = client.post('/api/auth/dev-customer-login')
+    assert denied.status_code == 403
+    assert denied.get_json().get('token') is None

@@ -792,3 +792,62 @@ def dev_login():
             'message': str(e)
         }), 500
 
+
+DEV_CUSTOMER_PHONE = '+15555550100'
+_PRIVILEGED_ROLES = ('admin', 'fulfillment', 'influencer')
+
+
+@auth_bp.route('/dev-customer-login', methods=['POST'])
+def dev_customer_login():
+    """Development-only login as a normal customer, for feature-flag checks."""
+    is_production = os.environ.get('K_SERVICE') is not None
+    if is_production:
+        return jsonify({
+            'error': 'Not available',
+            'message': 'Dev login is only available in development mode'
+        }), 403
+
+    try:
+        user = User.query.filter_by(phone=DEV_CUSTOMER_PHONE).first()
+        if user and (
+            not user.is_active
+            or any(role.role in _PRIVILEGED_ROLES for role in user.roles)
+        ):
+            return jsonify({
+                'error': 'Unauthorized',
+                'message': '测试顾客账号已有管理权限'
+            }), 403
+
+        if not user:
+            user = User(
+                phone=DEV_CUSTOMER_PHONE,
+                nickname='测试顾客',
+                status=UserStatus.ACTIVE.value,
+            )
+            db.session.add(user)
+            db.session.flush()
+
+        user.last_login_date = utc_now()
+        expires_at = utc_now() + timedelta(days=36500)
+        auth_token = AuthToken(
+            user_id=user.id,
+            token=secrets.token_urlsafe(32),
+            token_type='dev',
+            expires_at=expires_at,
+        )
+        db.session.add(auth_token)
+        db.session.commit()
+        current_app.logger.info(f'[DEV] Customer login: {user.phone}, ID: {user.id}')
+        return jsonify({
+            'token': auth_token.token,
+            'user': user.to_dict(include_referrer=True),
+            'expires_at': auth_token.expires_at.isoformat()
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'[DEV] Customer login error: {e}', exc_info=True)
+        return jsonify({
+            'error': 'Login failed',
+            'message': str(e)
+        }), 500
+
