@@ -507,10 +507,10 @@
           v-if="isAuthenticated"
           type="button"
           @click="confirmOrder" 
-          :disabled="!canConfirm"
+          :disabled="!canConfirm || submittingOrder"
           class="confirm-order-btn"
         >
-          <span class="btn-text">提交订单</span>
+          <span class="btn-text">{{ submittingOrder ? '提交中…' : '提交订单' }}</span>
           <span class="btn-amount">{{ submitAmountLabel }}</span>
         </button>
         <button 
@@ -675,7 +675,8 @@ export default {
       bindingCard: false,
       cardSetupError: null,
       showCardSetup: false,
-      cardPrivacyNote: CARD_PRIVACY_NOTE
+      cardPrivacyNote: CARD_PRIVACY_NOTE,
+      submittingOrder: false
     }
   },
   computed: {
@@ -1353,6 +1354,9 @@ export default {
       this.$router.push('/login')
     },
     async confirmOrder() {
+      if (this.submittingOrder) {
+        return
+      }
       if (this.deliveryMethod === 'delivery' && this.paymentMethod === 'card' && !this.hasCardOnFile) {
         this.startCardSetup()
         return
@@ -1378,6 +1382,8 @@ export default {
         return
       }
 
+      this.submittingOrder = true
+      let orderCreated = false
       try {
         const orderData = { ...this.checkoutStore.getOrderData() }
         if (orderData.delivery_method === 'delivery') {
@@ -1393,6 +1399,7 @@ export default {
 
         orderData.group_deal_id = this.deal.id
         const response = await apiClient.post('/orders', orderData)
+        orderCreated = true
         const isNew = true
         
         await this.authStore.checkAuth()
@@ -1439,8 +1446,12 @@ export default {
             }
           })
         } catch (navError) {
-          // If navigation fails, show error message
+          // If navigation fails, show error message and allow another attempt
+          // only when the server did not create an order.
           console.error('Navigation failed:', navError)
+          if (!orderCreated) {
+            this.submittingOrder = false
+          }
           await this.showError('订单创建失败: ' + errorMsg + '\n\n请检查网络连接后重试。')
         }
         console.error('Failed to create/update order:', error)
