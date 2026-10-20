@@ -28,6 +28,7 @@ from utils.deal_products import (
 )
 from utils.product_repurchase import compute_product_repurchase_rates
 from utils.date_helpers import normalize_date_start, normalize_date_end
+from utils.catalog_images import ensure_thumbnail
 from utils.image_urls import proxy_image_url, public_image_url
 from utils.commission import (
     calculate_commission_for_group_deal,
@@ -247,7 +248,7 @@ def upload_image():
         if not gcs_client:
             return jsonify({'error': 'GCS client not available'}), 500
         
-        bucket_name = Config.GCS_BUCKET_NAME
+        bucket_name = Config.GCS_CATALOG_BUCKET if folder == 'products' else Config.GCS_BUCKET_NAME
         bucket = gcs_client.bucket(bucket_name)
         blob = bucket.blob(filename)
         
@@ -255,8 +256,10 @@ def upload_image():
         content_type = f'image/{format.lower()}'
         blob.cache_control = f'public, max-age={365 * 24 * 3600}'
         blob.upload_from_string(image_data, content_type=content_type)
-        
-        public_url = proxy_image_url(filename)
+        if folder == 'products':
+            ensure_thumbnail(bucket, filename, image_data)
+
+        public_url = public_image_url(proxy_image_url(filename))
         
         current_app.logger.info(f'Uploaded image to GCS: {filename}, serving via: {public_url}')
         

@@ -122,7 +122,7 @@
         </div>
         <div v-else class="products-list">
           <div
-            v-for="group in groupedProducts"
+            v-for="(group, groupIndex) in groupedProducts"
             :key="group.category?.id || 'uncategorized'"
             class="product-group"
             :class="{ 'discount-group': group.isDiscountGroup }"
@@ -152,7 +152,7 @@
             
             <!-- Products in this category -->
             <div
-              v-for="product in group.products"
+              v-for="(product, productIndex) in group.products"
               :key="product.id"
               class="product-item"
               :data-category-id="product.category_id"
@@ -160,7 +160,14 @@
               :class="{ 'recipe-highlight': String(highlightId) === String(product.id) }"
             >
             <div class="product-image" @click="openProductModal(product)">
-              <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" />
+              <img
+                v-if="getProductImage(product)"
+                :src="getProductImage(product)"
+                :alt="product.name"
+                decoding="async"
+                :loading="isEagerImage(groupIndex, productIndex) ? 'eager' : 'lazy'"
+                :fetchpriority="isEagerImage(groupIndex, productIndex) ? 'high' : 'auto'"
+              />
               <div v-else class="image-placeholder">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -1197,14 +1204,16 @@ export default {
       this.priceInfoMessage = ''
     },
     getProductImage(product) {
-      // Support both old single image format and new multiple images format
-      if (product.images && Array.isArray(product.images) && product.images.length > 0) {
-        return product.images[0]
+      if (!product) return null
+      return product.image_thumb || (product.images && product.images[0]) || product.image || null
+    },
+    isEagerImage(groupIndex, productIndex) {
+      let index = productIndex
+      const groups = this.groupedProducts || []
+      for (let i = 0; i < groupIndex; i += 1) {
+        index += (groups[i].products || []).length
       }
-      if (product.image) {
-        return product.image
-      }
-      return null
+      return index < 8
     },
     togglePricingDetails(productId) {
       this.expandedPricing[productId] = !this.expandedPricing[productId]

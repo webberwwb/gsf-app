@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, redirect, Response
 from models import db
 from config import Config
+from utils.image_urls import gcs_public_url, is_catalog_object
 import os
 
 api_bp = Blueprint('api', __name__)
@@ -69,8 +70,11 @@ def _image_content_type(filename):
 
 @api_bp.route('/images/<path:filename>', methods=['GET'])
 def serve_image(filename):
-    """Stream the GCS object. Browser caches this URL for a year (UUID filenames)."""
+    """Catalog objects live on public Cloud Storage. Delivery photos still stream."""
     from google.cloud.exceptions import NotFound
+
+    if is_catalog_object(filename):
+        return redirect(gcs_public_url(filename), code=302)
 
     blob = _gcs_client_cached().bucket(Config.GCS_BUCKET_NAME).blob(filename)
     try:

@@ -57,7 +57,7 @@
                   :class="['thumbnail', { active: index === currentImageIndex }]"
                   @click="currentImageIndex = index"
                 >
-                  <img :src="img" :alt="`${product.name} - Image ${index + 1}`" />
+                  <img :src="thumbAt(index)" :alt="`${product.name} - Image ${index + 1}`" />
                 </div>
               </div>
             </div>
@@ -354,6 +354,11 @@ export default {
     document.body.style.overflow = ''
   },
   methods: {
+    thumbAt(index) {
+      const thumbs = this.product && this.product.image_thumbs
+      if (thumbs && thumbs[index]) return thumbs[index]
+      return this.productImages[index]
+    },
     isOutOfStock(product) {
       if (!product) return false
       

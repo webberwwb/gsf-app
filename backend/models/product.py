@@ -1,7 +1,7 @@
 from models.base import BaseModel
 from models import db
 from sqlalchemy import JSON, Numeric
-from utils.image_urls import public_image_urls
+from utils.image_urls import public_image_urls, thumbnail_urls
 
 class Product(BaseModel):
     """Product model"""
@@ -167,9 +167,11 @@ class Product(BaseModel):
     def get_substitute_dict(self):
         if not self.substitute_enabled:
             return None
-        images = public_image_urls(
+        raw_images = (
             self.substitute_images if self.substitute_images and isinstance(self.substitute_images, list) else []
         )
+        images = public_image_urls(raw_images)
+        thumbs = thumbnail_urls(raw_images)
         pt = self.get_substitute_pricing_type()
         pd = self.get_substitute_pricing_data()
         return {
@@ -177,7 +179,9 @@ class Product(BaseModel):
             'name': self.substitute_name,
             'description': self.substitute_description,
             'images': images,
+            'image_thumbs': thumbs,
             'image': images[0] if images else None,
+            'image_thumb': thumbs[0] if thumbs else None,
             'pricing_type': pt,
             'pricing_data': pd,
             'price': self.get_substitute_display_price(),
@@ -186,10 +190,11 @@ class Product(BaseModel):
     def to_dict(self, include_all_variants=False, on_sale=False):
         data = super().to_dict()
         # Convert images: use images array if available, otherwise convert single image to array
-        images = self.images if self.images and isinstance(self.images, list) else []
-        if not images and self.image:
-            images = [self.image]
-        images = public_image_urls(images)
+        raw_images = self.images if self.images and isinstance(self.images, list) else []
+        if not raw_images and self.image:
+            raw_images = [self.image]
+        images = public_image_urls(raw_images)
+        thumbs = thumbnail_urls(raw_images)
         
         variant_list = self.variants if include_all_variants else self.get_active_variants()
         variants_data = [v.to_dict() for v in sorted(variant_list, key=lambda x: x.sort_order)]
@@ -209,7 +214,9 @@ class Product(BaseModel):
         data.update({
             'name': self.name,
             'image': images[0] if images else None,  # Keep for backward compatibility
+            'image_thumb': thumbs[0] if thumbs else None,
             'images': images,  # New multiple images array
+            'image_thumbs': thumbs,
             'pricing_type': self.pricing_type,
             'pricing_data': self.pricing_data,
             'price': display,  # Main price field for FE (2-decimal rounded)

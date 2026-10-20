@@ -63,13 +63,19 @@
 
     <div v-else-if="layout === 'grid'" class="grid">
       <button
-        v-for="recipe in recipes"
+        v-for="(recipe, recipeIndex) in recipes"
         :key="recipe.id"
         type="button"
         class="grid-cell"
         @click="openRecipe(recipe)"
       >
-        <img :src="recipe.cover_image" :alt="recipe.title" />
+        <img
+          :src="recipe.cover_thumb || recipe.cover_image"
+          :alt="recipe.title"
+          decoding="async"
+          :loading="recipeIndex < 8 ? 'eager' : 'lazy'"
+          :fetchpriority="recipeIndex < 8 ? 'high' : 'auto'"
+        />
       </button>
     </div>
 

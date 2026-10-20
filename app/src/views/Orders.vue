@@ -71,9 +71,15 @@
           </div>
 
           <div class="order-items">
-            <div v-for="item in order.items" :key="item.id" class="order-item">
-              <div v-if="item.product && item.product.image" class="item-image">
-                <img :src="item.product.image" :alt="item.product.name" />
+            <div v-for="(item, itemIndex) in order.items" :key="item.id" class="order-item">
+              <div v-if="item.product && (item.product.image_thumb || item.product.image)" class="item-image">
+                <img
+                  :src="item.product.image_thumb || item.product.image"
+                  :alt="item.product.name"
+                  decoding="async"
+                  :loading="itemIndex < 8 ? 'eager' : 'lazy'"
+                  :fetchpriority="itemIndex < 8 ? 'high' : 'auto'"
+                />
               </div>
               <div v-else class="item-image placeholder">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

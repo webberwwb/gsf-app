@@ -29,7 +29,7 @@
         pin-on-ios
       />
       <section
-        v-for="section in productSections"
+        v-for="(section, sectionIndex) in productSections"
         :key="section.id"
         class="products-section"
         :class="{ 'specials-section': section.special }"
@@ -54,7 +54,7 @@
         </div>
         <div v-else class="products-grid">
           <div
-            v-for="product in section.products"
+            v-for="(product, productIndex) in section.products"
             :key="section.id + '-' + product.id"
             class="product-card browse-only"
             :class="{ 'is-special': !!product.is_discount }"
@@ -65,6 +65,9 @@
                 v-if="getProductImage(product)"
                 :src="getProductImage(product)"
                 :alt="product.name"
+                decoding="async"
+                :loading="isEagerImage(sectionIndex, productIndex) ? 'eager' : 'lazy'"
+                :fetchpriority="isEagerImage(sectionIndex, productIndex) ? 'high' : 'auto'"
               />
               <div v-else class="image-placeholder">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -462,14 +465,16 @@ export default {
       this.showRecipeModal = false
     },
     getProductImage(product) {
-      // Support both old single image format and new multiple images format
-      if (product.images && Array.isArray(product.images) && product.images.length > 0) {
-        return product.images[0]
+      if (!product) return null
+      return product.image_thumb || (product.images && product.images[0]) || product.image || null
+    },
+    isEagerImage(sectionIndex, productIndex) {
+      let index = productIndex
+      const sections = this.productSections || []
+      for (let i = 0; i < sectionIndex; i += 1) {
+        index += (sections[i].products || []).length
       }
-      if (product.image) {
-        return product.image
-      }
-      return null
+      return index < 8
     }
   }
 }

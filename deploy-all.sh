@@ -148,8 +148,8 @@ BACKEND_URL=$(gcloud run deploy gsf-app-backend \
     --execution-environment gen2 \
     --session-affinity \
     --timeout 300 \
-    --memory 1Gi \
-    --cpu 2 \
+    --memory 512Mi \
+    --cpu 1 \
     --max-instances 10 \
     --min-instances 1 \
     --no-cpu-throttling \

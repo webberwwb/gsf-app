@@ -1,7 +1,7 @@
-"""Normalize product image URLs to the backend proxy.
+"""Browser URLs for images stored in Cloud Storage.
 
-The SPA stores https://backend.grainstoryfarm.ca/api/images/<object> and never
-reformats it. /api/images/<object> streams the GCS object with a long cache.
+Catalog photos (products/ and recipes/) are public objects. List views use a
+sibling thumbnail. Delivery photos stay on the backend proxy.
 """
 from urllib.parse import unquote
 
@@ -9,6 +9,7 @@ from config import Config
 
 _API_IMAGE_MARKER = '/api/images/'
 _GCS_HOST_MARKER = 'storage.googleapis.com/'
+_CATALOG_FOLDERS = ('products', 'recipes')
 
 
 def gcs_public_url(object_name):
@@ -38,17 +39,58 @@ def image_object_name(url):
     return None
 
 
+def is_catalog_object(object_name):
+    name = (object_name or '').lstrip('/')
+    folder = name.split('/', 1)[0]
+    return folder in _CATALOG_FOLDERS and '/' in name
+
+
+def thumbnail_object_name(object_name):
+    """products/abc.png -> products/thumbs/abc.jpg. None for non-catalog objects."""
+    name = (object_name or '').lstrip('/')
+    if not is_catalog_object(name):
+        return None
+    parts = name.split('/')
+    folder = parts[0]
+    filename = parts[-1]
+    if not filename or filename == 'thumbs':
+        return None
+    stem = filename.rsplit('.', 1)[0]
+    if not stem:
+        return None
+    return f'{folder}/thumbs/{stem}.jpg'
+
+
 def public_image_url(url):
-    """Stable backend proxy URL. Frontend uses this as-is."""
+    """Full-size browser URL. Catalog objects point at Cloud Storage."""
     if not url or not isinstance(url, str):
         return url
     name = image_object_name(url)
     if not name:
         return url
+    if is_catalog_object(name):
+        return gcs_public_url(name)
     return proxy_image_url(name)
+
+
+def thumbnail_url(url):
+    """Public thumbnail URL, or None when this image has no catalog thumb."""
+    if not url or not isinstance(url, str):
+        return None
+    name = image_object_name(url)
+    thumb = thumbnail_object_name(name) if name else None
+    if not thumb:
+        return None
+    return gcs_public_url(thumb)
 
 
 def public_image_urls(urls):
     if not urls:
         return urls
     return [public_image_url(u) for u in urls]
+
+
+def thumbnail_urls(urls):
+    if not urls:
+        return []
+    return [thumbnail_url(u) for u in urls]

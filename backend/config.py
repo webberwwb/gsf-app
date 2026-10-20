@@ -87,9 +87,13 @@ class Config:
     
     # Google Cloud Storage configuration for product images
     GCS_BUCKET_NAME = os.environ.get('GCS_BUCKET_NAME', 'gsf-app-product-images')
+    # Public bucket for product and recipe photos. Delivery photos stay on GCS_BUCKET_NAME.
+    GCS_CATALOG_BUCKET = os.environ.get('GCS_CATALOG_BUCKET', 'gsf-app-catalog-images')
     GCS_PROJECT_ID = os.environ.get('GCS_PROJECT_ID', 'focused-mote-477703-f0')
-    # Public URL base for images (e.g., https://storage.googleapis.com/gsf-app-product-images/)
-    GCS_PUBLIC_URL_BASE = os.environ.get('GCS_PUBLIC_URL_BASE', f'https://storage.googleapis.com/{GCS_BUCKET_NAME}')
+    # Public URL base for catalog images.
+    GCS_PUBLIC_URL_BASE = os.environ.get(
+        'GCS_PUBLIC_URL_BASE', f'https://storage.googleapis.com/{GCS_CATALOG_BUCKET}'
+    )
     # Stable browser-facing image URL (proxied at /api/images/<object>).
     IMAGE_PROXY_BASE = os.environ.get(
         'IMAGE_PROXY_BASE',

@@ -1,7 +1,7 @@
-"""Resize recipe photos and store them on the public image proxy.
+"""Resize recipe photos and store them on public Cloud Storage.
 
-The JPEG keeps its aspect ratio. The URL is a stable /api/images/recipes/<uuid>.jpg
-with a year-long public cache. No signed URL.
+The full JPEG keeps its aspect ratio, capped at 960px. A 320px thumbnail is
+written beside it. Both objects are public and cached for a year.
 """
 import io
 import uuid
@@ -9,7 +9,8 @@ import uuid
 from flask import current_app
 
 from config import Config
-from utils.image_urls import proxy_image_url
+from utils.catalog_images import ensure_thumbnail
+from utils.image_urls import gcs_public_url
 
 MAX_EDGE = 960
 JPEG_QUALITY = 80
@@ -69,10 +70,11 @@ def store_recipe_jpeg(jpeg_bytes):
     if not client:
         raise RuntimeError('GCS client not available')
     object_name = f'recipes/{uuid.uuid4()}.jpg'
-    bucket = client.bucket(Config.GCS_BUCKET_NAME)
+    bucket = client.bucket(Config.GCS_CATALOG_BUCKET)
     blob = bucket.blob(object_name)
     blob.cache_control = 'public, max-age=31536000, immutable'
     blob.upload_from_string(jpeg_bytes, content_type='image/jpeg')
-    url = proxy_image_url(object_name)
+    ensure_thumbnail(bucket, object_name, jpeg_bytes)
+    url = gcs_public_url(object_name)
     current_app.logger.info('Uploaded recipe image %s', object_name)
     return url

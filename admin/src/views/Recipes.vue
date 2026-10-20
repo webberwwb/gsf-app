@@ -139,6 +139,7 @@
     </div>
     <p v-if="error && recipes.length" class="inline-error">{{ error }}</p>
 
+    <Teleport to="body">
     <div v-if="detailId" class="overlay detail-page">
       <header class="page-header">
         <button type="button" class="back-button" aria-label="返回" @click="closeDetail">
@@ -378,6 +379,7 @@
     </div>
 
     <p v-if="message" class="toast" :class="{ raised: detailId || creating }" role="status">{{ message }}</p>
+    </Teleport>
   </div>
 </template>
 

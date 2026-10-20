@@ -17,15 +17,18 @@
       </div>
       <div v-else class="favorites-list">
         <div
-          v-for="item in favorites"
+          v-for="(item, itemIndex) in favorites"
           :key="item.id"
           class="favorite-item"
         >
           <div class="item-image">
             <img
-              v-if="item.image"
-              :src="item.image"
+              v-if="item.image_thumb || item.image"
+              :src="item.image_thumb || item.image"
               :alt="item.name"
+              decoding="async"
+              :loading="itemIndex < 8 ? 'eager' : 'lazy'"
+              :fetchpriority="itemIndex < 8 ? 'high' : 'auto'"
             />
             <div v-else class="image-placeholder">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

@@ -45,6 +45,7 @@ export const useFavoritesStore = defineStore('favorites', {
         name: product.name,
         price: product.price,
         image: product.image || null,
+        image_thumb: product.image_thumb || null,
         description: product.description || null
       })
     },

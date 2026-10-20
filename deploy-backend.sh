@@ -47,6 +47,7 @@ GOOGLE_OAUTH_CLIENT_ID: 304694762003-ngilk1cidevokj46vb9amu3led74qbo1.apps.googl
 GOOGLE_OAUTH_REDIRECT_URI: https://backend.grainstoryfarm.ca/api/auth/google/callback
 ADMIN_FRONTEND_URL: https://admin.grainstoryfarm.ca
 APP_FRONTEND_URL: https://app.grainstoryfarm.ca
+ADMIN_ALLOWED_EMAILS: info@digitelf.com,grainstoryfarm@gmail.com,harris010908@gmail.com
 EOF
 
 # Deploy backend with secrets from Secret Manager
@@ -59,12 +60,16 @@ gcloud run deploy gsf-app-backend \
     --allow-unauthenticated \
     --add-cloudsql-instances $CLOUDSQL_INSTANCE \
     --env-vars-file backend-env-temp.yaml \
-    --set-secrets "MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,STRIPE_DASHBOARD_BASE=stripe-dashboard-base:latest" \
-    --memory 1Gi \
-    --cpu 2 \
+    --set-secrets "MYSQL_USER=mysql-user:latest,MYSQL_PASSWORD=mysql-password:latest,SECRET_KEY=secret-key:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CRON_SECRET=cron-secret:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,STRIPE_DASHBOARD_BASE=stripe-dashboard-base:latest,GOOGLE_MAPS_API_KEY=google-maps-api-key:latest" \
+    --memory 512Mi \
+    --cpu 1 \
     --timeout 300 \
     --max-instances 10 \
     --min-instances 1 \
+    --concurrency=8 \
+    --session-affinity \
+    --execution-environment=gen2 \
+    --cpu-boost \
     --no-cpu-throttling \
     --project=$PROJECT_ID
 

@@ -7,6 +7,7 @@ from models.product_category import ProductCategory
 from models.recipe import Recipe, RecipeCollect, RecipeComment, RecipeHeart, RecipeProduct
 from models.user import User
 from constants.status_enums import GroupDealStatus
+from utils.image_urls import public_image_url, public_image_urls, thumbnail_url, thumbnail_urls
 
 TITLE_MAX = 80
 BODY_MAX = 4000
@@ -96,7 +97,8 @@ def product_dicts(recipe):
         out.append({
             'id': product.id,
             'name': product.name,
-            'image': image,
+            'image': public_image_url(image) if image else None,
+            'image_thumb': thumbnail_url(image) if image else None,
             'open_deal_id': deals.get(product.id),
         })
     return out
@@ -167,8 +169,10 @@ def recipe_dict(recipe, user_id=None, include_comments=False, hearted=None, coll
         'difficulty_label': DIFFICULTY_LABELS.get(recipe.difficulty),
         'cook_time': recipe.cook_time,
         'cook_time_label': COOK_TIME_LABELS.get(recipe.cook_time),
-        'images': list(recipe.images or []),
-        'cover_image': recipe.cover_image,
+        'images': public_image_urls(list(recipe.images or [])),
+        'image_thumbs': thumbnail_urls(list(recipe.images or [])),
+        'cover_image': public_image_url(recipe.cover_image),
+        'cover_thumb': thumbnail_url(recipe.cover_image),
         'source': recipe.source,
         'author': author_dict(recipe),
         'products': product_dicts(recipe),
