@@ -187,7 +187,7 @@
           >
             <div class="delivery-head">
               <strong>{{ row.recipient_name || '客户' }}</strong>
-              <span v-if="Number(row.cash_collected) > 0" class="delivery-cash">${{ rateDisplay(row.cash_collected) }}</span>
+              <span v-if="Number(row.cash_collected) > 0" class="delivery-cash">代收 ${{ rateDisplay(row.cash_collected) }}</span>
             </div>
             <div class="fee-cell">
               <template v-if="isAdmin && editingFeeId === row.order_id">
@@ -257,6 +257,16 @@
               >撤销</button>
             </div>
           </div>
+          <div class="settle-split">
+            <div>
+              <div class="label">收入</div>
+              <div class="value highlight-text">${{ rateDisplay(cycleEarned(cycle)) }}</div>
+            </div>
+            <div>
+              <div class="label">代收现金</div>
+              <div class="value">${{ rateDisplay(cycle.totals.cash_collected) }}</div>
+            </div>
+          </div>
           <div class="billing-row billing-row--stats">
             <div>
               <div class="label">配货时间</div>
@@ -269,16 +279,12 @@
               <div class="muted">${{ cycle.totals.delivery.toFixed(2) }}</div>
             </div>
             <div>
-              <div class="label">代收现金</div>
-              <div class="value">-${{ rateDisplay(cycle.totals.cash_collected) }}</div>
-            </div>
-            <div>
               <div class="label">已付</div>
               <div class="value">${{ cycle.totals.paid.toFixed(2) }}</div>
             </div>
             <div>
               <div class="label">待付</div>
-              <div class="value highlight-text">${{ cycle.totals.outstanding.toFixed(2) }}</div>
+              <div class="value">${{ cycle.totals.outstanding.toFixed(2) }}</div>
             </div>
           </div>
           <button
@@ -308,7 +314,7 @@
               <div class="delivery-head">
                 <strong>{{ row.recipient_name || '客户' }}</strong>
                 <span class="delivery-earn">${{ Number(row.fee || 0).toFixed(2) }}</span>
-                <span v-if="Number(row.cash_collected) > 0" class="delivery-cash">${{ rateDisplay(row.cash_collected) }}</span>
+                <span v-if="Number(row.cash_collected) > 0" class="delivery-cash">代收 ${{ rateDisplay(row.cash_collected) }}</span>
               </div>
               <div class="delivery-address">{{ row.address || '无地址' }}</div>
             </div>
@@ -386,6 +392,11 @@ export default {
     this.init()
   },
   methods: {
+    cycleEarned(cycle) {
+      const totals = cycle?.totals || {}
+      if (totals.earned != null) return totals.earned
+      return Number(totals.labor || 0) + Number(totals.delivery || 0)
+    },
     logKey(scope, cycle) {
       return `${scope}:${cycle.group_deal_id || 'unassigned'}`
     },
@@ -785,6 +796,18 @@ export default {
 .billing-row--stats {
   margin-top: var(--md-spacing-md);
 }
+.settle-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--md-spacing-md);
+  margin-top: var(--md-spacing-md);
+  padding-top: var(--md-spacing-md);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.settle-split > div + div {
+  padding-left: var(--md-spacing-md);
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+}
 .cycle-heading .value {
   overflow-wrap: anywhere;
 }
@@ -909,7 +932,7 @@ export default {
     grid-template-columns: repeat(3, 1fr);
   }
   .billing-row--stats {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 .summary-grid {

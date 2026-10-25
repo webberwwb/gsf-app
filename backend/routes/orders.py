@@ -528,6 +528,10 @@ def update_order(order_id):
         
         if not can_access_order(user_id, order):
             return jsonify({'error': 'Access denied'}), 403
+
+        from utils.order_lock import order_money_locked
+        if order_money_locked(order):
+            return jsonify({'error': '订单金额已锁定，无法修改'}), 400
         
         group_deal = GroupDeal.query.filter(
             GroupDeal.id == order.group_deal_id,

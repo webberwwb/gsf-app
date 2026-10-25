@@ -1,6 +1,6 @@
 from models.base import BaseModel, utc_now
 from models import db
-from sqlalchemy import Numeric, and_
+from sqlalchemy import JSON, Numeric, and_
 from sqlalchemy.orm import backref, foreign
 from datetime import datetime
 from constants.status_enums import OrderStatus, PaymentStatus, DeliveryMethod, DeliveryHandler
@@ -221,6 +221,12 @@ class OrderItem(BaseModel):
     cutting = db.Column(db.Boolean, default=False, nullable=False)
     cutting_fee = db.Column(Numeric(10, 2), nullable=True)
 
+    # Paid price schedule at the time the line was priced. Later catalog edits
+    # do not flow in unless an admin explicitly applies the new price.
+    pricing_snapshot = db.Column(JSON, nullable=True)
+    # null | locked_old | applied_new
+    price_choice = db.Column(db.String(20), nullable=True)
+
     # Substitute preference and fulfillment
     accept_substitute = db.Column(db.Boolean, nullable=True)
     is_unavailable = db.Column(db.Boolean, default=False, nullable=False)
@@ -268,6 +274,8 @@ class OrderItem(BaseModel):
             'variant_price_delta': float(self.variant_price_delta) if self.variant_price_delta is not None else None,
             'cutting': bool(self.cutting),
             'cutting_fee': float(self.cutting_fee) if self.cutting_fee is not None else None,
+            'pricing_snapshot': self.pricing_snapshot,
+            'price_choice': self.price_choice,
             'accept_substitute': self.accept_substitute,
             'is_unavailable': self.is_unavailable,
             'cannot_fulfill': self.cannot_fulfill,

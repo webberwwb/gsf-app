@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
+import { formatProductCompareAt, formatProductPriceRange, isProductOnSale } from './productPriceDisplay.js'
 import {
   lookupBreakPrice,
   resolvePerItemUnit,
@@ -13,6 +14,9 @@ import {
   buildPreviewLinesFromSelection,
   selectionsFromOrderItems,
   isOrderLinePriceEstimated,
+  linePriceNotice,
+  catalogPriceNote,
+  orderLineDisplayProduct,
   orderItemSelectionChanged,
   setCuttingQuantity,
   setCuttingPartQuantity,
@@ -112,6 +116,46 @@ describe('sale price', () => {
     }
     assert.equal(resolvePerItemUnit(product, null, 1).unitPrice, 8)
     assert.equal(resolvePerItemUnit(product, null, 3).unitPrice, 7)
+  })
+})
+
+describe('weight range sale', () => {
+  const bands = [
+    { min: 3, max: 3.5, price: 29 },
+    { min: 3.5, max: 4, price: 30 }
+  ]
+
+  it('subtracts the same amount from the matched band when the deal is on sale', () => {
+    const product = {
+      pricing_type: 'weight_range',
+      is_discount: true,
+      pricing_data: { sale_amount_off: 2, ranges: bands.map((row) => ({ ...row })) }
+    }
+    const { unitPrice, totalPrice } = estimateLinePrice(product, { quantity: 1, final_weight: 3.2 })
+    assert.equal(unitPrice, 27)
+    assert.equal(totalPrice, 27)
+    assert.equal(product.pricing_data.ranges[0].price, 29)
+  })
+
+  it('keeps the list band when the deal is not on sale', () => {
+    const product = {
+      pricing_type: 'weight_range',
+      is_discount: false,
+      pricing_data: { sale_amount_off: 2, ranges: bands }
+    }
+    const { unitPrice } = estimateLinePrice(product, { quantity: 1, final_weight: 3.2 })
+    assert.equal(unitPrice, 29)
+  })
+
+  it('shows the paid range and the original range', () => {
+    const product = {
+      pricing_type: 'weight_range',
+      is_discount: true,
+      pricing_data: { sale_amount_off: 2, ranges: bands }
+    }
+    assert.equal(isProductOnSale(product), true)
+    assert.equal(formatProductPriceRange(product), '$27.00 - $28.00')
+    assert.equal(formatProductCompareAt(product), '$29.00 - $30.00')
   })
 })
 
@@ -344,5 +388,37 @@ describe('isOrderLinePriceEstimated', () => {
       isOrderLinePriceEstimated({ product: { pricing_type: 'per_item' }, total_price: 10 }),
       false
     )
+  })
+})
+
+describe('price choice notice', () => {
+  it('hides the locked notice when the current price matches the line', () => {
+    const item = {
+      price_choice: 'locked_old',
+      total_price: 32,
+      catalog_total_price: 32
+    }
+    assert.equal(linePriceNotice(item), '')
+    assert.equal(catalogPriceNote(item), '')
+  })
+
+  it('uses the snapshot schedule instead of the current catalog price', () => {
+    const product = orderLineDisplayProduct({
+      total_price: 32,
+      product: { name: '平菇', pricing_type: 'per_item', pricing_data: { price: 40 } },
+      pricing_snapshot: { pricing_type: 'per_item', pricing_data: { price: 32 } }
+    })
+    assert.equal(product.pricing_data.price, 32)
+    assert.equal(product.name, '平菇')
+  })
+
+  it('shows the locked notice when the current price differs', () => {
+    const item = {
+      price_choice: 'locked_old',
+      total_price: 32,
+      catalog_total_price: 34
+    }
+    assert.equal(linePriceNotice(item), '标价已更新，本单仍按原团购价')
+    assert.equal(catalogPriceNote(item), '现价 $34.00')
   })
 })

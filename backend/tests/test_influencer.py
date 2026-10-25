@@ -356,7 +356,7 @@ def test_accrual_waits_until_paid_and_completed(app, db_session):
     assert Decimal(str(detail['orders'][0]['commission']['amount'])) == Decimal('4.00')
 
 
-def test_weigh_after_paid_complete_refreshes_earnings_and_breakdown(app, db_session):
+def test_weigh_after_paid_does_not_change_locked_earnings(app, db_session):
     inf = _make_influencer(phone='+10000000062')
     customer = _user('+10000000063', 'CWeigh')
     customer.referred_by_user_id = inf.id
@@ -380,39 +380,16 @@ def test_weigh_after_paid_complete_refreshes_earnings_and_breakdown(app, db_sess
     assert dash['order_count'] == 1
     assert Decimal(str(dash['lifetime_earnings'])) == Decimal('0')
 
+    locked_total = order.total
     order.items[0].final_weight = Decimal('9.250')
     from utils.order_totals import sync_order_pricing
     sync_order_pricing(order, reprice_lines=False)
     db_session.flush()
 
-    entry = InfluencerCommissionEntry.query.filter_by(order_id=order.id).first()
-    assert entry is not None
-    assert Decimal(str(entry.amount)) == Decimal('13.88')
-    assert Decimal(str(inf.store_credit_balance)) == Decimal('13.88')
-    assert entry.details[0]['weight'] == 9.25
-    assert Decimal(str(entry.details[0]['commission'])) == Decimal('13.88')
-
+    assert InfluencerCommissionEntry.query.filter_by(order_id=order.id).first() is None
+    assert order.total == locked_total
     dash = influencer_service.dashboard_for(inf.id)
-    assert Decimal(str(dash['lifetime_earnings'])) == Decimal('13.88')
-    assert Decimal(str(dash['account_balance'])) == Decimal('13.88')
-
-    order.items[0].final_weight = Decimal('10.000')
-    sync_order_pricing(order, reprice_lines=False)
-    db_session.flush()
-    db_session.refresh(entry)
-    db_session.refresh(inf)
-    assert Decimal(str(entry.amount)) == Decimal('15.00')
-    assert Decimal(str(inf.store_credit_balance)) == Decimal('15.00')
-    dash = influencer_service.dashboard_for(inf.id)
-    assert Decimal(str(dash['lifetime_earnings'])) == Decimal('15.00')
-    assert Decimal(str(dash['account_balance'])) == Decimal('15.00')
-
-    detail = influencer_service.customer_detail_for(inf.id, customer.id)
-    item = detail['orders'][0]['items'][0]
-    assert item['commission_estimated'] is False
-    assert Decimal(str(item['commission_amount'])) == Decimal('15.00')
-    assert item['weight_estimated'] is False
-    assert Decimal(str(item['weight'])) == Decimal('10')
+    assert Decimal(str(dash['lifetime_earnings'])) == Decimal('0')
 
 
 def test_no_self_commission(app, db_session):

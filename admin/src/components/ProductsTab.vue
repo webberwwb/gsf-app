@@ -334,6 +334,10 @@ export default {
       if (product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight') {
         return pd.sale_price_per_unit != null && pd.sale_price_per_unit !== ''
       }
+      if (product.pricing_type === 'weight_range') {
+        const off = pd.sale_amount_off
+        return off != null && off !== '' && Number(off) > 0
+      }
       return false
     },
     async fetchCategories() {

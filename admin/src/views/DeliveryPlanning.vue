@@ -117,7 +117,7 @@
             <span class="lane-cash" :class="{ due: selfCash.count, collected: !selfCash.count && selfCash.collectedCount }">{{ selfCash.text }}</span>
             <span class="lane-count">{{ plan.self.length }}</span>
           </div>
-          <div v-if="!plan.self.length" class="lane-empty">把要自己送的订单点到这里，再调整顺序</div>
+          <div v-if="!plan.self.length" class="lane-empty">按行驶顺序点「我来送」，新单会排在最后</div>
           <article v-for="(order, index) in plan.self" :key="order.id" class="order-card" :class="[payCardClass(order), { selected: selectedOrderId === order.id }]">
             <div class="order-top">
               <span class="route-seq">{{ routeSeqLabel(order, index) }}</span>

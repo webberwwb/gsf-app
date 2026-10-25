@@ -17,7 +17,7 @@ class Product(BaseModel):
     # Pricing data (JSON) - main pricing field
     # Structure depends on pricing_type:
     # - per_item: {"price": 10.00, "sale_price": 8.00, "quantity_breaks": [{"min_qty": 3, "price": 7.00}]}
-    # - weight_range: {"ranges": [{"min": 0, "max": 2, "price": 10.00}, ...]}
+    # - weight_range: {"ranges": [{"min": 0, "max": 2, "price": 10.00}, ...], "sale_amount_off": 2.00}
     # - unit_weight: {"price_per_unit": 5.00, "sale_price_per_unit": 4.00, "unit": "lb"}
     # - bundled_weight: {"price_per_unit": 5.00, "sale_price_per_unit": 4.00, "unit": "lb", "min_weight": 7, "max_weight": 15}
     pricing_data = db.Column(JSON, nullable=True)

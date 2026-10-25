@@ -152,7 +152,10 @@
                       <div class="tooltip-label">价格区间:</div>
                       <div v-for="(range, idx) in item.product.pricing_data?.ranges" :key="idx" class="tooltip-range">
                         <span>{{ range.min }}{{ range.max ? ` - ${range.max}` : '+' }} {{ item.product.pricing_data?.unit || 'lb' }}:</span>
-                        <span class="tooltip-price">${{ formatStatMoney(range.price) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                        <span class="tooltip-price">
+                          <span v-if="rangeHasSale(item.product, range)" class="product-price-original">${{ formatStatMoney(range.price) }}</span>
+                          ${{ formatStatMoney(rangePaid(item.product, range)) }}/{{ item.product.pricing_data?.unit || 'lb' }}
+                        </span>
                       </div>
                     </div>
                     <div v-else-if="item.product.pricing_type === 'unit_weight'" class="tooltip-row">
@@ -287,7 +290,8 @@ import { toOrderLineDisplay } from '../utils/orderItemPricing'
 import {
   formatProductCompareAt,
   formatProductListPrice,
-  isProductOnSale
+  isProductOnSale,
+  weightRangePaidPrice
 } from '../utils/productPriceDisplay'
 
 export default {
@@ -340,6 +344,13 @@ export default {
     formatProductListPrice,
     formatProductCompareAt,
     isProductOnSale,
+    rangePaid(product, range) {
+      return weightRangePaidPrice(product, range)
+    },
+    rangeHasSale(product, range) {
+      const list = parseFloat(range?.price || 0)
+      return this.rangePaid(product, range) < list
+    },
     toOrderLineDisplay,
     toggleOrderItems() {
       this.showOrderItems = !this.showOrderItems

@@ -5,10 +5,10 @@ See ORDER_PRICING_AND_POINTS_RULES before changing order_item_pricing.py,
 order_points.py, shipping.py, or frontend pricing mirrors.
 """
 
-RULES_VERSION = '2026-09-15-region-surcharge'
+RULES_VERSION = '2026-10-23-price-snapshot'
 
 ORDER_PRICING_AND_POINTS_RULES = """
-ORDER PRICING AND POINTS RULES (v2026-09-15)
+ORDER PRICING AND POINTS RULES (v2026-10-23)
 ============================================
 
 Change this text and RULES_VERSION when business rules change. Update tests and
@@ -96,8 +96,9 @@ DISCOUNT PRODUCTS
 -----------------
 Sale is per group-deal product (group_deal_products.is_discount), not a catalog-wide
 flag. The same product can be on sale in one overlapping deal and list price in
-another. Catalog sale_price / sale_price_per_unit / variant.sale_price are promo
-amounts used only when that deal marks the product 本团折扣.
+another. Catalog sale_price / sale_price_per_unit / variant.sale_price /
+weight_range sale_amount_off are promo amounts used only when that deal marks
+the product 本团折扣. sale_amount_off is subtracted from every weight band.
 is_discount=true on a deal product pins it to the top of that deal's list (still
 listed in its category). Out-of-stock items still sort last.
 Customers see original + sale on that deal; order lines and points use the sale
@@ -115,8 +116,31 @@ User tooltip (不要备选): if original is unavailable we try to source it; if 
 cannot supply the item is cancelled automatically. Cancellation may change order
 total and delivery fee tier.
 
+PRICE LOCK
+----------
+Each order line stores pricing_snapshot: the paid schedule (sale and influencer
+already applied) from when the line was priced. Later catalog edits do not change
+that line. Quantity, weight, cutting, and fulfillment recalculate from the snapshot.
+A newly added product uses the catalog price at that moment and gets its own snapshot.
+
+Paid, completed, and cancelled orders are frozen: line prices, subtotal, shipping,
+adjustment, total, store credit, and the Stripe amount stay as stored.
+
+When an admin saves a new catalog list price, every not-yet-closed order (deal
+still draft/upcoming/active and before cutoff, and the order is not paid,
+completed, or cancelled) whose list total for the current quantity and weight
+would change must be chosen one by one: locked_old keeps the snapshot,
+applied_new replaces it with the new list schedule and recalculates the order.
+No default. List price means the per-item price, price per unit, weight-range
+band, bundle rate, variant price or price delta, and quantity breaks. Sale
+fields (sale_price, sale_price_per_unit, sale_amount_off, variant sale_price)
+do not ask for a choice. Turning 本团折扣 on or off for this deal immediately
+reprices that deal's open, unpaid orders. No per-order choice. Other deals,
+and paid or already-截单 orders, stay on the price already stored.
+Customers see 「此商品已按新价格计算」 or 「标价已更新，本单仍按原团购价」.
+
 IMPLEMENTATION
 --------------
-All order mutations: recalculate lines → recalculate_order_totals → points preview.
+All order mutations: recalculate lines from the snapshot → recalculate_order_totals → points preview.
 Award points only in update_order_payment / pickup-cash complete handlers.
 """

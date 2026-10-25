@@ -113,7 +113,10 @@
                             </svg>
                             <span class="weight-text">{{ formatWeightRange(range, product.pricing_data?.unit) }}</span>
                           </div>
-                          <div class="range-price">${{ moneyPlain(range.price || 0) }}</div>
+                          <div class="range-price">
+                            <span v-if="rangeHasSale(product, range)" class="original-price range-original">${{ moneyPlain(range.price || 0) }}</span>
+                            ${{ moneyPlain(rangePaid(product, range)) }}
+                          </div>
                         </div>
                       </div>
                       <div class="pricing-note">
@@ -294,7 +297,8 @@ import {
   formatProductCompareAt,
   formatVariantPriceLabel,
   isProductOnSale,
-  getProductPaidAmount
+  getProductPaidAmount,
+  weightRangePaidPrice
 } from '../utils/productPriceDisplay'
 
 export default {
@@ -447,6 +451,13 @@ export default {
       } else if (event.key === 'ArrowRight') {
         this.nextFullScreenImage()
       }
+    },
+    rangePaid(product, range) {
+      return weightRangePaidPrice(product, range)
+    },
+    rangeHasSale(product, range) {
+      const list = parseFloat(range?.price || 0)
+      return this.rangePaid(product, range) < list
     },
     getSortedWeightRanges(product) {
       if (!product.pricing_data?.ranges) return []
@@ -812,6 +823,12 @@ export default {
   font-size: 16px;
   color: #9ca3af;
   text-decoration: line-through;
+}
+
+.range-original {
+  margin-right: 6px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .price-note {

@@ -177,6 +177,19 @@
           >
             + 添加区间
           </button>
+          <div class="form-group" style="margin-top: 12px;">
+            <label for="sale_amount_off">每档减免 ($)</label>
+            <input
+              id="sale_amount_off"
+              v-model.number="formData.pricing_data.sale_amount_off"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              class="form-input"
+            />
+            <small class="form-hint">仅在团购勾选「本团折扣」时生效，每个重量区间减同样的金额</small>
+          </div>
         </div>
 
         <!-- Unit Weight Pricing -->
@@ -535,6 +548,53 @@
         </div>
       </form>
     </div>
+
+    <div v-if="showPriceChoiceModal" class="price-choice-overlay" @click.self="cancelPriceChoice">
+      <div class="price-choice-modal" role="dialog" aria-labelledby="price-choice-title">
+        <div class="modal-header">
+          <h2 id="price-choice-title">未截单订单的价格</h2>
+          <button type="button" @click="cancelPriceChoice" class="close-btn" aria-label="关闭">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <p class="price-choice-lead">这些订单还没截单，商品标价有变动。请逐单选择沿用原价，或改用新标价。未选择前不能保存。促销金额在团购的「本团折扣」里生效。</p>
+        <div class="price-choice-list">
+          <div v-for="row in priceChoiceOrders" :key="row.order_id" class="price-choice-row">
+            <div class="price-choice-main">
+              <strong>{{ row.order_number }}</strong>
+              <span>{{ row.customer_name || '客户' }}</span>
+              <span class="price-choice-deal">{{ row.group_deal_title }}</span>
+            </div>
+            <div class="price-choice-money">
+              <span>原价 ${{ formatChoiceMoney(row.old_total) }}</span>
+              <span>新价 ${{ formatChoiceMoney(row.new_total) }}</span>
+            </div>
+            <div class="price-choice-actions" role="group" :aria-label="row.order_number">
+              <button
+                type="button"
+                class="choice-btn"
+                :class="{ selected: priceChoices[row.order_id] === 'old' }"
+                @click="setPriceChoice(row.order_id, 'old')"
+              >沿用原价</button>
+              <button
+                type="button"
+                class="choice-btn choice-btn-new"
+                :class="{ selected: priceChoices[row.order_id] === 'new' }"
+                @click="setPriceChoice(row.order_id, 'new')"
+              >使用新价</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="cancel-btn" @click="cancelPriceChoice">返回</button>
+          <button type="button" class="submit-btn" :disabled="!priceChoicesComplete || submitting" @click="confirmPriceChoices">
+            {{ submitting ? '保存中...' : '确认并保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -565,6 +625,7 @@ export default {
           price: null,
           sale_price: null,
           ranges: [{ min: 0, max: null, price: null }],
+          sale_amount_off: null,
           price_per_unit: null,
           sale_price_per_unit: null,
           unit: 'lb',
@@ -600,12 +661,20 @@ export default {
       uploading: false,
       uploadProgress: 0,
       submitting: false,
+      showPriceChoiceModal: false,
+      priceChoiceOrders: [],
+      priceChoices: {},
+      pendingProductData: null,
       error: null
     }
   },
   computed: {
     editingProduct() {
       return this.product !== null
+    },
+    priceChoicesComplete() {
+      if (!this.priceChoiceOrders.length) return false
+      return this.priceChoiceOrders.every((row) => this.priceChoices[row.order_id] === 'old' || this.priceChoices[row.order_id] === 'new')
     },
     pricingTypeLabel() {
       const labels = {
@@ -665,6 +734,7 @@ export default {
           price: null,
           sale_price: null,
           ranges: [{ min: 0, max: null, price: null }],
+          sale_amount_off: null,
           price_per_unit: null,
           sale_price_per_unit: null,
           unit: 'lb',
@@ -733,6 +803,7 @@ export default {
             price: pricingData.price || null,
             sale_price: pricingData.sale_price != null ? pricingData.sale_price : null,
             ranges: pricingData.ranges || [{ min: 0, max: null, price: null }],
+            sale_amount_off: pricingData.sale_amount_off != null ? pricingData.sale_amount_off : null,
             price_per_unit: pricingData.price_per_unit || null,
             sale_price_per_unit: pricingData.sale_price_per_unit != null ? pricingData.sale_price_per_unit : null,
             unit: pricingData.unit || 'lb',
@@ -811,7 +882,7 @@ export default {
       if (pricingType === 'per_item') {
         this.formData.pricing_data = { price: null, sale_price: null, quantity_breaks: [] }
       } else if (pricingType === 'weight_range') {
-        this.formData.pricing_data = { ranges: [{ min: 0, max: null, price: null }] }
+        this.formData.pricing_data = { ranges: [{ min: 0, max: null, price: null }], sale_amount_off: null }
       } else if (pricingType === 'unit_weight') {
         this.formData.pricing_data = { price_per_unit: null, sale_price_per_unit: null, unit: 'lb' }
       } else if (pricingType === 'bundled_weight') {
@@ -1025,6 +1096,12 @@ export default {
         } else if (this.formData.pricing_type === 'weight_range') {
           // Filter out empty ranges and ensure all have prices
           data.pricing_data.ranges = this.formData.pricing_data.ranges.filter(r => r.price !== null && r.price !== '')
+          const off = this.formData.pricing_data.sale_amount_off
+          if (off != null && off !== '') {
+            data.pricing_data.sale_amount_off = parseFloat(off)
+          } else {
+            delete data.pricing_data.sale_amount_off
+          }
         } else if (this.formData.pricing_type === 'unit_weight') {
           data.pricing_data.price_per_unit = parseFloat(this.formData.pricing_data.price_per_unit) || 0
           data.pricing_data.unit = this.formData.pricing_data.unit
@@ -1120,15 +1197,12 @@ export default {
           : 0
 
         if (this.editingProduct) {
-          // Update product
-          await apiClient.put(`/admin/products/${this.product.id}`, data)
+          await this.saveProduct(data)
         } else {
-          // Create product
           await apiClient.post('/admin/products', data)
+          this.$emit('saved')
+          this.close()
         }
-
-        this.$emit('saved')
-        this.close()
       } catch (error) {
         this.error = error.response?.data?.message || error.response?.data?.error || '保存失败'
         console.error('Save product error:', error)
@@ -1137,7 +1211,64 @@ export default {
       }
     },
     close() {
+      this.showPriceChoiceModal = false
+      this.priceChoiceOrders = []
+      this.priceChoices = {}
+      this.pendingProductData = null
       this.$emit('close')
+    },
+    formatChoiceMoney(value) {
+      const n = parseFloat(value)
+      return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+    },
+    setPriceChoice(orderId, choice) {
+      this.priceChoices = { ...this.priceChoices, [orderId]: choice }
+    },
+    cancelPriceChoice() {
+      this.showPriceChoiceModal = false
+      this.priceChoiceOrders = []
+      this.priceChoices = {}
+      this.pendingProductData = null
+    },
+    async confirmPriceChoices() {
+      if (!this.priceChoicesComplete || !this.pendingProductData) return
+      const choices = this.priceChoiceOrders.map((row) => ({
+        order_id: row.order_id,
+        choice: this.priceChoices[row.order_id]
+      }))
+      await this.saveProduct(this.pendingProductData, choices)
+    },
+    async saveProduct(data, choices) {
+      this.submitting = true
+      this.error = null
+      const body = { ...data }
+      if (choices) body.order_price_choices = choices
+      try {
+        await apiClient.put(`/admin/products/${this.product.id}`, body)
+        this.showPriceChoiceModal = false
+        this.priceChoiceOrders = []
+        this.priceChoices = {}
+        this.pendingProductData = null
+        this.$emit('saved')
+        this.close()
+      } catch (error) {
+        const payload = error.response?.data
+        if (error.response?.status === 409 && payload?.code === 'price_choice_required') {
+          this.pendingProductData = data
+          this.priceChoiceOrders = payload.orders || []
+          const stillThere = new Set(this.priceChoiceOrders.map((row) => row.order_id))
+          const next = {}
+          for (const [id, choice] of Object.entries(this.priceChoices)) {
+            if (stillThere.has(Number(id)) || stillThere.has(id)) next[id] = choice
+          }
+          this.priceChoices = next
+          this.showPriceChoiceModal = true
+          return
+        }
+        this.error = payload?.message || payload?.error || '保存失败'
+      } finally {
+        this.submitting = false
+      }
     }
   }
 }
@@ -1510,6 +1641,140 @@ label {
 .remove-range-btn:hover {
   background: #C62828;
   color: white;
+}
+
+.price-choice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.price-choice-modal {
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  width: 100%;
+  max-width: none;
+  max-height: min(88vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0;
+  box-shadow: var(--md-elevation-4);
+}
+
+.price-choice-modal .modal-header {
+  flex-shrink: 0;
+  padding: var(--md-spacing-md) var(--md-spacing-lg);
+}
+
+.price-choice-modal .close-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+.price-choice-lead {
+  margin: 0;
+  padding: 0 var(--md-spacing-lg) var(--md-spacing-sm);
+  color: var(--md-on-surface-variant);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.price-choice-list {
+  padding: 0 var(--md-spacing-lg);
+  overflow: auto;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+}
+
+.price-choice-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--md-surface-variant);
+}
+
+.price-choice-main,
+.price-choice-money {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.price-choice-money {
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface);
+}
+
+.price-choice-deal {
+  color: var(--md-on-surface-variant);
+}
+
+.price-choice-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.choice-btn {
+  flex: 1;
+  min-height: 44px;
+  border-radius: var(--md-radius-md);
+  border: 1px solid var(--md-outline, #d7d0c4);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.choice-btn.selected {
+  background: var(--md-primary);
+  border-color: var(--md-primary);
+  color: white;
+  box-shadow: var(--md-elevation-1);
+}
+
+.price-choice-modal .form-actions {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: var(--md-spacing-md) var(--md-spacing-lg) calc(var(--md-spacing-md) + env(safe-area-inset-bottom, 0px));
+  background: var(--md-surface);
+}
+
+.price-choice-modal .form-actions .cancel-btn,
+.price-choice-modal .form-actions .submit-btn {
+  flex: 1;
+  min-height: 44px;
+}
+
+@media (min-width: 640px) {
+  .price-choice-overlay {
+    align-items: center;
+    padding: var(--md-spacing-md);
+  }
+
+  .price-choice-modal {
+    max-width: 520px;
+    border-radius: var(--md-radius-lg);
+  }
+
+  .price-choice-modal .form-actions {
+    padding-bottom: var(--md-spacing-md);
+  }
+
+  .price-choice-modal .form-actions .cancel-btn,
+  .price-choice-modal .form-actions .submit-btn {
+    flex: 0 1 auto;
+  }
 }
 </style>
 

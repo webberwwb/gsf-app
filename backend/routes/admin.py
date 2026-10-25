@@ -68,6 +68,7 @@ from utils.order_item_pricing import (
     combine_order_notes,
     order_item_fields_for_merge,
     recalculate_existing_item,
+    preserve_existing_line_prices,
     bulk_set_product_fulfillment,
     apply_product_substitute_fields,
     apply_product_cutting_fields,
@@ -90,6 +91,12 @@ from utils.order_audit import (
     record_order_audit,
 )
 from utils.order_totals import sync_order_pricing
+from utils.order_lock import order_money_locked
+from utils.product_price_choices import (
+    apply_order_price_choices,
+    open_order_price_impact,
+    price_choice_rejection,
+)
 from utils.order_points import award_order_points, revoke_order_points
 from schemas.utils import validate_request
 from urllib.parse import quote
@@ -368,8 +375,14 @@ def update_product(product_id):
                 data=validated_data,
                 context={'pricing_type': validated_data['pricing_type']}
             )
-            if error_response:
-                return error_response, status_code
+        if error_response:
+            return error_response, status_code
+
+        impact = open_order_price_impact(product, validated_data)
+        rejection = price_choice_rejection(impact, (raw_data or {}).get('order_price_choices'))
+        if rejection:
+            db.session.rollback()
+            return jsonify(rejection), 409
         
         # Update pricing_type if provided
         if 'pricing_type' in validated_data:
@@ -415,7 +428,11 @@ def update_product(product_id):
         apply_product_cutting_fields(product, validated_data)
         if 'variants' in validated_data:
             sync_product_variants(product, validated_data.get('variants'))
-        
+
+        apply_order_price_choices(product, impact, (raw_data or {}).get('order_price_choices'))
+        from utils.order_item_pricing import clear_locked_price_choices_matching_catalog
+        clear_locked_price_choices_matching_catalog(product)
+
         db.session.commit()
         
         current_app.logger.info(f'Updated product: {product.id} - {product.name}')
@@ -1574,6 +1591,10 @@ def update_group_deal(deal_id):
         
         # Update products if provided
         if 'products' in validated_data:
+            current_deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
+            previous_discount = {
+                dp.product_id: bool(dp.is_discount) for dp in current_deal_products
+            }
             # Check if there are existing orders for this group deal
             existing_orders_count = Order.query.filter(
                 Order.group_deal_id == deal.id,
@@ -1591,9 +1612,7 @@ def update_group_deal(deal_id):
                 ).distinct().all()
                 products_in_orders_set = {pid[0] for pid in products_in_orders}
                 
-                # Get current products in the deal
-                current_deal_products = GroupDealProduct.query.filter_by(group_deal_id=deal.id).all()
-                current_product_ids = {dp.product_id for dp in current_deal_products}
+                current_product_ids = set(previous_discount)
                 
                 # Get new product IDs from request
                 new_product_ids = {product_data.get('product_id') for product_data in validated_data['products'] if product_data.get('product_id')}
@@ -1616,18 +1635,28 @@ def update_group_deal(deal_id):
             GroupDealProduct.query.filter_by(group_deal_id=deal.id).delete()
             
             # Add new products
+            new_discount = {}
             for product_data in validated_data['products']:
                 product_id = product_data.get('product_id')
                 if not product_id:
                     continue
-                
+                on_sale = bool(product_data.get('is_discount'))
+                new_discount[product_id] = on_sale
                 deal_product = GroupDealProduct(
                     group_deal_id=deal.id,
                     product_id=product_id,
                     deal_stock_limit=product_data.get('deal_stock_limit'),
-                    is_discount=bool(product_data.get('is_discount')),
+                    is_discount=on_sale,
                 )
                 db.session.add(deal_product)
+            db.session.flush()
+            changed_discount = [
+                pid for pid, on_sale in new_discount.items()
+                if previous_discount.get(pid, False) != on_sale
+            ]
+            if changed_discount:
+                from utils.product_price_choices import apply_deal_sale_to_open_orders
+                apply_deal_sale_to_open_orders(deal, changed_discount)
         
         db.session.commit()
         
@@ -2792,6 +2821,8 @@ def update_order_adjustment(order_id):
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        if order_money_locked(order):
+            return jsonify({'error': '订单金额已锁定，不能调整'}), 400
         
         data = request.get_json()
         
@@ -2879,6 +2910,8 @@ def update_order_weights(order_id):
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
         if order.status == OrderStatus.CANCELLED.value:
             return jsonify({'error': 'Cannot update a cancelled order'}), 400
+        if order_money_locked(order):
+            return jsonify({'error': '订单金额已锁定，不能修改重量'}), 400
         group_deal = GroupDeal.query.filter(
             GroupDeal.id == order.group_deal_id,
             GroupDeal.deleted_at.is_(None),
@@ -2969,6 +3002,14 @@ def update_admin_order(order_id):
     
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        if order_money_locked(order):
+            if notes is not None:
+                order.notes = notes if notes else None
+                db.session.commit()
+            return jsonify({
+                'message': '订单金额已锁定，仅可保存备注',
+                'order': _build_admin_order_dict(order),
+            }), 200
         
         # Get group deal for pricing (excluding soft-deleted)
         group_deal = GroupDeal.query.filter(
@@ -3000,6 +3041,8 @@ def update_admin_order(order_id):
             )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
+
+        preserve_existing_line_prices(priced_items, active_items_for_order(order_id))
 
         stock_ok, stock_err = update_stock_after_order_modification(
             order.group_deal_id,
@@ -3100,6 +3143,8 @@ def update_order_item_availability(order_id, item_id):
 
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        if order_money_locked(order):
+            return jsonify({'error': '订单金额已锁定，不能修改履约'}), 400
         item = OrderItem.query.filter(
             OrderItem.id == item_id,
             OrderItem.order_id == order_id,
@@ -3135,6 +3180,8 @@ def update_order_item_substitute_preference(order_id, item_id):
 
     try:
         order = Order.query.filter(Order.id == order_id, Order.deleted_at.is_(None)).first_or_404()
+        if order_money_locked(order):
+            return jsonify({'error': '订单金额已锁定，不能修改备选'}), 400
         item = OrderItem.query.filter(
             OrderItem.id == item_id,
             OrderItem.order_id == order_id,
@@ -3381,6 +3428,8 @@ def merge_orders():
         statuses = {order.status for order in orders}
         if OrderStatus.CANCELLED.value in statuses:
             return jsonify({'error': 'Cannot merge cancelled orders'}), 400
+        if any(order_money_locked(order) for order in orders):
+            return jsonify({'error': '已付款、已完成或已取消的订单不能合并'}), 400
         
         # Sort orders by creation date (earliest first will be the main order)
         orders.sort(key=lambda x: x.created_at)

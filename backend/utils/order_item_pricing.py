@@ -1,4 +1,5 @@
 """Shared order line pricing: base product price, variants, and substitute fulfillment."""
+import copy
 from decimal import Decimal
 from utils.money import round_money, round_money_float
 from utils.image_urls import public_image_url, public_image_urls, thumbnail_url, thumbnail_urls
@@ -81,6 +82,14 @@ def paid_pricing_data(product, pricing_data=None):
             sale = _optional_float(pd.get('sale_price_per_unit'))
             if sale is not None:
                 pd['price_per_unit'] = sale
+        elif pricing_type == 'weight_range':
+            off = _optional_float(pd.get('sale_amount_off'))
+            if off is not None and off > 0:
+                pd['ranges'] = [
+                    {**row, 'price': _floor_paid(row.get('price'), off)}
+                    for row in (pd.get('ranges') or [])
+                    if isinstance(row, dict)
+                ]
     disc = getattr(product, '_influencer_discount', None)
     if disc:
         from utils.influencer_pricing import apply_rate_to_pricing_data
@@ -385,15 +394,19 @@ def apply_fulfillment_price(
     return sub_unit, max(0.0, float(sub_total))
 
 
-def resolve_variant(product, variant_id, *, required=True):
+def resolve_variant(product, variant_id, *, required=True, variant_rows=None):
     """
     Validate variant selection. Returns (variant, error_message).
     variant is None if no active variants on product.
     When required=False (admin edits), lines may omit variant_id on variant products.
+    variant_rows, when set, is used instead of the database so a proposed price can be quoted.
     """
-    active = product.get_active_variants() if hasattr(product, 'get_active_variants') else [
-        v for v in (product.variants or []) if v.is_active
-    ]
+    if variant_rows is not None:
+        active = [v for v in variant_rows if getattr(v, 'is_active', True) is not False]
+    elif hasattr(product, 'get_active_variants'):
+        active = product.get_active_variants()
+    else:
+        active = [v for v in (product.variants or []) if v.is_active]
 
     if not active:
         if variant_id:
@@ -405,7 +418,13 @@ def resolve_variant(product, variant_id, *, required=True):
             return None, f'请为商品「{product.name}」选择选项'
         return None, None
 
-    variant = ProductVariant.query.filter_by(id=variant_id, product_id=product.id, is_active=True).first()
+    if variant_rows is not None:
+        variant = next(
+            (v for v in active if v.id == variant_id or str(v.id) == str(variant_id)),
+            None,
+        )
+    else:
+        variant = ProductVariant.query.filter_by(id=variant_id, product_id=product.id, is_active=True).first()
     if not variant:
         return None, f'Invalid variant {variant_id} for product {product.id}'
     return variant, None
@@ -421,6 +440,236 @@ def validate_substitute_preference(product, accept_substitute):
     return None
 
 
+def _floor_paid(value, amount):
+    return float(round_money(max(Decimal('0'), Decimal(str(value or 0)) - Decimal(str(amount or 0)))))
+
+
+class _SnapVariant:
+    def __init__(self, data):
+        data = data or {}
+        self.id = data.get('id')
+        self.name = data.get('name')
+        self.price = data.get('price')
+        self.sale_price = data.get('sale_price')
+        self.price_delta = data.get('price_delta') or 0
+        self.quantity_breaks = data.get('quantity_breaks')
+        self.is_active = True
+        self.product_id = None
+
+
+class _SnapProduct:
+    """Stand-in product whose prices come only from a line snapshot."""
+
+    def __init__(self, snap):
+        snap = snap or {}
+        self.id = None
+        self.name = ''
+        self.pricing_type = snap.get('pricing_type') or 'per_item'
+        self.pricing_data = snap.get('pricing_data') or {}
+        self.variants_share_price = snap.get('variants_share_price', True)
+        self.substitute_enabled = bool(snap.get('substitute_pricing_data'))
+        self.substitute_pricing_type = snap.get('substitute_pricing_type')
+        self.substitute_pricing_data = snap.get('substitute_pricing_data')
+        self.substitute_price = None
+        self._deal_is_discount = False
+        self.counts_toward_free_shipping = snap.get('counts_toward_free_shipping', True)
+        self.cutting_enabled = False
+        self.cutting_fee = 0
+        variant = snap.get('variant')
+        self._variant = _SnapVariant(variant) if variant else None
+
+    def get_active_variants(self):
+        return [self._variant] if self._variant else []
+
+
+def build_pricing_snapshot(product, variant=None):
+    """Paid schedule for a line. Sale and per-unit influencer discount are already applied."""
+    paid = copy.deepcopy(paid_pricing_data(product))
+    share = product_shares_variant_price(product)
+    variant_snap = None
+    if variant is not None:
+        v_price = _optional_float(getattr(variant, 'price', None))
+        v_sale = _optional_float(getattr(variant, 'sale_price', None))
+        v_breaks = copy.deepcopy(getattr(variant, 'quantity_breaks', None))
+        v_delta = _safe_float(getattr(variant, 'price_delta', 0), 0)
+        if not share:
+            if product_on_sale(product) and v_sale is not None:
+                v_price = v_sale
+            v_sale = None
+            disc = getattr(product, '_influencer_discount', None)
+            if disc and product.pricing_type in ('per_item', 'weight_range'):
+                _commission_type, amount = disc
+                if v_price is not None:
+                    v_price = _floor_paid(v_price, amount)
+                if v_breaks:
+                    v_breaks = [
+                        {**row, 'price': _floor_paid(row.get('price'), amount)}
+                        for row in v_breaks
+                    ]
+        variant_snap = {
+            'id': getattr(variant, 'id', None),
+            'name': getattr(variant, 'name', None),
+            'price': v_price,
+            'sale_price': None,
+            'price_delta': v_delta,
+            'quantity_breaks': v_breaks,
+        }
+
+    sub_type = None
+    sub_data = None
+    if getattr(product, 'substitute_enabled', False):
+        sub_type, sub_data = get_substitute_pricing(product)
+        sub_data = copy.deepcopy(sub_data)
+
+    line_discount = None
+    disc = getattr(product, '_influencer_discount', None)
+    if disc:
+        from models.influencer import COMMISSION_PER_ITEM
+        commission_type, amount = disc
+        if commission_type == COMMISSION_PER_ITEM and product.pricing_type in ('unit_weight', 'bundled_weight'):
+            line_discount = {'amount': float(amount)}
+
+    return {
+        'pricing_type': getattr(product, 'pricing_type', None) or 'per_item',
+        'pricing_data': paid,
+        'variants_share_price': share,
+        'variant': variant_snap,
+        'substitute_pricing_type': sub_type,
+        'substitute_pricing_data': sub_data,
+        'counts_toward_free_shipping': getattr(product, 'counts_toward_free_shipping', True) is not False,
+        'influencer_line_discount': line_discount,
+        'synthetic': False,
+    }
+
+
+def synthetic_snapshot_from_stored(item, product=None):
+    """Flat schedule that reproduces the price already stored on an old line."""
+    pricing_type = (getattr(product, 'pricing_type', None) if product else None) or 'per_item'
+    unit = _safe_float(getattr(item, 'unit_price', 0), 0)
+    cutting = bool(getattr(item, 'cutting', False))
+    fee = _safe_float(getattr(item, 'cutting_fee', 0), 0) if cutting else 0.0
+    if pricing_type == 'per_item':
+        pricing_data = {'price': round_money_float(max(0.0, unit - fee))}
+    elif pricing_type == 'unit_weight':
+        pricing_data = {'price_per_unit': unit, 'unit': 'lb'}
+    elif pricing_type == 'bundled_weight':
+        weight = _parse_final_weight(getattr(item, 'final_weight', None)) or 1
+        pricing_data = {
+            'price_per_unit': unit,
+            'unit': 'lb',
+            'min_weight': weight,
+            'max_weight': weight,
+        }
+    elif pricing_type == 'weight_range':
+        pricing_data = {'ranges': [{'min': 0, 'max': None, 'price': unit}]}
+    else:
+        pricing_data = {'price': unit}
+    return {
+        'pricing_type': pricing_type,
+        'pricing_data': pricing_data,
+        'variants_share_price': True,
+        'variant': None,
+        'substitute_pricing_type': None,
+        'substitute_pricing_data': None,
+        'counts_toward_free_shipping': (
+            True if product is None else getattr(product, 'counts_toward_free_shipping', True) is not False
+        ),
+        'influencer_line_discount': None,
+        'synthetic': True,
+    }
+
+
+def _apply_snapshot_line_discount(snap, unit_price, total_price, quantity, cannot_fulfill):
+    if cannot_fulfill:
+        return unit_price, total_price
+    line_discount = (snap or {}).get('influencer_line_discount') or None
+    if not line_discount:
+        return unit_price, total_price
+    amount = _safe_float(line_discount.get('amount'), 0)
+    if amount <= 0:
+        return unit_price, total_price
+    qty = int(quantity or 1)
+    total_price = round_money_float(max(0.0, float(total_price) - amount * qty))
+    return unit_price, total_price
+
+
+def price_from_snapshot(
+    snap,
+    quantity,
+    final_weight=None,
+    *,
+    product_qty=None,
+    is_unavailable=False,
+    accept_substitute=None,
+    cannot_fulfill=False,
+    cutting=False,
+    cutting_fee=None,
+):
+    """Recompute a line from its saved schedule. Does not read the live catalog."""
+    product = _SnapProduct(snap)
+    pricing_type = product.pricing_type
+    pooled = int(product_qty if product_qty is not None else quantity or 1)
+    variant = None if (snap or {}).get('synthetic') else product._variant
+
+    if pricing_type == 'per_item':
+        unit_price, _delta = resolve_per_item_unit(product, variant, pooled, snapshot_delta=0)
+        base_total = round_money_float(unit_price * int(quantity or 1))
+    else:
+        unit_price, base_total = compute_price_from_config(
+            pricing_type, product.pricing_data, quantity, final_weight
+        )
+        if variant is not None:
+            unit_price, base_total = apply_variant_delta_safe(
+                unit_price,
+                base_total,
+                float(variant.price_delta or 0),
+                pricing_type,
+                quantity,
+                final_weight,
+                product,
+            )
+
+    unit_price, total_price = apply_fulfillment_price(
+        unit_price,
+        base_total,
+        quantity,
+        product,
+        is_unavailable,
+        accept_substitute,
+        final_weight=final_weight,
+        pricing_type=pricing_type,
+        cannot_fulfill=cannot_fulfill,
+    )
+    unit_price, total_price = _apply_snapshot_line_discount(
+        snap, unit_price, total_price, quantity, cannot_fulfill
+    )
+    fee_out = 0.0
+    if cutting and not cannot_fulfill:
+        unit_price, total_price, fee_out = apply_cutting_surcharge(
+            unit_price, total_price, quantity, pricing_type, True, cutting_fee or 0
+        )
+    return round_money_float(unit_price), round_money_float(total_price), fee_out
+
+
+def _snapshot_variant_id(snap):
+    variant = (snap or {}).get('variant') if isinstance(snap, dict) else None
+    if not isinstance(variant, dict):
+        return None
+    return variant.get('id')
+
+
+def _line_variant_changed(item, snap):
+    if not snap or snap.get('synthetic'):
+        return False
+    item_vid = getattr(item, 'variant_id', None)
+    snap_vid = _snapshot_variant_id(snap)
+    if item_vid and snap_vid and int(item_vid) != int(snap_vid):
+        return True
+    if item_vid and not snap.get('variant'):
+        return True
+    return False
+
+
 def build_priced_order_item(
     product,
     quantity,
@@ -433,13 +682,14 @@ def build_priced_order_item(
     cannot_fulfill=False,
     require_variant=True,
     product_qty=None,
+    variant_rows=None,
 ):
     """
     Build dict of order item fields with prices and snapshots.
     Raises ValueError on validation errors.
     product_qty: total units of this product on the order (all variants); defaults to quantity.
     """
-    variant, err = resolve_variant(product, variant_id, required=require_variant)
+    variant, err = resolve_variant(product, variant_id, required=require_variant, variant_rows=variant_rows)
     if err:
         raise ValueError(err)
 
@@ -504,76 +754,93 @@ def build_priced_order_item(
         'accept_substitute': accept_substitute if product.substitute_enabled else None,
         'is_unavailable': bool(is_unavailable),
         'cannot_fulfill': bool(cannot_fulfill),
+        'pricing_snapshot': build_pricing_snapshot(product, variant),
+        'price_choice': None,
     }
 
 
-def recalculate_existing_item(item, product=None, product_qty=None):
-    """Recalculate prices for an existing OrderItem row."""
-    from models.product import Product
-
-    product = product or Product.query.get(item.product_id)
-    if not product:
-        return
+def _order_for_item(item):
     order = getattr(item, 'order', None)
     if order is None and getattr(item, 'order_id', None):
         from models.order import Order
         order = Order.query.get(item.order_id)
-    attach_deal_sale(product, group_deal_id=getattr(order, 'group_deal_id', None))
-    from utils.influencer_pricing import attach_influencer_buyer_discount
-    attach_influencer_buyer_discount(product, getattr(order, 'user_id', None))
+    return order
 
-    pricing_type = product.pricing_type
-    pooled_qty = pooled_product_qty_for_item(item, product_qty)
+
+def resnapshot_item_from_catalog(item, product, order=None, *, list_price_only=False):
+    """Replace the line schedule with the catalog price for its current variant.
+
+    list_price_only writes the catalog list schedule. The open-order price
+    choice uses that so a sale amount is not baked in by 使用新价.
+    """
+    from utils.influencer_pricing import attach_influencer_buyer_discount
+
+    order = order or _order_for_item(item)
+    prev_sale = getattr(product, '_deal_is_discount', None)
+    if list_price_only:
+        product._deal_is_discount = False
+    else:
+        attach_deal_sale(product, group_deal_id=getattr(order, 'group_deal_id', None))
+    attach_influencer_buyer_discount(product, getattr(order, 'user_id', None))
     variant = None
     variant_id = getattr(item, 'variant_id', None)
     if variant_id:
-        variant = ProductVariant.query.filter_by(id=variant_id).first()
+        variant = ProductVariant.query.filter_by(id=variant_id, product_id=product.id).first()
+    item.pricing_snapshot = build_pricing_snapshot(product, variant)
+    if list_price_only:
+        if prev_sale is None and hasattr(product, '_deal_is_discount'):
+            delattr(product, '_deal_is_discount')
+        else:
+            product._deal_is_discount = prev_sale
+    if variant is not None:
+        item.variant_name = variant.name
+        item.variant_price_delta = variant.price_delta
+    return item.pricing_snapshot
 
-    if pricing_type == 'per_item':
-        unit_price, _delta = resolve_per_item_unit(
-            product, variant, pooled_qty, snapshot_delta=item.variant_price_delta
-        )
-        if variant is None and item.variant_price_delta is not None:
-            # Live variant gone; apply snapshotted delta on product schedule
-            unit_price, _delta = resolve_per_item_unit(
-                product, None, pooled_qty, snapshot_delta=item.variant_price_delta
-            )
-        base_total = round_money_float(unit_price * int(item.quantity or 1))
-    else:
-        unit_price, base_total = compute_base_price(
-            product, item.quantity, pricing_type, item.final_weight
-        )
-        variant_delta = float(item.variant_price_delta or 0)
-        unit_price, base_total = apply_variant_delta_safe(
-            unit_price, base_total, variant_delta, pricing_type, item.quantity, item.final_weight, product
-        )
 
-    unit_price, total_price = apply_fulfillment_price(
-        unit_price,
-        base_total,
-        item.quantity,
-        product,
-        item.is_unavailable,
-        item.accept_substitute,
-        final_weight=item.final_weight,
-        pricing_type=pricing_type,
-        cannot_fulfill=bool(getattr(item, 'cannot_fulfill', False)),
-    )
-    from utils.influencer_pricing import apply_influencer_line_discount
+def recalculate_existing_item(item, product=None, product_qty=None):
+    """Recalculate a line from its saved schedule, not the live catalog."""
+    from utils.order_lock import order_money_locked
     from utils.cutting import catalog_cutting_fee
-    unit_price, total_price = apply_influencer_line_discount(
-        product, unit_price, total_price, item.quantity
-    )
+
+    order = _order_for_item(item)
+    if order_money_locked(order):
+        return
+
+    snap = getattr(item, 'pricing_snapshot', None)
+    if _line_variant_changed(item, snap):
+        from models.product import Product
+        product = product or Product.query.get(item.product_id)
+        if product:
+            snap = resnapshot_item_from_catalog(item, product, order)
+            item.price_choice = None
+    if not snap:
+        from models.product import Product
+        product = product or Product.query.get(item.product_id)
+        snap = synthetic_snapshot_from_stored(item, product)
+        item.pricing_snapshot = snap
+
     want_cut = bool(getattr(item, 'cutting', False))
-    snap_fee = getattr(item, 'cutting_fee', None)
-    if want_cut and snap_fee is None:
-        snap_fee = catalog_cutting_fee(product)
-    if want_cut and not bool(getattr(item, 'cannot_fulfill', False)):
-        unit_price, total_price, snap_fee = apply_cutting_surcharge(
-            unit_price, total_price, item.quantity, pricing_type, True, snap_fee
-        )
-        if item.cutting_fee is None:
-            item.cutting_fee = snap_fee
+    cannot = bool(getattr(item, 'cannot_fulfill', False))
+    fee = getattr(item, 'cutting_fee', None)
+    if want_cut and fee is None:
+        from models.product import Product
+        product = product or Product.query.get(item.product_id)
+        fee = catalog_cutting_fee(product) if product else 0
+    pooled = pooled_product_qty_for_item(item, product_qty)
+    unit_price, total_price, fee_out = price_from_snapshot(
+        snap,
+        item.quantity,
+        item.final_weight,
+        product_qty=pooled,
+        is_unavailable=item.is_unavailable,
+        accept_substitute=item.accept_substitute,
+        cannot_fulfill=cannot,
+        cutting=want_cut,
+        cutting_fee=fee,
+    )
+    if want_cut and not cannot:
+        item.cutting_fee = fee_out
     elif not want_cut:
         item.cutting_fee = None
     item.unit_price = round_money(unit_price)
@@ -611,6 +878,8 @@ def order_item_fields_for_merge(source_item):
         'accept_substitute': source_item.accept_substitute,
         'is_unavailable': source_item.is_unavailable,
         'cannot_fulfill': bool(getattr(source_item, 'cannot_fulfill', False)),
+        'pricing_snapshot': getattr(source_item, 'pricing_snapshot', None),
+        'price_choice': getattr(source_item, 'price_choice', None),
         'source_order_id': source_item.order_id,
         'source_item_id': source_item.id,
     }
@@ -795,7 +1064,53 @@ def enrich_order_item_dict(item, product=None, source_order=None, on_sale=None):
         item_dict['substitute_preference_label'] = (
             '接受备选' if accept_sub is True else '不要备选'
         )
+    if getattr(item, 'price_choice', None) == 'locked_old' and product:
+        quote = quote_catalog_line(product, item)
+        if quote is not None and round_money(quote['total_price']) == round_money(item.total_price):
+            item.price_choice = None
+            item_dict['price_choice'] = None
+        elif quote is not None:
+            item_dict['catalog_unit_price'] = quote['unit_price']
+            item_dict['catalog_total_price'] = quote['total_price']
     return item_dict
+
+
+def clear_locked_price_choices_matching_catalog(product):
+    """Drop locked_old once the catalog price is back to what the line charges."""
+    if product is None or not getattr(product, 'id', None):
+        return
+    lines = OrderItem.query.filter(
+        OrderItem.product_id == product.id,
+        OrderItem.price_choice == 'locked_old',
+        OrderItem.active(),
+    ).all()
+    for line in lines:
+        quote = quote_catalog_line(product, line)
+        if quote is not None and round_money(quote['total_price']) == round_money(line.total_price):
+            line.price_choice = None
+
+
+def quote_catalog_line(product, item):
+    """What this line would cost on the current catalog. None when it cannot be priced."""
+    order = _order_for_item(item)
+    from utils.influencer_pricing import attach_influencer_buyer_discount
+    attach_deal_sale(product, group_deal_id=getattr(order, 'group_deal_id', None))
+    attach_influencer_buyer_discount(product, getattr(order, 'user_id', None))
+    try:
+        return build_priced_order_item(
+            product,
+            quantity=item.quantity,
+            final_weight=item.final_weight,
+            variant_id=item.variant_id,
+            accept_substitute=item.accept_substitute,
+            cutting=bool(getattr(item, 'cutting', False)),
+            is_unavailable=bool(item.is_unavailable),
+            cannot_fulfill=bool(getattr(item, 'cannot_fulfill', False)),
+            require_variant=False,
+            product_qty=pooled_product_qty_for_item(item, None),
+        )
+    except ValueError:
+        return None
 
 
 def buyer_pricing_dict(user, product_ids):
@@ -869,7 +1184,7 @@ def enrich_order_items(items):
     if missing_source_ids:
         source_orders.update(rows_by_id(Order, missing_source_ids))
     on_sale_by_item = _deal_sale_by_item(items)
-    return [
+    payloads = [
         enrich_order_item_dict(
             item,
             products.get(item.product_id),
@@ -878,6 +1193,24 @@ def enrich_order_items(items):
         )
         for item in items
     ]
+    _commit_released_price_choices(items)
+    return payloads
+
+
+def _commit_released_price_choices(items):
+    """Persist locked_old clears from a read, when this request has no other edits."""
+    from models import db
+
+    released = [
+        item for item in items
+        if item in db.session.dirty and getattr(item, 'price_choice', None) is None
+    ]
+    if not released:
+        return
+    extra = [obj for obj in db.session.dirty if obj not in released]
+    if db.session.new or extra:
+        return
+    db.session.commit()
 
 
 def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
@@ -911,7 +1244,11 @@ def bulk_set_product_fulfillment(group_deal_id, product_id, is_unavailable):
         'restored': 0,
     }
 
+    from utils.order_lock import order_money_locked
+
     for order in orders:
+        if order_money_locked(order):
+            continue
         order_changed = False
         for item in order.items:
             if item.product_id != product_id:
@@ -1055,6 +1392,8 @@ def create_order_item_rows(order_id, priced_items, db_session):
             accept_substitute=priced.get('accept_substitute'),
             is_unavailable=priced.get('is_unavailable', False),
             cannot_fulfill=priced.get('cannot_fulfill', False),
+            pricing_snapshot=priced.get('pricing_snapshot'),
+            price_choice=priced.get('price_choice'),
             source_order_id=priced.get('source_order_id'),
             source_item_id=priced.get('source_item_id'),
         )
@@ -1146,3 +1485,103 @@ def sync_product_variants(product, variants_data):
     for vid, v in list(existing.items()):
         if vid not in keep_ids:
             db.session.delete(v)
+
+
+def _same_line_identity(src, priced):
+    if src.product_id != priced.get('product_id'):
+        return False
+    if src.variant_id != priced.get('variant_id'):
+        return False
+    return True
+
+
+def preserve_existing_line_prices(priced_items, existing_items):
+    """Keep the saved schedule when an edit does not change product or variant."""
+    from collections import defaultdict
+    existing_by_id = {item.id: item for item in (existing_items or []) if getattr(item, 'id', None)}
+    pools = defaultdict(int)
+    for priced in priced_items or []:
+        pools[priced.get('product_id')] += int(priced.get('quantity') or 0)
+    for priced in priced_items or []:
+        src = existing_by_id.get(priced.get('_request_item_id'))
+        if not src or not _same_line_identity(src, priced):
+            continue
+        snap = getattr(src, 'pricing_snapshot', None)
+        if not snap:
+            snap = synthetic_snapshot_from_stored(src, None)
+        cutting = bool(priced.get('cutting'))
+        fee = src.cutting_fee if cutting and bool(getattr(src, 'cutting', False)) else priced.get('cutting_fee')
+        unit, total, fee_out = price_from_snapshot(
+            snap,
+            priced.get('quantity'),
+            priced.get('final_weight'),
+            product_qty=pools.get(priced.get('product_id')),
+            is_unavailable=priced.get('is_unavailable'),
+            accept_substitute=priced.get('accept_substitute'),
+            cannot_fulfill=priced.get('cannot_fulfill'),
+            cutting=cutting,
+            cutting_fee=fee,
+        )
+        priced['unit_price'] = unit
+        priced['total_price'] = total
+        priced['pricing_snapshot'] = snap
+        priced['price_choice'] = getattr(src, 'price_choice', None)
+        priced['cutting_fee'] = fee_out if cutting else None
+
+
+def _money_equal(left, right):
+    return round_money(left or 0) == round_money(right or 0)
+
+
+def backfill_pricing_snapshots():
+    """Fill pricing_snapshot from the price already stored on each line. Does not change totals."""
+    from models import db
+    from models.order import Order, OrderItem
+    from models.product import Product
+    from utils.influencer_pricing import attach_influencer_buyer_discount
+    from utils.query_batch import products_by_ids
+
+    # JSON null and SQL NULL both load as None. SQLite does not match JSON null with IS NULL.
+    items = [item for item in OrderItem.query.all() if not item.pricing_snapshot]
+    if not items:
+        return 0
+    products = products_by_ids(item.product_id for item in items)
+    order_ids = {item.order_id for item in items if item.order_id}
+    orders = {
+        order.id: order
+        for order in Order.query.filter(Order.id.in_(order_ids)).all()
+    } if order_ids else {}
+    filled = 0
+    for item in items:
+        product = products.get(item.product_id)
+        order = orders.get(item.order_id)
+        snap = None
+        if product:
+            attach_deal_sale(product, group_deal_id=getattr(order, 'group_deal_id', None))
+            attach_influencer_buyer_discount(product, getattr(order, 'user_id', None))
+            try:
+                quoted = build_priced_order_item(
+                    product,
+                    quantity=item.quantity,
+                    final_weight=item.final_weight,
+                    variant_id=item.variant_id,
+                    accept_substitute=item.accept_substitute,
+                    cutting=bool(item.cutting),
+                    is_unavailable=bool(item.is_unavailable),
+                    cannot_fulfill=bool(item.cannot_fulfill),
+                    require_variant=False,
+                )
+            except ValueError:
+                quoted = None
+            if (
+                quoted
+                and _money_equal(quoted['unit_price'], item.unit_price)
+                and _money_equal(quoted['total_price'], item.total_price)
+            ):
+                snap = quoted['pricing_snapshot']
+        if snap is None:
+            snap = synthetic_snapshot_from_stored(item, product)
+        item.pricing_snapshot = snap
+        filled += 1
+    db.session.flush()
+    return filled

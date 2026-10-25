@@ -508,7 +508,7 @@ def test_paid_cash_without_driver_confirm_is_not_collected(app):
     assert order.cash_collected_on_delivery is None
 
 
-def test_self_delivery_cash_is_deducted_at_settlement(app):
+def test_self_delivery_cash_is_separate_from_earnings(app):
     staff = _fulfillment()
     order = _order(
         _user('+10000000117', 'CashCod'),
@@ -541,7 +541,8 @@ def test_self_delivery_cash_is_deducted_at_settlement(app):
     assert float(order.cash_collected_on_delivery) == 10.0
     assert earnings['totals']['cash_collected'] == 10.0
     assert earnings['totals']['delivery'] == 7.0
-    assert earnings['totals']['outstanding'] == -3.0
+    assert earnings['totals']['earned'] == 7.0
+    assert earnings['totals']['outstanding'] == 7.0
     assert earnings['deliveries'][0]['cash_collected'] == 10.0
     assert earnings['deliveries'][0]['recipient_name'] == '收件人'
     assert earnings['deliveries'][0]['address'] == '1 Main St, Toronto, M1M1M1'
@@ -550,7 +551,9 @@ def test_self_delivery_cash_is_deducted_at_settlement(app):
     cycle = next(row for row in earnings['cycles'] if row['totals']['delivery_count'])
     assert cycle['group_deal_id'] == order.group_deal_id
     assert cycle['totals']['cash_collected'] == 10.0
-    assert cycle['totals']['outstanding'] == -3.0
+    assert cycle['totals']['earned'] == 7.0
+    assert cycle['totals']['outstanding'] == 7.0
+    assert cycle['totals']['paid'] == 0.0
     assert [row['order_id'] for row in cycle['deliveries']] == [order.id]
     assert cycle['deliveries'][0]['fee'] == 7.0
     assert cycle['deliveries'][0]['cash_collected'] == 10.0
@@ -816,6 +819,75 @@ def test_delivery_plan_self_keeps_route_seq(app):
 
     plan = fulfillment_service.deal_delivery_plan(deal, staff)
     assert [row['id'] for row in plan['self']] == [first.id, second.id]
+
+
+def test_assign_self_appends_in_add_order(app):
+    staff = _fulfillment()
+    deal = _deal('preparing')
+    product = _product()
+    later_postal = _order(
+        _user('+10000004101', 'LatePostal'), deal, product, delivery=True, postal_code='M9Z 9Z9'
+    )
+    earlier_postal = _order(
+        _user('+10000004102', 'EarlyPostal'), deal, product, delivery=True, postal_code='A1A 1A1'
+    )
+    fulfillment_service.assign_delivery(later_postal, DeliveryHandler.SELF.value, staff)
+    fulfillment_service.assign_delivery(earlier_postal, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+
+    plan = fulfillment_service.deal_delivery_plan(deal, staff)
+    assert [row['id'] for row in plan['self']] == [later_postal.id, earlier_postal.id]
+    assert [row['delivery_route_seq'] for row in plan['self']] == [1, 2]
+
+
+def test_assign_self_appends_after_existing_route(app):
+    staff = _fulfillment()
+    deal = _deal('preparing')
+    product = _product()
+    first = _order(_user('+10000004111', 'First'), deal, product, delivery=True, postal_code='M5V 1A1')
+    second = _order(_user('+10000004112', 'Second'), deal, product, delivery=True, postal_code='L4C 0A1')
+    first.delivery_handler = DeliveryHandler.SELF.value
+    first.delivery_route_seq = 1
+    second.delivery_handler = DeliveryHandler.SELF.value
+    second.delivery_route_seq = 2
+    db.session.commit()
+    newbie = _order(
+        _user('+10000004113', 'Newbie'), deal, product, delivery=True, postal_code='A1A 1A1'
+    )
+    fulfillment_service.assign_delivery(newbie, DeliveryHandler.SELF.value, staff)
+    fulfillment_service.assign_delivery(first, DeliveryHandler.SELF.value, staff)
+    db.session.commit()
+
+    plan = fulfillment_service.deal_delivery_plan(deal, staff)
+    assert [row['id'] for row in plan['self']] == [first.id, second.id, newbie.id]
+    assert [row['delivery_route_seq'] for row in plan['self']] == [1, 2, 3]
+
+
+def test_leaving_self_compacts_route_seq(app):
+    staff = _fulfillment()
+    deal = _deal('preparing')
+    product = _product()
+    first = _order(_user('+10000004121', 'One'), deal, product, delivery=True, postal_code='M9Z 9Z9')
+    middle = _order(_user('+10000004122', 'Two'), deal, product, delivery=True, postal_code='A1A 1A1')
+    last = _order(_user('+10000004123', 'Three'), deal, product, delivery=True, postal_code='L4C 0A1')
+    for order in (first, middle, last):
+        fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, staff)
+    fulfillment_service.assign_delivery(middle, DeliveryHandler.UNASSIGNED.value, staff)
+    db.session.commit()
+
+    plan = fulfillment_service.deal_delivery_plan(deal, staff)
+    assert [row['id'] for row in plan['self']] == [first.id, last.id]
+    assert [row['delivery_route_seq'] for row in plan['self']] == [1, 2]
+    db.session.refresh(middle)
+    assert middle.delivery_route_seq is None
+
+    fulfillment_service.assign_delivery(last, DeliveryHandler.THIRD_PARTY.value, staff, 'FlashBox')
+    db.session.commit()
+    plan = fulfillment_service.deal_delivery_plan(deal, staff)
+    assert [row['id'] for row in plan['self']] == [first.id]
+    assert plan['self'][0]['delivery_route_seq'] == 1
+    db.session.refresh(last)
+    assert last.delivery_route_seq is None
 
 
 def test_deal_delivery_plan_avoids_n_plus_one(app):

@@ -30,6 +30,9 @@
       </div>
       <div class="modal-body">
         <div v-if="order" class="order-detail-content">
+          <div v-if="orderMoneyLocked" class="money-locked-banner" role="status">
+            订单金额已锁定。商品、重量和调整不会改变已记录的价格，备注仍可保存。
+          </div>
           <div v-if="hasMissingFinalWeight" class="final-weight-alert-banner" role="alert">
             <strong>有 {{ missingFinalWeightCount }} 条按重计价商品未填写有效实际重量（或总重量）。</strong>
             请先填写重量并点击底部「更新订单」保存，避免金额与客户预期不符。
@@ -352,7 +355,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
               </svg>
               <h3>商品列表</h3>
-              <button @click="openAddProductModal" class="add-item-btn">
+              <button @click="openAddProductModal" class="add-item-btn" :disabled="orderMoneyLocked">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
@@ -403,7 +406,10 @@
                               <div class="tooltip-label">价格区间:</div>
                               <div v-for="(range, idx) in item.product.pricing_data?.ranges" :key="idx" class="tooltip-range">
                                 <span>{{ range.min }}{{ range.max ? ` - ${range.max}` : '+' }} {{ item.product.pricing_data?.unit || 'lb' }}:</span>
-                                <span class="tooltip-price">${{ formatStatMoney(range.price) }}/{{ item.product.pricing_data?.unit || 'lb' }}</span>
+                                <span class="tooltip-price">
+                                  <span v-if="rangeHasSale(productForRecalc(item.product), range)" class="product-price-original">${{ formatStatMoney(range.price) }}</span>
+                                  ${{ formatStatMoney(rangePaid(productForRecalc(item.product), range)) }}/{{ item.product.pricing_data?.unit || 'lb' }}
+                                </span>
                               </div>
                             </div>
                             <div v-else-if="item.product.pricing_type === 'unit_weight'" class="tooltip-row">
@@ -425,10 +431,14 @@
                       </div>
                     </div>
                   </div>
+                  <p v-if="linePriceNotice(item)" class="price-notice" :class="item.price_choice === 'applied_new' ? 'is-new' : 'is-locked'">
+                    {{ linePriceNotice(item) }}
+                    <span v-if="item.price_choice === 'locked_old' && item.catalog_total_price != null">现价 ${{ formatStatMoney(item.catalog_total_price) }}</span>
+                  </p>
                   <div class="item-meta">
                     <div class="item-meta-left">
                       <div class="quantity-controls">
-                        <button @click="decreaseQuantity(index)" class="qty-btn" :disabled="item.quantity <= 1">-</button>
+                        <button @click="decreaseQuantity(index)" class="qty-btn" :disabled="orderMoneyLocked || item.quantity <= 1">-</button>
                         <input
                           type="number"
                           v-model.number="item.quantity"
@@ -436,11 +446,12 @@
                           min="1"
                           :max="maxQtyForProduct(item.product_id) || undefined"
                           class="quantity-input"
+                          :disabled="orderMoneyLocked"
                         />
                         <button
                           @click="increaseQuantity(index)"
                           class="qty-btn"
-                          :disabled="!canIncreaseItem(item)"
+                          :disabled="orderMoneyLocked || !canIncreaseItem(item)"
                         >+</button>
                       </div>
                       <ProductVariantPicker
@@ -515,6 +526,7 @@
                       type="number" 
                       step="0.001"
                       v-model.number="item.final_weight"
+                      :disabled="orderMoneyLocked"
                       @input="onWeightInput(index)"
                       @blur="persistItemWeight(index)"
                       @keydown.enter.prevent="$event.target.blur()"
@@ -641,6 +653,7 @@
                     v-model.number="localAdjustmentAmount"
                     class="adjustment-input-inline"
                     placeholder="0.00"
+                    :disabled="orderMoneyLocked"
                   />
                 </div>
               </div>
@@ -665,7 +678,7 @@
                 <button
                   @click="handleSaveAdjustments"
                   class="save-adjustments-btn"
-                  :disabled="savingAdjustment"
+                  :disabled="savingAdjustment || orderMoneyLocked"
                 >
                   {{ savingAdjustment ? '保存中...' : '保存调整' }}
                 </button>
@@ -789,7 +802,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>{{ updatingOrder ? '更新中...' : '更新订单' }}</span>
+            <span>{{ updatingOrder ? '更新中...' : (orderMoneyLocked ? '保存备注' : '更新订单') }}</span>
           </button>
         </div>
       </div>
@@ -810,13 +823,16 @@ import {
   estimateAdminLinePrice,
   resolveOrderLineTotal,
   isDeclinedSubstituteLine,
-  applyInfluencerDiscountToProduct
+  applyInfluencerDiscountToProduct,
+  applySnapshotToProduct,
+  linePriceNotice
 } from '../utils/orderItemPricing'
 import { previewOrderTotals, formatOrderMoney2 } from '../utils/orderPricing'
 import {
   formatProductCompareAt,
   formatProductListPrice,
-  isProductOnSale
+  isProductOnSale,
+  weightRangePaidPrice
 } from '../utils/productPriceDisplay'
 import { fetchShippingConfig } from '../utils/shipping'
 import { useAddressAutocomplete } from '../composables/useAddressAutocomplete'
@@ -916,6 +932,11 @@ export default {
   computed: {
     isFulfillmentOnly() {
       return isFulfillmentOnly()
+    },
+    orderMoneyLocked() {
+      const order = this.order
+      if (!order) return false
+      return order.status === 'completed' || order.status === 'cancelled' || order.payment_status === 'paid'
     },
     previewDeliveryMethod() {
       return this.localDeliveryMethod || this.order?.delivery_method || 'pickup'
@@ -1085,9 +1106,7 @@ export default {
     availableProducts: {
       handler() {
         if (!this.show || !this.editableItems.length || this.isInitializingOrder) return
-        if (this.hydrateItemProductsFromDeal()) {
-          this.recalculateAllItemPrices()
-        }
+        this.hydrateItemProductsFromDeal()
       }
     },
     localDeliveryMethod(newVal, oldVal) {
@@ -1138,6 +1157,13 @@ export default {
     formatProductListPrice,
     formatProductCompareAt,
     isProductOnSale,
+    rangePaid(product, range) {
+      return weightRangePaidPrice(product, range)
+    },
+    rangeHasSale(product, range) {
+      const list = parseFloat(range?.price || 0)
+      return this.rangePaid(product, range) < list
+    },
     displayItemPrice(item) {
       return formatOrderMoney2(resolveOrderLineTotal(item))
     },
@@ -1150,6 +1176,13 @@ export default {
       if (!product) return product
       return applyInfluencerDiscountToProduct(product, this.buyerRate(product.id))
     },
+    pricingProductForItem(item) {
+      if (item?.pricing_snapshot) {
+        return applySnapshotToProduct(item.product || {}, item)
+      }
+      return this.productForRecalc(item?.product)
+    },
+    linePriceNotice,
     hydrateItemProductsFromDeal() {
       const items = this.editableItems || []
       if (!items.length) return false
@@ -1330,7 +1363,6 @@ export default {
       this.$nextTick(() => {
         this.isInitializingOrder = false
         this.hydrateItemProductsFromDeal()
-        this.recalculateAllItemPrices()
         this.rememberSavedWeights()
         this.captureBaseline()
         this.loadAuditTrail()
@@ -1518,7 +1550,6 @@ export default {
       this.$nextTick(() => {
         if (!this.isInitializingOrder) {
           this.hydrateItemProductsFromDeal()
-          this.recalculateAllItemPrices()
           this.rememberSavedWeights()
           this.captureBaseline()
           this.loadAuditTrail()
@@ -1634,11 +1665,16 @@ export default {
         item.variant_name = v.name
         item.variant_price_delta = parseFloat(v.price_delta || 0)
       }
+      const snapId = item.pricing_snapshot?.variant?.id
+      if (item.pricing_snapshot && String(item.variant_id ?? '') !== String(snapId ?? '')) {
+        item.pricing_snapshot = null
+        item.price_choice = null
+      }
       this.recalculateItemPrice(index)
     },
     recalculateItemPrice(index, { skipSiblings = false } = {}) {
       const item = this.editableItems[index]
-      const product = this.productForRecalc(item.product)
+      const product = this.pricingProductForItem(item)
       if (!product) return
 
       item.quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
@@ -1812,7 +1848,7 @@ export default {
       this.$emit('update', this.order.id, updateData)
     },
         async handleSaveAdjustments() {
-          if (!this.order) {
+          if (!this.order || this.orderMoneyLocked) {
             return
           }
 
@@ -2514,6 +2550,39 @@ export default {
   overflow-y: auto;
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   background: #FAFAFA;
+}
+
+.money-locked-banner {
+  margin-bottom: var(--md-spacing-md);
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--md-surface-variant, #f3efe8);
+  border: 1px solid var(--md-outline, #d7d0c4);
+  color: var(--md-on-surface, #2b2620);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.price-notice {
+  margin: 0.35rem 0 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  border-radius: var(--md-radius-sm);
+  max-width: 100%;
+}
+
+.price-notice.is-new {
+  color: #2e7d32;
+  background: #e8f5e9;
+}
+
+.price-notice.is-locked {
+  color: #e65100;
+  background: #fff3e0;
 }
 
 .final-weight-alert-banner {

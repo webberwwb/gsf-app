@@ -70,6 +70,14 @@ export function paidPricingData(product, pricingData = null) {
   } else if (pt === 'unit_weight' || pt === 'bundled_weight') {
     const sale = optionalNumber(pd.sale_price_per_unit)
     if (sale != null) pd.price_per_unit = sale
+  } else if (pt === 'weight_range' && product?.is_discount) {
+    const off = optionalNumber(pd.sale_amount_off)
+    if (off != null && off > 0) {
+      pd.ranges = (pd.ranges || []).map((row) => ({
+        ...row,
+        price: floorMoney(row?.price, off)
+      }))
+    }
   }
   return pd
 }
@@ -845,6 +853,67 @@ export function isPendingSubstituteLine(item) {
   return !!item.is_unavailable && item.accept_substitute == null
 }
 
+/** Overlay a line's saved schedule onto a catalog product for estimates. */
+export function applySnapshotToProduct(product, item) {
+  const snap = item?.pricing_snapshot
+  if (!product || !snap) return product
+  const next = {
+    ...product,
+    pricing_type: snap.pricing_type || product.pricing_type,
+    pricing_data: snap.pricing_data || product.pricing_data,
+    variants_share_price: snap.variants_share_price !== false,
+    is_discount: false,
+    influencer_discount: false,
+    influencer_commission_type: snap.influencer_line_discount ? 'per_item' : null,
+    influencer_commission_amount: snap.influencer_line_discount?.amount || 0,
+    counts_toward_free_shipping: snap.counts_toward_free_shipping !== false,
+    cutting_fee: item.cutting_fee != null ? item.cutting_fee : product.cutting_fee
+  }
+  if (snap.variant && Array.isArray(next.variants)) {
+    next.variants = next.variants.map((variant) => {
+      if (String(variant.id) !== String(snap.variant.id)) return variant
+      return {
+        ...variant,
+        price: snap.variant.price,
+        sale_price: snap.variant.sale_price,
+        price_delta: snap.variant.price_delta,
+        quantity_breaks: snap.variant.quantity_breaks
+      }
+    })
+  }
+  if (snap.substitute_pricing_data) {
+    next.substitute_pricing_type = snap.substitute_pricing_type
+    next.substitute_pricing_data = snap.substitute_pricing_data
+  }
+  return next
+}
+
+function sameMoney(a, b) {
+  const x = Number(a)
+  const y = Number(b)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false
+  return Math.round(x * 100) === Math.round(y * 100)
+}
+
+export function linePriceNotice(item) {
+  if (!item) return ''
+  if (item.price_choice === 'applied_new') return '此商品已按新价格计算'
+  if (item.price_choice === 'locked_old') {
+    if (sameMoney(item.total_price, item.catalog_total_price)) return ''
+    return '标价已更新，本单仍按原团购价'
+  }
+  return ''
+}
+
+/** 现价 label. Blank when it matches what this line already charges. */
+export function catalogPriceNote(item) {
+  if (!item || item.price_choice !== 'locked_old') return ''
+  if (sameMoney(item.total_price, item.catalog_total_price)) return ''
+  const total = parseFloat(item.catalog_total_price)
+  if (!Number.isFinite(total) || total <= 0) return ''
+  return `现价 $${total.toFixed(2)}`
+}
+
 /** Line total for display: stored price, or estimate using min weight / lowest band. */
 export function resolveOrderLineTotal(item) {
   if (!item) return 0
@@ -873,9 +942,17 @@ export function resolveOrderLineTotal(item) {
 }
 
 export function isOrderLinePriceEstimated(item) {
+  if (item?.price_is_final) return false
   const p = item?.product
   if (!p || !WEIGHT_TYPES.includes(p.pricing_type)) return false
   return parseWeight(item?.final_weight) == null
+}
+
+/** Catalog product for a saved line. The snapshot schedule wins over today's price. */
+export function orderLineDisplayProduct(item) {
+  const live = item?.product || {}
+  if (!item?.pricing_snapshot) return live
+  return applySnapshotToProduct(live, item)
 }
 
 export function getOrderLineWeightLabel(item) {

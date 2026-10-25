@@ -11,6 +11,7 @@
       <div v-if="detailTags.length" class="line-tags">
         <span v-for="(tag, i) in detailTags" :key="i" class="detail-tag">{{ tag }}</span>
       </div>
+      <p v-if="priceNotice" class="price-notice" :class="noticeClass">{{ priceNotice }}</p>
       <span v-if="item.is_substituted" class="badge badge-sub">已换备选</span>
       <span v-if="isDeclined" class="badge badge-declined">缺货·不要备选</span>
       <span v-else-if="isPending" class="badge badge-pending">待确认备选</span>
@@ -18,6 +19,7 @@
     <div class="line-meta">
       <span v-if="qtyLabel" class="line-qty">{{ qtyLabel }}</span>
       <span class="line-price" :class="{ zero: isZeroPrice, range: !!item.price_display }">{{ displayPrice }}</span>
+      <span v-if="catalogCompare" class="line-catalog">{{ catalogCompare }}</span>
     </div>
   </div>
 </template>
@@ -31,7 +33,9 @@ import {
   isOrderLinePriceEstimated,
   getOrderLineWeightLabel,
   isDeclinedSubstituteLine,
-  isPendingSubstituteLine
+  isPendingSubstituteLine,
+  linePriceNotice,
+  catalogPriceNote
 } from '../utils/orderItemPricing'
 
 export default {
@@ -90,6 +94,15 @@ export default {
     isZeroPrice() {
       const total = resolveOrderLineTotal(this.item)
       return total === 0 && (this.isDeclined || this.isPending || this.item.is_unavailable)
+    },
+    priceNotice() {
+      return linePriceNotice(this.item)
+    },
+    noticeClass() {
+      return this.item.price_choice === 'applied_new' ? 'is-new' : 'is-locked'
+    },
+    catalogCompare() {
+      return catalogPriceNote(this.item)
     }
   }
 }
@@ -193,6 +206,33 @@ export default {
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   color: var(--md-on-surface);
+}
+
+.price-notice {
+  margin: 0.3rem 0 0;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  border-radius: 8px;
+  max-width: 100%;
+}
+
+.price-notice.is-new {
+  color: #2e7d32;
+  background: #e8f5e9;
+}
+
+.price-notice.is-locked {
+  color: #e65100;
+  background: #fff3e0;
+}
+
+.line-catalog {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--md-on-surface-variant, #6b6258);
 }
 
 .line-price.range {

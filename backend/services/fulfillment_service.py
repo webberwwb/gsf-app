@@ -185,7 +185,11 @@ def _settlement_deals(sessions, deliveries):
 
 
 def build_earnings_cycles(sessions, deliveries, payouts, today=None, rate_pair=None, settled_at_by_deal=None):
-    """One settlement per group deal. Payouts are not tied to a deal."""
+    """One settlement per group deal. Payouts are not tied to a deal.
+
+    Cash collected on delivery is remitted in full and is not deducted from
+    earnings. Earnings are labor plus the delivery fee.
+    """
     del payouts
     today = today or est_now().date()
     deals = _settlement_deals(sessions, deliveries)
@@ -256,7 +260,7 @@ def build_earnings_cycles(sessions, deliveries, payouts, today=None, rate_pair=N
         labor = row['labor']
         delivery = row['delivery']
         cash_collected = row['cash_collected']
-        net = (labor + delivery - cash_collected).quantize(Decimal('0.01'))
+        earned = (labor + delivery).quantize(Decimal('0.01'))
         settled_at = settled_at_by_deal.get(row['group_deal_id'])
         settled = row['group_deal_id'] in settled_at_by_deal
         cycles.append({
@@ -273,9 +277,10 @@ def build_earnings_cycles(sessions, deliveries, payouts, today=None, rate_pair=N
             'totals': {
                 'labor': float(labor),
                 'delivery': float(delivery),
+                'earned': float(earned),
                 'cash_collected': float(cash_collected),
-                'paid': float(net) if settled else 0.0,
-                'outstanding': 0.0 if settled else float(net),
+                'paid': float(earned) if settled else 0.0,
+                'outstanding': 0.0 if settled else float(earned),
                 'hours': float(row['hours']),
                 'delivery_count': row['delivery_count'],
             },
@@ -638,7 +643,8 @@ def earnings_for_user(user_id, date_from=None, date_to=None):
     for payout in payouts:
         paid_total += Decimal(str(payout.amount or 0))
 
-    outstanding = (labor_total + delivery_total - cash_collected_total - paid_total).quantize(Decimal('0.01'))
+    earned_total = (labor_total + delivery_total).quantize(Decimal('0.01'))
+    outstanding = (earned_total - paid_total).quantize(Decimal('0.01'))
     settlement_rows = FulfillmentSettlement.query.filter_by(user_id=user_id).all()
     settled_at_by_deal = {
         row.group_deal_id: row.settled_at.isoformat() if row.settled_at else None
@@ -715,23 +721,66 @@ def create_payout(user_id, actor_id, amount, notes=None, paid_at=None):
     return payout
 
 
+def _self_orders_for_deal(deal_id, exclude_id=None):
+    query = Order.query.options(joinedload(Order.address)).filter(
+        Order.group_deal_id == deal_id,
+        Order.deleted_at.is_(None),
+        Order.delivery_method == DeliveryMethod.DELIVERY.value,
+        Order.delivery_handler == DeliveryHandler.SELF.value,
+    )
+    if exclude_id is not None:
+        query = query.filter(Order.id != exclude_id)
+    orders = query.all()
+    orders.sort(key=_delivery_plan_sort_key)
+    return orders
+
+
+def _renumber_self_route(orders):
+    for seq, row in enumerate(orders, start=1):
+        row.delivery_route_seq = seq
+
+
+def _append_to_self_route(order):
+    if not order.group_deal_id:
+        order.delivery_route_seq = 1
+        return
+    existing = _self_orders_for_deal(order.group_deal_id, exclude_id=order.id)
+    _renumber_self_route(existing + [order])
+
+
+def _compact_self_route(order):
+    order.delivery_route_seq = None
+    if not order.group_deal_id:
+        return
+    _renumber_self_route(_self_orders_for_deal(order.group_deal_id, exclude_id=order.id))
+
+
 def assign_delivery(order, handler, actor, third_party_note=None):
     if order.delivery_method != DeliveryMethod.DELIVERY.value:
         raise ValueError('仅配送订单可以分配')
     if handler not in DeliveryHandler.get_all_values():
         raise ValueError('无效的配送分配')
+    previous = order.delivery_handler or DeliveryHandler.UNASSIGNED.value
     order.delivery_handler = handler
     if handler == DeliveryHandler.SELF.value:
         order.delivery_assignee_id = actor.id
         order.third_party_note = None
+        if previous != DeliveryHandler.SELF.value:
+            _append_to_self_route(order)
     elif handler == DeliveryHandler.THIRD_PARTY.value:
         order.delivery_assignee_id = None
         order.third_party_note = (third_party_note or '').strip() or None
-        order.delivery_route_seq = None
+        if previous == DeliveryHandler.SELF.value:
+            _compact_self_route(order)
+        else:
+            order.delivery_route_seq = None
     else:
         order.delivery_assignee_id = None
         order.third_party_note = None
-        order.delivery_route_seq = None
+        if previous == DeliveryHandler.SELF.value:
+            _compact_self_route(order)
+        else:
+            order.delivery_route_seq = None
     return order
 
 

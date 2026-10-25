@@ -82,7 +82,7 @@
       </div>
 
       <!-- Products Section -->
-      <div class="products-section">
+      <div v-if="!isOrderCompleted" class="products-section">
         <h3 class="section-title">商品选择</h3>
         <div v-if="hasUnavailableItems" class="unavailable-banner">
           部分商品无货，请确认是否接受替代品
@@ -130,20 +130,24 @@
               <!-- Price Display -->
               <div class="product-price">
                 <span class="price-label">团购价:</span>
-                <span v-if="product.pricing_type === 'bundled_weight'" class="price-value" :class="{ 'is-sale': isOnSale(product) }">
+                <span v-if="product.pricing_type === 'bundled_weight'" class="price-value" :class="{ 'is-sale': isOnSale(pricedProduct(product)) }">
                   <template v-if="getOrderItemForProduct(product) && getOrderItemForProduct(product).final_weight">
-                    ${{ moneyPlain(parseFloat(paidUnitRate(product) || 0) * parseFloat(getOrderItemForProduct(product).final_weight)) }}
+                    ${{ moneyPlain(parseFloat(paidUnitRate(pricedProduct(product)) || 0) * parseFloat(getOrderItemForProduct(product).final_weight)) }}
                   </template>
                   <template v-else>
-                    ${{ moneyPlain(paidUnitRate(product)) }}/{{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}
+                    ${{ moneyPlain(paidUnitRate(pricedProduct(product))) }}/lb
                   </template>
                 </span>
-                <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range" :class="{ 'is-sale': isOnSale(product) }">
-                  {{ formatPriceRange(product) }}
+                <span v-else-if="product.pricing_type === 'weight_range' || product.pricing_type === 'unit_weight'" class="price-value price-range" :class="{ 'is-sale': isOnSale(pricedProduct(product)) }">
+                  {{ formatPriceRange(pricedProduct(product)) }}
                 </span>
-                <span v-else class="price-value" :class="{ 'is-sale': isOnSale(product) }">${{ formatPrice(product) }}</span>
-                <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
+                <span v-else class="price-value" :class="{ 'is-sale': isOnSale(pricedProduct(product)) }">${{ formatPrice(pricedProduct(product)) }}</span>
+                <span v-if="compareAt(pricedProduct(product))" class="original-price">{{ compareAt(pricedProduct(product)) }}</span>
               </div>
+              <p v-if="priceNoticeFor(product)" class="order-price-notice" :class="priceNoticeClass(product)">
+                {{ priceNoticeFor(product) }}
+                <span v-if="catalogCompareFor(product)">现价 ${{ catalogCompareFor(product) }}</span>
+              </p>
               <div v-if="quantityBreakHint(product)" class="qty-break-hint">{{ quantityBreakHint(product) }}</div>
 
               <div v-if="showStockInfo(product)" class="stock-info" :class="{ 'out-of-stock': isOutOfStock(product), 'at-limit': isAtStockLimit(product) && !isOutOfStock(product) }">
@@ -934,7 +938,9 @@ import {
   productRequiresSubstituteChoice,
   selectionsFromOrderItems,
   isOrderLinePriceEstimated,
-  orderItemSelectionChanged
+  orderItemSelectionChanged,
+  applySnapshotToProduct,
+  linePriceNotice
 } from '../utils/orderItemPricing'
 import { canUserEditProducts, canUserEditSettings } from '@shared/status-enums.js'
 import {
@@ -1113,7 +1119,8 @@ export default {
     previewItems() {
       if (!this.order) return []
       if (this.canEditProducts && this.deal?.products?.length) {
-        return buildPreviewLinesFromSelection(this.deal.products, this.selectedItems)
+        const products = this.deal.products.map((product) => this.pricedProduct(product))
+        return buildPreviewLinesFromSelection(products, this.selectedItems)
       }
       return this.order.items || []
     },
@@ -1585,13 +1592,43 @@ export default {
       
       return false // No stock limit means unlimited stock
     },
+    pricedProduct(product) {
+      const line = (this.order?.items || []).find(
+        (item) => item.product_id === product?.id && item.pricing_snapshot
+      )
+      if (!line) return product
+      return applySnapshotToProduct(product, line)
+    },
+    priceNoticeFor(product) {
+      const lines = (this.order?.items || []).filter((item) => item.product_id === product?.id)
+      for (const line of lines) {
+        const notice = linePriceNotice(line)
+        if (notice) return notice
+      }
+      return ''
+    },
+    priceNoticeClass(product) {
+      const line = (this.order?.items || []).find((item) => item.product_id === product?.id)
+      return line?.price_choice === 'applied_new' ? 'is-new' : 'is-locked'
+    },
+    catalogCompareFor(product) {
+      const lines = (this.order?.items || []).filter(
+        (item) => item.product_id === product?.id && item.price_choice === 'locked_old'
+      )
+      if (!lines.length) return ''
+      const catalog = lines.reduce((total, item) => total + (parseFloat(item.catalog_total_price) || 0), 0)
+      const charged = lines.reduce((total, item) => total + (parseFloat(item.total_price) || 0), 0)
+      if (Math.round(catalog * 100) === Math.round(charged * 100)) return ''
+      return catalog > 0 ? catalog.toFixed(2) : ''
+    },
     calculateItemTotal(product) {
+      const priced = this.pricedProduct(product)
       const sel = this.getSelection(product)
       const pooled = getSelectionQuantity(sel)
       if (pooled === 0) return '0.00'
       let total = 0
-      for (const part of splitSelectionIntoOrderLines(product, sel)) {
-        total += estimateSelectionTotal(product, part.quantity, {
+      for (const part of splitSelectionIntoOrderLines(priced, sel)) {
+        total += estimateSelectionTotal(priced, part.quantity, {
           variant_id: part.variant_id,
           final_weight: this.staffWeight(product),
           product_qty: pooled,
@@ -1601,12 +1638,13 @@ export default {
       return formatMoney(total)
     },
     calculateBundledItemTotal(product) {
+      const priced = this.pricedProduct(product)
       const sel = this.getSelection(product)
       const pooled = getSelectionQuantity(sel)
       if (pooled === 0) return '$0.00'
       let total = 0
-      for (const part of splitSelectionIntoOrderLines(product, sel)) {
-        total += estimateSelectionTotal(product, part.quantity, {
+      for (const part of splitSelectionIntoOrderLines(priced, sel)) {
+        total += estimateSelectionTotal(priced, part.quantity, {
           variant_id: part.variant_id,
           final_weight: this.staffWeight(product),
           product_qty: pooled,
@@ -2009,7 +2047,9 @@ export default {
       return this.order.items.find(item => item.product_id === product.id) || null
     },
     toOrderLineDisplay(item) {
-      return toOrderLineDisplay(item)
+      const line = toOrderLineDisplay(item)
+      if (this.isOrderCompleted && line) line.price_is_final = true
+      return line
     },
     async reactivateOrder() {
       if (!this.order || !this.deal) return
@@ -3702,6 +3742,28 @@ export default {
     margin-left: 0;
     align-self: flex-end;
   }
+}
+
+.order-price-notice {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  border-radius: var(--md-radius-sm);
+  max-width: 100%;
+}
+
+.order-price-notice.is-new {
+  color: #2e7d32;
+  background: #e8f5e9;
+}
+
+.order-price-notice.is-locked {
+  color: #e65100;
+  background: #fff3e0;
 }
 </style>
 

@@ -161,6 +161,9 @@
                   <small v-if="selectedProduct.is_discount && !productHasCatalogSale(selectedProduct.id)" class="form-hint deal-discount-warn">
                     请先在商品资料中填写促销价，否则顾客仍按原价结算
                   </small>
+                  <small v-else-if="selectedProduct.is_discount" class="form-hint">
+                    保存后，本团未截单且未付款的订单立即按促销价计算。其他团购仍按原价。
+                  </small>
                   <small v-else class="form-hint">仅对本团生效，其他团购仍按原价</small>
                 </div>
               </div>
@@ -364,6 +367,10 @@ export default {
       }
       if (product.pricing_type === 'unit_weight' || product.pricing_type === 'bundled_weight') {
         return pd.sale_price_per_unit != null && pd.sale_price_per_unit !== ''
+      }
+      if (product.pricing_type === 'weight_range') {
+        const off = pd.sale_amount_off
+        return off != null && off !== '' && Number(off) > 0
       }
       return false
     },

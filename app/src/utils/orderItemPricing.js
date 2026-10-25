@@ -5,7 +5,8 @@ import {
   productRequiresSubstituteChoice,
   productRequiresCuttingChoice,
   getSelectionQuantity,
-  getVariantQuantity
+  getVariantQuantity,
+  orderLineDisplayProduct
 } from '@shared/order-pricing/orderItemPricing.js'
 
 /** Build display fields for checkout / summary line items. */
@@ -39,10 +40,13 @@ export function toCheckoutLineDisplay(item, product) {
 /** Normalize API order item for OrderLineDisplay (app variant). */
 export function toOrderLineDisplay(item) {
   if (!item) return item
-  const product = item.product || {}
+  const product = orderLineDisplayProduct(item)
   const variantName = item.variant?.name || item.variant_name
   return {
     ...item,
+    product,
+    total_price: item.total_price,
+    unit_price: item.unit_price,
     display_name: item.display_name || product.name || '商品',
     variant_name: variantName,
     show_cutting_preference: !!product.cutting_enabled,

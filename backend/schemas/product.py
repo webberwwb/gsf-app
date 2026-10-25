@@ -102,6 +102,20 @@ def validate_pricing_config(pricing_type, pricing_data, field_label='pricing_dat
         for range_item in pricing_data['ranges']:
             if 'min' not in range_item or 'price' not in range_item:
                 raise ValidationError('Each range must have min and price')
+        sale_off = pricing_data.get('sale_amount_off')
+        if sale_off is not None:
+            if isinstance(sale_off, bool) or not isinstance(sale_off, (int, float)) or sale_off < 0:
+                raise ValidationError(f'{field_label}.sale_amount_off must be a non-negative number')
+            band_prices = []
+            for range_item in pricing_data['ranges']:
+                price = range_item.get('price') if isinstance(range_item, dict) else None
+                if isinstance(price, bool) or not isinstance(price, (int, float)):
+                    continue
+                band_prices.append(float(price))
+            if band_prices and sale_off >= min(band_prices):
+                raise ValidationError(
+                    f'{field_label}.sale_amount_off must be less than the lowest range price'
+                )
     elif pricing_type == 'unit_weight':
         if 'price_per_unit' not in pricing_data:
             raise ValidationError(f'{field_label}.price_per_unit is required for unit_weight pricing')

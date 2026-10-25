@@ -46,6 +46,11 @@ def order_items_for_shipping(order):
     items = []
     for oi in active_items:
         product = products.get(oi.product_id)
+        snap = getattr(oi, 'pricing_snapshot', None)
+        if isinstance(snap, dict) and 'counts_toward_free_shipping' in snap:
+            product = type('ShipFlag', (), {
+                'counts_toward_free_shipping': snap.get('counts_toward_free_shipping') is not False,
+            })()
         if product:
             items.append({
                 'product': product,
@@ -104,6 +109,10 @@ def sync_order_pricing(order, *, reprice_lines=True):
     """Single entry after line or header changes."""
     from utils.order_item_pricing import recalculate_existing_item
     from utils.order_audit import active_items_for_order
+    from utils.order_lock import order_money_locked
+
+    if order_money_locked(order):
+        return
 
     if reprice_lines:
         from collections import defaultdict

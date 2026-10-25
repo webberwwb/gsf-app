@@ -9,6 +9,7 @@ from utils.order_item_pricing import (
     apply_fulfillment_price,
     compute_price_from_config,
     recalculate_existing_item,
+    build_pricing_snapshot,
     combine_order_notes,
     order_item_fields_for_merge,
 )
@@ -123,7 +124,7 @@ class FakeItem:
 
 
 def test_recalculate_existing_item_restores_weight_price():
-    """Regression: line with final_weight but total_price=0 must reprice on recalc."""
+    """Weight already on the line reprices from the saved bands, not a later catalog edit."""
     product = FakeProduct(
         pricing_type='weight_range',
         pricing_data={
@@ -133,10 +134,17 @@ def test_recalculate_existing_item_restores_weight_price():
             ],
         },
     )
-    item = FakeItem(final_weight=5.29, total_price=0, unit_price=0)
+    item = FakeItem(final_weight=5.29, total_price=0, unit_price=0, quantity=1)
+    item.pricing_snapshot = build_pricing_snapshot(product)
+    item.cutting = False
+    item.cannot_fulfill = False
+    item.variant_id = None
     recalculate_existing_item(item, product)
     assert float(item.total_price) == 34.0
     assert float(item.unit_price) == 34.0
+    product.pricing_data = {'ranges': [{'min': 0, 'max': None, 'price': 99}]}
+    recalculate_existing_item(item, product)
+    assert float(item.total_price) == 34.0
 
 
 class FakeOrder:

@@ -227,7 +227,10 @@
                           class="range-item"
                         >
                           <span class="range-weight-text">{{ formatWeightRange(range, product.pricing_data?.unit) }}</span>
-                          <span class="range-price-text">${{ moneyPlain(range.price || 0) }}</span>
+                          <span class="range-price-text">
+                            <span v-if="rangeHasSale(product, range)" class="original-price range-original">${{ moneyPlain(range.price || 0) }}</span>
+                            ${{ moneyPlain(rangePaid(product, range)) }}
+                          </span>
                         </div>
                         <div class="pricing-note-inline">
                           取货时按实际重量称重结算，重量可能超出上述区间
@@ -598,7 +601,8 @@ import {
   formatQuantityBreakHint,
   formatProductCompareAt,
   isProductOnSale,
-  getProductPaidAmount
+  getProductPaidAmount,
+  weightRangePaidPrice
 } from '../utils/productPriceDisplay'
 
 export default {
@@ -1220,6 +1224,13 @@ export default {
     },
     isPricingExpanded(productId) {
       return this.expandedPricing[productId] || false
+    },
+    rangePaid(product, range) {
+      return weightRangePaidPrice(product, range)
+    },
+    rangeHasSale(product, range) {
+      const list = parseFloat(range?.price || 0)
+      return this.rangePaid(product, range) < list
     },
     getSortedWeightRanges(product) {
       if (!product.pricing_data?.ranges) return []
@@ -2072,6 +2083,11 @@ export default {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
   text-decoration: line-through;
+}
+
+.range-original {
+  margin-right: 6px;
+  font-weight: 500;
 }
 
 .stock-info {

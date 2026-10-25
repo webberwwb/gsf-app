@@ -93,7 +93,8 @@
                   <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'weight_range'">
-                  <span class="sale-price">${{ formatWeightRangePrice(product) }}</span>
+                  <span class="sale-price">{{ formatWeightRangePrice(product) }}</span>
+                  <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
                   <span class="price-note">按重量区间</span>
                 </template>
                 <template v-else-if="product.pricing_type === 'unit_weight'">
@@ -147,7 +148,7 @@ import ProductDetailModal from '../components/ProductDetailModal.vue'
 import CategoryTabs from '../components/CategoryTabs.vue'
 import RecipeProductEntry from '../components/RecipeProductEntry.vue'
 import RecipeBrowserModal from '../components/RecipeBrowserModal.vue'
-import { formatMoneyRangeDisplay, formatMoney, formatProductCompareAt, getProductPaidAmount, isProductOnSale } from '../utils/productPriceDisplay'
+import { formatMoneyRangeDisplay, formatMoney, formatProductCompareAt, formatProductPriceRange, getProductPaidAmount, isProductOnSale } from '../utils/productPriceDisplay'
 import { useFeatureStore } from '../stores/features'
 
 export default {
@@ -329,11 +330,7 @@ export default {
       return false // No stock limit means unlimited stock
     },
     formatWeightRangePrice(product) {
-      if (product.pricing_data && product.pricing_data.ranges && product.pricing_data.ranges.length > 0) {
-        const firstRange = product.pricing_data.ranges[0]
-        return firstRange.price || '0.00'
-      }
-      return product.price || '0.00'
+      return formatProductPriceRange(product)
     },
     formatBundledPrice(product) {
       if (product.pricing_type === 'bundled_weight') {

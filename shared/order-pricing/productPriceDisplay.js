@@ -62,6 +62,21 @@ export function formatUnitPriceDisplay(pricePerUnit, unit = 'lb') {
   return `${formatMoneyDisplay(p)}/${unit}`
 }
 
+/** Dollars off every weight band. Applies only when the deal marks 本团折扣. */
+export function weightRangeSaleOff(product) {
+  if (!product?.is_discount) return 0
+  const off = parseFloat(product?.pricing_data?.sale_amount_off)
+  return Number.isFinite(off) && off > 0 ? off : 0
+}
+
+/** Paid price for one weight band. List price when the deal is not on sale. */
+export function weightRangePaidPrice(product, range) {
+  const list = parseFloat(range?.price || 0)
+  const off = weightRangeSaleOff(product)
+  if (!off) return Number.isFinite(list) ? list : 0
+  return roundMoney(Math.max(0, (Number.isFinite(list) ? list : 0) - off))
+}
+
 export function isProductOnSale(product) {
   if (!product?.is_discount && !product?.influencer_discount) return false
   const original = getProductOriginalAmount(product)
@@ -69,10 +84,21 @@ export function isProductOnSale(product) {
   return original != null && paid != null && roundMoney(original) > roundMoney(paid)
 }
 
+function weightRangePrices(product, paid) {
+  const ranges = product?.pricing_data?.ranges || []
+  return ranges
+    .map((range) => (paid ? weightRangePaidPrice(product, range) : parseFloat(range?.price || 0)))
+    .filter((price) => Number.isFinite(price) && price > 0)
+}
+
 export function getProductOriginalAmount(product) {
   if (!product) return null
   const pd = product.pricing_data || {}
   const pt = product.pricing_type
+  if (pt === 'weight_range') {
+    const prices = weightRangePrices(product, false)
+    return prices.length ? Math.min(...prices) : null
+  }
   if (pt === 'unit_weight' || pt === 'bundled_weight') {
     const n = parseFloat(pd.price_per_unit)
     return Number.isFinite(n) ? n : null
@@ -92,6 +118,10 @@ export function getProductPaidAmount(product) {
   if (!product) return null
   const pd = product.pricing_data || {}
   const pt = product.pricing_type
+  if (pt === 'weight_range') {
+    const prices = weightRangePrices(product, true)
+    return prices.length ? Math.min(...prices) : null
+  }
   if (pt === 'unit_weight' || pt === 'bundled_weight') {
     if ((product.is_discount || product.influencer_discount) && pd.sale_price_per_unit != null && pd.sale_price_per_unit !== '') {
       const sale = parseFloat(pd.sale_price_per_unit)
@@ -119,6 +149,11 @@ export function getProductPaidAmount(product) {
 export function formatProductCompareAt(product) {
   if (!isProductOnSale(product)) return ''
   const pt = product.pricing_type
+  if (pt === 'weight_range') {
+    const prices = weightRangePrices(product, false)
+    if (!prices.length) return ''
+    return formatMoneyRangeDisplay(Math.min(...prices), Math.max(...prices))
+  }
   const original = getProductOriginalAmount(product)
   if (original == null) return ''
   if (pt === 'unit_weight' || pt === 'bundled_weight') {
@@ -142,10 +177,7 @@ export function formatProductPriceRange(product) {
   const pt = product.pricing_type
 
   if (pt === 'weight_range') {
-    const ranges = product.pricing_data?.ranges || []
-    if (!ranges.length) return '价格待定'
-    const sorted = [...ranges].sort((a, b) => (a.min || 0) - (b.min || 0))
-    const prices = sorted.map((r) => parseFloat(r.price || 0)).filter((p) => p > 0)
+    const prices = weightRangePrices(product, true)
     if (!prices.length) return '价格待定'
     return formatMoneyRangeDisplay(Math.min(...prices), Math.max(...prices))
   }
