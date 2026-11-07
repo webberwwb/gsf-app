@@ -48,38 +48,70 @@ export default {
   box-sizing: border-box;
 }
 
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
 :root {
   --app-safe-top: env(safe-area-inset-top, 0px);
-  /* Material Design 3 Colors */
-  --md-primary: #FF8C00;
-  --md-primary-variant: #FFD700;
-  --md-surface: #FFFFFF;
-  --md-surface-variant: #F5F5F5;
-  --md-background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
-  --md-on-surface: #1C1B1F;
-  --md-on-surface-variant: #49454F;
-  --md-outline: #79747E;
-  --md-outline-variant: #CAC4D0;
-  --md-shadow: rgba(0, 0, 0, 0.15);
-  
-  /* Gradient Colors */
-  --gradient-primary: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+
+  /* Brand — Grain Gold */
+  --md-primary: #F0A800;
+  --brand-hover: #D99800;
+  --brand-pressed: #B88000;
+  --brand-light: #F5BE43;
+  --brand-gradient-start: var(--brand-light);
+  --md-primary-variant: var(--brand-hover);
+
+  --gradient-primary: linear-gradient(
+    135deg,
+    var(--brand-light),
+    var(--md-primary)
+  );
+
+  --brand-tint: #FFF8E8;
+  --brand-tint-strong: #FCEBC2;
+  --brand-focus: rgba(240, 168, 0, 0.24);
+  --brand-ink: #805600;
+
+  /* Warm neutral foundation */
+  --surface-page: #F7F4F0;
+  --surface-card: #FFFEFC;
+  --surface-subtle: #F3EEE8;
+  --border-default: #E7DFD6;
+
+  --text-primary: #302C29;
+  --text-secondary: #756B61;
+  --text-on-brand: #FFFFFF;
+
+  --warning-text: #A34C25;
+  --warning-bg: #FFF0E4;
+
+  /* Existing tokens, pointed at the warm system */
+  --md-surface: var(--surface-card);
+  --md-surface-variant: var(--surface-subtle);
+  --md-background: var(--surface-page);
+  --md-on-surface: var(--text-primary);
+  --md-on-surface-variant: var(--text-secondary);
+  --md-outline: #A89B8E;
+  --md-outline-variant: var(--border-default);
+  --md-shadow: rgba(48, 44, 41, 0.08);
+
   --gradient-secondary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   --gradient-accent: linear-gradient(135deg, #FF4444 0%, #FF6B35 100%);
   --gradient-success: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-  --gradient-card: linear-gradient(to bottom, rgba(255, 140, 0, 0.05), rgba(255, 255, 255, 1));
-  --gradient-card-hover: linear-gradient(to bottom, rgba(255, 140, 0, 0.1), rgba(255, 255, 255, 1));
-  
-  /* Semi-transparent overlays */
-  --overlay-light: rgba(255, 255, 255, 0.95);
-  --overlay-primary: rgba(255, 140, 0, 0.1);
+  --gradient-card: linear-gradient(to bottom, rgba(240, 168, 0, 0.04), var(--surface-card));
+  --gradient-card-hover: linear-gradient(to bottom, rgba(240, 168, 0, 0.08), var(--surface-card));
+
+  --overlay-light: rgba(255, 254, 252, 0.95);
+  --overlay-primary: rgba(240, 168, 0, 0.1);
   --overlay-accent: rgba(255, 68, 68, 0.1);
-  
-  /* Elevation shadows with color tints */
-  --md-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
-  --md-elevation-2: 0 3px 6px rgba(255, 140, 0, 0.16), 0 3px 6px rgba(255, 140, 0, 0.23);
-  --md-elevation-3: 0 10px 20px rgba(255, 140, 0, 0.19), 0 6px 6px rgba(255, 140, 0, 0.23);
-  --md-elevation-4: 0 14px 28px rgba(255, 140, 0, 0.25), 0 10px 10px rgba(255, 140, 0, 0.22);
+
+  --md-elevation-1: 0 1px 2px rgba(48, 44, 41, 0.06);
+  --md-elevation-2: 0 1px 3px rgba(48, 44, 41, 0.08);
+  --md-elevation-3: 0 4px 12px rgba(48, 44, 41, 0.08);
+  --md-elevation-4: 0 8px 24px rgba(48, 44, 41, 0.1);
   
   /* Typography */
   --md-font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Oxygen, Ubuntu, Cantarell, sans-serif;

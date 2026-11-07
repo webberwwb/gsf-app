@@ -106,6 +106,48 @@ def _quote_line(ghost, item):
     )
 
 
+def _replace_bounds(target, source):
+    """Shallow copy of target with bundled min/max taken from source."""
+    if not isinstance(target, dict) or not isinstance(source, dict):
+        return target
+    out = dict(target)
+    for key in ('min_weight', 'max_weight'):
+        if key in source:
+            out[key] = source[key]
+    return out
+
+
+def _pin_bundled_bounds(ghost, source):
+    """Quote a proposal as if min/max weight had not changed."""
+    ghost.pricing_data = _replace_bounds(ghost.pricing_data, getattr(source, 'pricing_data', None))
+    ghost.substitute_pricing_data = _replace_bounds(
+        ghost.substitute_pricing_data,
+        getattr(source, 'substitute_pricing_data', None),
+    )
+
+
+def _same_bound(left, right):
+    if left is None and right is None:
+        return True
+    try:
+        return abs(float(left) - float(right)) < 1e-6
+    except (TypeError, ValueError):
+        return False
+
+
+def _patch_bound_dict(current, catalog):
+    if not isinstance(current, dict) or not isinstance(catalog, dict):
+        return current, False
+    updated = dict(current)
+    changed = False
+    for key in ('min_weight', 'max_weight'):
+        if key not in catalog or _same_bound(updated.get(key), catalog.get(key)):
+            continue
+        updated[key] = catalog.get(key)
+        changed = True
+    return updated, changed
+
+
 def open_order_price_impact(product, validated_data):
     """Orders in a not-yet-closed deal whose charged total for the current line would change.
 
@@ -113,6 +155,10 @@ def open_order_price_impact(product, validated_data):
     price, price per unit, weight-range bands, bundle rate, variant price and
     price delta, and quantity breaks. Sale fields and the deal's 本团折扣 flag
     are ignored, so filling in a discount does not ask for a choice.
+
+    bundled_weight min_weight / max_weight are not a list-price choice. A change
+    that only moves those bounds is omitted here and applied by
+    sync_bundled_weight_bounds_to_open_orders.
 
     Also fills a missing snapshot from the price stored today, while the product
     row still has its current schedule. Caller rolls back when the save is rejected.
@@ -147,6 +193,8 @@ def open_order_price_impact(product, validated_data):
 
     current = _list_ghost(product, None)
     proposed = _list_ghost(product, validated_data)
+    proposed_same_bounds = _list_ghost(product, validated_data)
+    _pin_bundled_bounds(proposed_same_bounds, product)
     grouped = {}
     for line in lines:
         grouped.setdefault(line.order_id, []).append(line)
@@ -163,21 +211,23 @@ def open_order_price_impact(product, validated_data):
         for item in items:
             if not item.pricing_snapshot:
                 item.pricing_snapshot = synthetic_snapshot_from_stored(item, product)
-        if hasattr(current, '_influencer_discount'):
-            del current._influencer_discount
-        if hasattr(proposed, '_influencer_discount'):
-            del proposed._influencer_discount
+        for ghost in (current, proposed, proposed_same_bounds):
+            if hasattr(ghost, '_influencer_discount'):
+                del ghost._influencer_discount
         current_list = 0.0
         proposed_list = 0.0
+        bounds_list = 0.0
         quoted_ok = True
         for item in items:
             try:
                 current_list += float(_quote_line(current, item)['total_price'])
                 proposed_list += float(_quote_line(proposed, item)['total_price'])
+                bounds_list += float(_quote_line(proposed_same_bounds, item)['total_price'])
             except ValueError:
                 quoted_ok = False
                 break
-        if not quoted_ok or round_money(current_list) == round_money(proposed_list):
+        # Same totals once min/max are pinned: this save only moves the estimate weight.
+        if not quoted_ok or round_money(current_list) == round_money(bounds_list):
             continue
         attach_influencer_buyer_discount(proposed, order.user_id)
         old_total = 0.0
@@ -190,7 +240,14 @@ def open_order_price_impact(product, validated_data):
                 quoted_ok = False
                 break
             new_total += float(quoted['total_price'])
-        if not quoted_ok or round_money(old_total) == round_money(new_total):
+        if not quoted_ok:
+            continue
+        # Charged total already matches the new schedule. Still ask when the
+        # bundle rate changed and a new min/max is what made the dollars match.
+        if (
+            round_money(old_total) == round_money(new_total)
+            and round_money(bounds_list) == round_money(proposed_list)
+        ):
             continue
         user = users.get(order.user_id)
         customer = ''
@@ -304,3 +361,106 @@ def apply_deal_sale_to_open_orders(deal, product_ids):
         touched[order.id] = order
     for order in touched.values():
         sync_order_pricing(order)
+
+
+def _bounds_pricing_type(snap, product, substitute=False):
+    if substitute:
+        return (
+            (snap or {}).get('substitute_pricing_type')
+            or getattr(product, 'substitute_pricing_type', None)
+            or getattr(product, 'pricing_type', None)
+        )
+    return (snap or {}).get('pricing_type') or getattr(product, 'pricing_type', None)
+
+
+def sync_bundled_weight_bounds_to_open_orders(product):
+    """Copy bundled min/max onto open lines and recalculate estimates.
+
+    Paid, completed, and cancelled orders stay as stored. Every other order
+    for this product is updated, including deals that are already 截单.
+    The snapshot rate is kept. Unweighed lines estimate rate × min_weight.
+    Weighed lines stay rate × final_weight.
+
+    Returns one row per line whose snapshot bounds changed.
+    """
+    if product is None or getattr(product, 'pricing_type', None) != 'bundled_weight':
+        return []
+    catalog = product.pricing_data if isinstance(product.pricing_data, dict) else {}
+    sub_catalog = (
+        product.substitute_pricing_data
+        if isinstance(getattr(product, 'substitute_pricing_data', None), dict)
+        else None
+    )
+
+    lines = OrderItem.query.filter(
+        OrderItem.product_id == product.id,
+        OrderItem.active(),
+    ).all()
+    if not lines:
+        return []
+
+    order_ids = {line.order_id for line in lines}
+    orders = {
+        order.id: order
+        for order in Order.query.filter(
+            Order.id.in_(order_ids),
+            Order.deleted_at.is_(None),
+        ).all()
+    }
+
+    changes = []
+    touched = {}
+    for line in lines:
+        order = orders.get(line.order_id)
+        if not order or order_money_locked(order):
+            continue
+        snap = line.pricing_snapshot if isinstance(line.pricing_snapshot, dict) else None
+        if snap is None:
+            if getattr(line, 'price_choice', None) == 'locked_old':
+                continue
+            resnapshot_item_from_catalog(line, product, order)
+            recalculate_existing_item(line, product)
+            touched[order.id] = order
+            changes.append({
+                'order_id': order.id,
+                'order_number': order.order_number,
+                'group_deal_id': order.group_deal_id,
+                'item_id': line.id,
+                'old_total': None,
+                'new_total': float(line.total_price or 0),
+                'final_weight': line.final_weight,
+            })
+            continue
+
+        updated = dict(snap)
+        changed = False
+        if _bounds_pricing_type(snap, product) == 'bundled_weight':
+            pricing_data, pricing_changed = _patch_bound_dict(snap.get('pricing_data'), catalog)
+            if pricing_changed:
+                updated['pricing_data'] = pricing_data
+                changed = True
+        if sub_catalog is not None and _bounds_pricing_type(snap, product, substitute=True) == 'bundled_weight':
+            sub_data, sub_changed = _patch_bound_dict(snap.get('substitute_pricing_data'), sub_catalog)
+            if sub_changed:
+                updated['substitute_pricing_data'] = sub_data
+                changed = True
+        if not changed:
+            continue
+
+        old_total = float(line.total_price or 0)
+        line.pricing_snapshot = updated
+        recalculate_existing_item(line, product)
+        touched[order.id] = order
+        changes.append({
+            'order_id': order.id,
+            'order_number': order.order_number,
+            'group_deal_id': order.group_deal_id,
+            'item_id': line.id,
+            'old_total': old_total,
+            'new_total': float(line.total_price or 0),
+            'final_weight': line.final_weight,
+        })
+
+    for order in touched.values():
+        sync_order_pricing(order)
+    return changes

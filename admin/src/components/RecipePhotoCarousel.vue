@@ -79,14 +79,14 @@ export default {
 <style scoped>
 .photo-frame {
   width: 100%;
-  background: #FFF6EA;
+  background: var(--brand-tint);
 }
 .stage {
   position: relative;
   width: 100%;
   height: var(--recipe-photo-h, 52vw);
   overflow: hidden;
-  background: #FFF6EA;
+  background: var(--brand-tint);
 }
 .scroller {
   display: flex;
@@ -105,7 +105,7 @@ export default {
   height: 100%;
   object-fit: cover;
   scroll-snap-align: start;
-  background: #FFF6EA;
+  background: var(--brand-tint);
   pointer-events: none;
 }
 .photo-frame.has-pages ::v-slotted(.photo-facts) {
@@ -141,7 +141,7 @@ export default {
   transform: translateX(-50%);
   z-index: 3;
   background: rgba(0, 0, 0, 0.7);
-  color: white;
+  color: var(--text-on-brand);
   padding: 4px 12px;
   border-radius: 16px;
   font-size: 12px;
@@ -171,7 +171,7 @@ export default {
   border-radius: 8px;
   overflow: hidden;
   border: 2px solid transparent;
-  background: #FFF6EA;
+  background: var(--brand-tint);
   opacity: 0.6;
   cursor: pointer;
 }

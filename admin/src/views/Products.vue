@@ -69,10 +69,6 @@ export default {
 </script>
 
 <style scoped>
-.products-page {
-  max-width: 1400px;
-}
-
 .tabs-container {
   display: flex;
   gap: var(--md-spacing-xs);
@@ -80,7 +76,8 @@ export default {
   background: var(--md-surface);
   padding: var(--md-spacing-sm);
   border-radius: var(--md-radius-lg);
-  box-shadow: var(--md-elevation-1);
+  border: 1px solid var(--border-default);
+  box-shadow: none;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -108,17 +105,18 @@ export default {
 }
 
 .tab:hover:not(.active) {
-  background: var(--md-surface-variant);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
 }
 
 .tab.active {
   background: var(--md-primary);
-  color: white;
-  box-shadow: var(--md-elevation-2);
+  color: var(--text-on-brand);
+  box-shadow: none;
 }
 
 .tab.active:hover {
-  filter: brightness(0.94);
+  filter: none;
 }
 
 .tab-content {

@@ -17,104 +17,105 @@
         </button>
       </div>
       <nav class="sidebar-nav">
-        <!-- Dashboard hidden for now -->
-        <!-- <router-link to="/" class="nav-item" :class="{ active: $route.path === '/' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-          </svg>
-          <span>仪表盘</span>
-        </router-link> -->
         <router-link v-if="showAdminNav" to="/products" class="nav-item" :class="{ active: $route.path === '/products' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
           </svg>
           <span>商品管理</span>
         </router-link>
-        <router-link to="/group-deals" class="nav-item" :class="{ active: $route.path === '/group-deals' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-          <span>团购管理</span>
-        </router-link>
-        <router-link to="/delivery-planning" class="nav-item" :class="{ active: $route.path === '/delivery-planning' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10h2m8 0h6m-6 0a2 2 0 11-4 0m10 0V8a1 1 0 00-1-1h-4" />
-          </svg>
-          <span>配送规划</span>
-        </router-link>
-        <router-link to="/earnings" class="nav-item" :class="{ active: $route.path === '/earnings' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>收入明细</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/orders" class="nav-item" :class="{ active: $route.path === '/orders' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-          <span>订单管理</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/stripe-payments" class="nav-item" :class="{ active: $route.path === '/stripe-payments' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-          </svg>
-          <span>在线支付</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/users" class="nav-item" :class="{ active: $route.path.startsWith('/users') }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-          <span>用户管理</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/influencers" class="nav-item" :class="{ active: $route.path.startsWith('/influencers') }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l2.4 6.9H22l-6 4.4 2.3 7.2L12 17.4 5.7 21.5 8 14.3 2 9.9h7.6L12 3z" />
-          </svg>
-          <span>推荐官</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/credit-referrals" class="nav-item" :class="{ active: $route.path === '/credit-referrals' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v13m0-13V6a2 2 0 112-2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-          </svg>
-          <span>用户推广</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/sales-management" class="nav-item" :class="{ active: $route.path === '/sales-management' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>销售管理</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/suppliers" class="nav-item" :class="{ active: $route.path === '/suppliers' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
-          <span>供应商管理</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/shipping-fee" class="nav-item" :class="{ active: $route.path === '/shipping-fee' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-          </svg>
-          <span>运费管理</span>
-        </router-link>
-        <router-link v-if="showAdminNav" to="/after-sales" class="nav-item" :class="{ active: $route.path === '/after-sales' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-          </svg>
-          <span>售后分析</span>
-        </router-link>
+
+        <div class="nav-group">
+          <button type="button" class="nav-item nav-group-toggle" :class="{ 'group-current': navGroup === 'deals' }" @click="toggleGroup('deals')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span>团购管理</span>
+            <svg class="chevron" :class="{ open: openGroups.deals }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div v-show="openGroups.deals" class="nav-children">
+            <router-link to="/group-deals" class="nav-item nav-child" :class="{ active: $route.path.startsWith('/group-deals') }">团购详情</router-link>
+            <router-link v-if="showAdminNav" to="/orders" class="nav-item nav-child" :class="{ active: $route.path === '/orders' }">订单管理</router-link>
+            <router-link v-if="showAdminNav" to="/stripe-payments" class="nav-item nav-child" :class="{ active: $route.path === '/stripe-payments' }">在线支付</router-link>
+            <router-link v-if="showAdminNav" to="/suppliers" class="nav-item nav-child" :class="{ active: $route.path === '/suppliers' }">供应商管理</router-link>
+            <router-link v-if="showAdminNav" to="/shipping-fee" class="nav-item nav-child" :class="{ active: $route.path === '/shipping-fee' }">运费管理</router-link>
+          </div>
+        </div>
+
         <router-link v-if="showAdminNav" to="/recipes" class="nav-item" :class="{ active: $route.path === '/recipes' }">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span>菜谱</span>
+          <span>菜谱管理</span>
         </router-link>
-        <router-link v-if="showAdminNav" to="/work-arrangement" class="nav-item" :class="{ active: $route.path === '/work-arrangement' }">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <span>工作安排</span>
-        </router-link>
+
+        <div class="nav-group">
+          <button type="button" class="nav-item nav-group-toggle" :class="{ 'group-current': navGroup === 'delivery' }" @click="toggleGroup('delivery')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10h2m8 0h6m-6 0a2 2 0 11-4 0m10 0V8a1 1 0 00-1-1h-4" />
+            </svg>
+            <span>配送管理</span>
+            <svg class="chevron" :class="{ open: openGroups.delivery }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div v-show="openGroups.delivery" class="nav-children">
+            <router-link to="/delivery-planning" class="nav-item nav-child" :class="{ active: $route.path === '/delivery-planning' }">配送规划</router-link>
+            <router-link to="/earnings" class="nav-item nav-child" :class="{ active: $route.path === '/earnings' }">配送收入</router-link>
+          </div>
+        </div>
+
+        <div v-if="showAdminNav" class="nav-group">
+          <button type="button" class="nav-item nav-group-toggle" :class="{ 'group-current': navGroup === 'users' }" @click="toggleGroup('users')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <span>用户管理</span>
+            <svg class="chevron" :class="{ open: openGroups.users }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div v-show="openGroups.users" class="nav-children">
+            <router-link to="/users" class="nav-item nav-child" :class="{ active: $route.path.startsWith('/users') }">用户列表</router-link>
+            <router-link to="/influencers" class="nav-item nav-child" :class="{ active: $route.path.startsWith('/influencers') }">推荐官</router-link>
+            <router-link to="/credit-referrals" class="nav-item nav-child" :class="{ active: $route.path === '/credit-referrals' }">用户推广</router-link>
+          </div>
+        </div>
+
+        <div v-if="showAdminNav" class="nav-group">
+          <button type="button" class="nav-item nav-group-toggle" :class="{ 'group-current': navGroup === 'ops' }" @click="toggleGroup('ops')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>运营管理</span>
+            <svg class="chevron" :class="{ open: openGroups.ops }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div v-show="openGroups.ops" class="nav-children">
+            <router-link to="/work-arrangement" class="nav-item nav-child" :class="{ active: $route.path === '/work-arrangement' }">工作安排</router-link>
+            <router-link to="/after-sales" class="nav-item nav-child" :class="{ active: $route.path === '/after-sales' }">售后分析</router-link>
+            <router-link to="/sales-management" class="nav-item nav-child" :class="{ active: $route.path === '/sales-management' }">销售管理</router-link>
+          </div>
+        </div>
+
+        <div v-if="showAdminNav" class="nav-group">
+          <button type="button" class="nav-item nav-group-toggle" :class="{ 'group-current': navGroup === 'commercial' }" @click="toggleGroup('commercial')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            <span>商业客户</span>
+            <svg class="chevron" :class="{ open: openGroups.commercial }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div v-show="openGroups.commercial" class="nav-children">
+            <router-link to="/b-supply" class="nav-item nav-child" :class="{ active: $route.path === '/b-supply' }">供货记录</router-link>
+            <router-link to="/b-merchants" class="nav-item nav-child" :class="{ active: $route.path === '/b-merchants' }">商家管理</router-link>
+          </div>
+        </div>
       </nav>
       <div class="sidebar-footer">
         <div class="user-info">
@@ -129,9 +130,9 @@
     </aside>
 
     <main class="main-content">
-      <header class="top-header" :class="{ 'top-header--detail-nav': isGroupDealDetail }">
+      <header class="top-header" :class="{ 'top-header--detail-nav': detailNav }">
         <button
-          v-if="isGroupDealDetail"
+          v-if="detailNav"
           type="button"
           class="header-icon-btn header-back-btn"
           aria-label="返回"
@@ -142,7 +143,7 @@
           </svg>
         </button>
         <button
-          v-if="!isGroupDealDetail"
+          v-if="!detailNav"
           class="hamburger-btn"
           @click="toggleSidebar"
           aria-label="Toggle sidebar"
@@ -152,7 +153,7 @@
           </svg>
         </button>
         <button
-          v-if="isGroupDealDetail"
+          v-if="detailNav"
           class="hamburger-btn header-detail-desktop-menu"
           @click="toggleSidebar"
           aria-label="Toggle sidebar"
@@ -163,7 +164,7 @@
         </button>
         <h1>{{ pageTitle }}</h1>
         <button
-          v-if="isGroupDealDetail"
+          v-if="detailNav"
           class="hamburger-btn header-detail-mobile-menu"
           @click="toggleSidebar"
           aria-label="Toggle sidebar"
@@ -200,12 +201,22 @@ export default {
       user: getCurrentUser(),
       sidebarOpen: false,
       version: '加载中...',
-      clockBarCollapsed: false
+      clockBarCollapsed: false,
+      openGroups: {
+        deals: false,
+        delivery: false,
+        users: false,
+        ops: false,
+        commercial: false
+      }
     }
   },
   computed: {
     isGroupDealDetail() {
       return this.$route.name === 'GroupDealDetail'
+    },
+    detailNav() {
+      return this.isGroupDealDetail || !!this.pageHeaderState.onBack
     },
     isRecipes() {
       return this.$route.name === 'Recipes'
@@ -216,27 +227,39 @@ export default {
     showClockBar() {
       return isFulfillmentOnly(this.user) && this.$route.name !== 'DeliveryPlanning'
     },
-    pageTitle() {
-      if (this.isGroupDealDetail) {
-        return this.pageHeaderState.title || '团购详情'
+    navGroup() {
+      const path = this.$route.path
+      if (path.startsWith('/group-deals') || ['/orders', '/stripe-payments', '/suppliers', '/shipping-fee'].includes(path)) {
+        return 'deals'
       }
+      if (path === '/delivery-planning' || path === '/earnings') return 'delivery'
+      if (path.startsWith('/users') || path.startsWith('/influencers') || path === '/credit-referrals') return 'users'
+      if (['/work-arrangement', '/after-sales', '/sales-management'].includes(path)) return 'ops'
+      if (path === '/b-supply' || path === '/b-merchants') return 'commercial'
+      return null
+    },
+    pageTitle() {
+      if (this.pageHeaderState.title) return this.pageHeaderState.title
+      if (this.isGroupDealDetail) return '团购详情'
       const titles = {
         // '/': '仪表盘', // Hidden for now
         '/products': '商品管理',
-        '/group-deals': '团购管理',
+        '/group-deals': '团购详情',
         '/delivery-planning': '配送规划',
-        '/earnings': '收入明细',
+        '/earnings': '配送收入',
         '/orders': '订单管理',
         '/stripe-payments': '在线支付',
-        '/users': '用户管理',
+        '/users': '用户列表',
         '/credit-referrals': '用户推广',
         '/influencers': '推荐官',
         '/sales-management': '销售管理',
         '/suppliers': '供应商管理',
+        '/b-supply': '供货记录',
+        '/b-merchants': '商家管理',
         '/shipping-fee': '运费管理',
         '/after-sales': '售后分析',
         '/work-arrangement': '工作安排',
-        '/recipes': '菜谱'
+        '/recipes': '菜谱管理'
       }
       return titles[this.$route.path] || '管理后台'
     },
@@ -256,6 +279,7 @@ export default {
   mounted() {
     this.loadUser()
     this.loadVersion()
+    this.expandGroupFor(this.$route.path)
     // Close sidebar when route changes on tablets and smaller laptops
     this.$watch('$route', (to, from) => {
       if (from.name === 'GroupDealDetail' && to.name !== 'GroupDealDetail') {
@@ -265,9 +289,26 @@ export default {
       if (window.innerWidth < 1024) {
         this.sidebarOpen = false
       }
+      this.expandGroupFor(to.path)
     })
   },
   methods: {
+    toggleGroup(key) {
+      this.openGroups[key] = !this.openGroups[key]
+    },
+    expandGroupFor(path) {
+      if (path.startsWith('/group-deals') || ['/orders', '/stripe-payments', '/suppliers', '/shipping-fee'].includes(path)) {
+        this.openGroups.deals = true
+      } else if (path === '/delivery-planning' || path === '/earnings') {
+        this.openGroups.delivery = true
+      } else if (path.startsWith('/users') || path.startsWith('/influencers') || path === '/credit-referrals') {
+        this.openGroups.users = true
+      } else if (['/work-arrangement', '/after-sales', '/sales-management'].includes(path)) {
+        this.openGroups.ops = true
+      } else if (path === '/b-supply' || path === '/b-merchants') {
+        this.openGroups.commercial = true
+      }
+    },
     handleDetailBack() {
       if (this.pageHeaderState.onBack) {
         this.pageHeaderState.onBack()
@@ -389,6 +430,7 @@ export default {
   width: 260px;
   background: var(--md-surface);
   box-shadow: none;
+  border-right: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -546,6 +588,8 @@ export default {
   border-radius: var(--md-radius-md);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   margin-bottom: var(--md-spacing-xs);
+  font-size: 0.875rem;
+  font-weight: 400;
 }
 
 /* Laptop screens - more compact nav items */
@@ -553,7 +597,6 @@ export default {
   .nav-item {
     padding: var(--md-spacing-sm) var(--md-spacing-md);
     gap: var(--md-spacing-sm);
-    font-size: 0.875rem;
   }
 }
 
@@ -569,8 +612,98 @@ export default {
 }
 
 .nav-item.active {
-  background: rgba(255, 140, 0, 0.1);
-  color: var(--md-primary);
+  background: var(--md-primary);
+  color: var(--text-on-brand);
+}
+
+.nav-item.active svg {
+  color: var(--text-on-brand);
+}
+
+.nav-child:hover,
+.nav-child.active,
+.nav-child.active:hover {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.sidebar-nav > .nav-item,
+.nav-group-toggle {
+  min-height: 44px;
+  box-sizing: border-box;
+  margin-bottom: 2px;
+}
+
+.sidebar-nav > .nav-item > svg:first-child,
+.nav-group-toggle > svg:first-child {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.sidebar-nav > .nav-item > span,
+.nav-group-toggle > span {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.sidebar-nav > a.nav-item.active,
+.nav-group-toggle.group-current {
+  background: var(--md-primary);
+  color: var(--text-on-brand);
+}
+
+.nav-group-toggle {
+  width: 100%;
+  margin: 0 0 2px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.nav-group-toggle.group-current {
+  color: var(--text-on-brand);
+}
+
+.nav-group-toggle .chevron {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-group-toggle .chevron.open {
+  transform: rotate(90deg);
+}
+
+.nav-child {
+  padding-left: 48px;
+  margin-bottom: 2px;
+}
+
+@media (max-width: 767px) {
+  .sidebar-nav > .nav-item,
+  .nav-group-toggle {
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+
+  .nav-child {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 52px;
+  }
 }
 
 .sidebar-footer {
@@ -617,8 +750,8 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: var(--md-primary);
-  color: white;
+  background: var(--brand-tint-strong);
+  color: var(--brand-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -657,7 +790,7 @@ export default {
 
 .logout-btn:hover {
   background: #ff4444;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .main-content {
@@ -690,7 +823,8 @@ export default {
   background: var(--md-surface);
   padding: var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-lg) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
-  box-shadow: var(--md-elevation-1);
+  box-shadow: none;
+  border-bottom: 1px solid var(--border-default);
   z-index: 50;
   flex-shrink: 0;
   display: flex;

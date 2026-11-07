@@ -840,6 +840,19 @@ def test_assign_self_appends_in_add_order(app):
     assert [row['delivery_route_seq'] for row in plan['self']] == [1, 2]
 
 
+def test_admin_self_assign_credits_the_driver(app):
+    admin = _admin()
+    driver = _fulfillment(email='driver-only@example.com', phone='+10000004130')
+    deal = _deal('preparing')
+    product = _product()
+    order = _order(_user('+10000004131', 'Cust'), deal, product, delivery=True)
+    fulfillment_service.assign_delivery(order, DeliveryHandler.SELF.value, admin)
+    db.session.commit()
+    db.session.refresh(order)
+    assert order.delivery_assignee_id == driver.id
+    assert order.delivery_assignee_id != admin.id
+
+
 def test_assign_self_appends_after_existing_route(app):
     staff = _fulfillment()
     deal = _deal('preparing')

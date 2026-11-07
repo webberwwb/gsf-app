@@ -80,13 +80,20 @@ def serialize_loaded_deal_products(
         apply_influencer_discount_to_product_payload = None
 
     reserved = {}
+    variant_reserved = {}
     if rows:
-        from utils.stock_management import remaining_stock, reserved_qty_by_product
-        reserved = reserved_qty_by_product(
-            rows[0].group_deal_id, [dp.product_id for dp in rows]
+        from utils.stock_management import (
+            remaining_stock,
+            reserved_qty_by_product,
+            reserved_qty_by_variant,
+            variant_caps,
         )
+        product_ids = [dp.product_id for dp in rows]
+        reserved = reserved_qty_by_product(rows[0].group_deal_id, product_ids)
+        if any(variant_caps(dp) for dp in rows):
+            variant_reserved = reserved_qty_by_variant(rows[0].group_deal_id, product_ids)
     else:
-        from utils.stock_management import remaining_stock
+        from utils.stock_management import remaining_stock, variant_caps
 
     products_data = []
     for dp in rows:
@@ -102,5 +109,15 @@ def serialize_loaded_deal_products(
             data['deal_stock_remaining'] = remaining_stock(cap, reserved.get(dp.product_id, 0))
             if not expose_stock_cap:
                 data['deal_stock_limit'] = data['deal_stock_remaining']
+            caps = variant_caps(dp)
+            for variant in data.get('variants') or []:
+                variant_id = variant.get('id')
+                flavor_cap = caps.get(int(variant_id)) if variant_id is not None else None
+                held = variant_reserved.get((dp.product_id, int(variant_id)), 0) if flavor_cap is not None else 0
+                flavor_remaining = remaining_stock(flavor_cap, held) if flavor_cap is not None else None
+                variant['deal_stock_remaining'] = flavor_remaining
+                variant['deal_stock_limit'] = flavor_cap if expose_stock_cap else flavor_remaining
+            if expose_stock_cap:
+                data['variant_stock_limits'] = {str(k): v for k, v in caps.items()} or None
             products_data.append(data)
     return products_data

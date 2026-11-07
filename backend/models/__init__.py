@@ -22,6 +22,7 @@ from models.credit_transaction import CreditTransaction
 from models.referral_program import ReferralProgramConfig, ReferralRecord
 from models.fulfillment import FulfillmentProfile, FulfillmentWorkSession, FulfillmentPayout, FulfillmentSettlement
 from models.recipe import Recipe, RecipeProduct, RecipeHeart, RecipeCollect, RecipeComment
+from models.b_merchant import BMerchant, BDelivery, BDeliveryLine
 from models.influencer import (
     InfluencerProfile,
     InfluencerProgramConfig,

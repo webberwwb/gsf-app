@@ -477,7 +477,7 @@ export default {
 
 <style scoped>
 .stripe-payments-page {
-  max-width: 1100px;
+  width: 100%;
 }
 
 .page-header-actions {
@@ -531,7 +531,7 @@ export default {
   gap: 8px;
   margin-bottom: var(--md-spacing-lg);
   padding: 12px;
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: var(--md-radius-md);
   box-shadow: var(--md-elevation-1);
 }
@@ -553,7 +553,7 @@ export default {
 }
 
 .summary-chip:hover {
-  background: #EBEBEB;
+  background: var(--surface-subtle);
 }
 
 .summary-chip.amount {
@@ -567,7 +567,7 @@ export default {
 }
 
 .summary-chip.active {
-  background: var(--overlay-primary);
+  background: var(--md-primary);
 }
 
 .chip-label {
@@ -579,7 +579,7 @@ export default {
 
 .summary-chip.active .chip-label,
 .summary-chip.active .chip-value {
-  color: #E65100;
+  color: var(--text-on-brand);
 }
 
 .chip-value {
@@ -598,7 +598,7 @@ export default {
 }
 
 .deal-card {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border: none;
   border-radius: var(--md-radius-md);
   padding: var(--md-spacing-lg);
@@ -644,12 +644,12 @@ export default {
 }
 
 .due-hint {
-  color: #E65100;
+  color: var(--warning-text);
   font-weight: 500;
 }
 
 .expand-icon {
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 500;
 }
 
@@ -661,16 +661,16 @@ export default {
   font-weight: 500;
 }
 
-.status-badge.draft { background: #F5F5F5; color: #757575; }
+.status-badge.draft { background: var(--surface-subtle); color: #757575; }
 .status-badge.upcoming { background: #E3F2FD; color: #1976D2; }
 .status-badge.active { background: #E8F5E9; color: #2E7D32; }
-.status-badge.closed { background: #FFF3E0; color: #F57C00; }
+.status-badge.closed { background: var(--warning-bg); color: var(--warning-text); }
 .status-badge.preparing { background: #F3E5F5; color: #7B1FA2; }
 .status-badge.ready_for_pickup { background: #E8F5E9; color: #2E7D32; }
 .status-badge.completed { background: #F3E5F5; color: #7B1FA2; }
 .status-badge.online-payment {
-  background: rgba(255, 140, 0, 0.12);
-  color: #E65100;
+  background: rgba(240, 168, 0, 0.12);
+  color: var(--warning-text);
 }
 
 .deal-chips {
@@ -695,7 +695,7 @@ export default {
 .mini-chip.ready,
 .stripe-badge.ready {
   background: var(--overlay-primary);
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .mini-chip.failed,

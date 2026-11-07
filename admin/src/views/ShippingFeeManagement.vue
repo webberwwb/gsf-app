@@ -613,8 +613,6 @@ export default {
 <style scoped>
 .shipping-fee-page {
   padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
 }
 
 .page-header {
@@ -650,7 +648,7 @@ export default {
 }
 
 .config-form {
-  background: white;
+  background: var(--surface-card);
   border-radius: 8px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -700,7 +698,7 @@ export default {
   gap: 8px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: #f5f5f5;
+  background: var(--surface-subtle);
   font-size: 13px;
 }
 .ring-count::before {
@@ -719,7 +717,7 @@ export default {
   color: #222;
 }
 .ring-count-fee {
-  color: #f57c00;
+  color: var(--warning-text);
   font-weight: 600;
 }
 .depot-row {
@@ -745,7 +743,7 @@ export default {
 .preview-distance {
   margin: 10px 0 16px;
   font-size: 14px;
-  color: #f57c00;
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -758,8 +756,8 @@ export default {
 
 .add-tier-btn {
   padding: 8px 16px;
-  background: #ff9800;
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -769,7 +767,7 @@ export default {
 }
 
 .add-tier-btn:hover {
-  background: #f57c00;
+  background: var(--brand-hover);
 }
 
 .tiers-list {
@@ -783,7 +781,7 @@ export default {
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   padding: 16px;
-  background: #fafafa;
+  background: var(--surface-subtle);
 }
 
 .tier-header {
@@ -803,7 +801,7 @@ export default {
 .remove-tier-btn {
   padding: 4px 8px;
   background: #f44336;
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -851,11 +849,11 @@ export default {
 
 .input-with-unit input:focus {
   outline: none;
-  border-color: #ff9800;
+  border-color: var(--brand-ink);
 }
 
 .input-with-unit input:disabled {
-  background: #f5f5f5;
+  background: var(--surface-subtle);
   cursor: not-allowed;
 }
 
@@ -893,22 +891,22 @@ export default {
 }
 
 .reset-btn {
-  background: white;
+  background: var(--surface-card);
   color: #666;
   border: 1px solid #ddd;
 }
 
 .reset-btn:hover {
-  background: #f5f5f5;
+  background: var(--surface-subtle);
 }
 
 .save-btn {
-  background: #ff9800;
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .save-btn:hover {
-  background: #f57c00;
+  background: var(--brand-hover);
 }
 
 .save-btn:disabled {
@@ -917,7 +915,7 @@ export default {
 }
 
 .rules-preview {
-  background: white;
+  background: var(--surface-card);
   border-radius: 8px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -941,9 +939,9 @@ export default {
 
 .preview-item {
   padding: 12px;
-  background: #f5f5f5;
+  background: var(--surface-subtle);
   border-radius: 6px;
-  border-left: 4px solid #ff9800;
+  border-left: 4px solid var(--md-primary);
 }
 
 .preview-condition {
@@ -955,12 +953,12 @@ export default {
 
 .preview-fee {
   font-size: 16px;
-  color: #f57c00;
+  color: var(--warning-text);
   font-weight: 600;
 }
 
 .free-fee {
-  color: #ff9800;
+  color: var(--warning-text);
 }
 
 @media (max-width: 1366px) {

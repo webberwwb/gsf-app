@@ -933,10 +933,6 @@ export default {
 </script>
 
 <style scoped>
-.orders-page {
-  max-width: 1400px;
-}
-
 .page-header-actions {
   margin-bottom: var(--md-spacing-lg);
   display: flex;
@@ -996,7 +992,7 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -1016,10 +1012,10 @@ export default {
 }
 
 .search-btn {
-  background: #FFF3E0;
-  color: #E65100;
-  border: 1px solid rgba(230, 81, 0, 0.2);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  background: var(--md-primary);
+  color: var(--text-on-brand);
+  border: none;
+  box-shadow: none;
 }
 
 .search-btn::before {
@@ -1030,23 +1026,22 @@ export default {
   width: 0;
   height: 0;
   border-radius: 50%;
-  background: rgba(230, 81, 0, 0.1);
+  background: rgba(255, 255, 255, 0.2);
   transform: translate(-50%, -50%);
   transition: width 0.6s, height 0.6s, opacity 0.3s;
   opacity: 0;
 }
 
 .search-btn:hover {
-  background: #FFE0B2;
-  border-color: rgba(230, 81, 0, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
-  transform: translateY(-1px);
+  background: var(--brand-hover);
+  box-shadow: none;
+  transform: none;
 }
 
 .search-btn:active {
-  background: #FFCC80;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
-  transform: translateY(0);
+  background: var(--brand-pressed);
+  box-shadow: none;
+  transform: none;
 }
 
 .search-btn:active::before {
@@ -1127,7 +1122,7 @@ export default {
 
 .filter-select:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -1149,10 +1144,10 @@ export default {
 
 .order-card {
   position: relative;
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 16px;
   padding: var(--md-spacing-md);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
   overflow: hidden;
@@ -1160,7 +1155,7 @@ export default {
 }
 
 .order-card:hover {
-  background: #FFFFFF;
+  background: var(--surface-card);
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
 }
@@ -1229,8 +1224,8 @@ export default {
 
 /* Order Status Colors */
 .status-submitted {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .status-confirmed {
@@ -1271,8 +1266,8 @@ export default {
 
 /* Payment Status Colors */
 .payment-unpaid {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .payment-paid {
@@ -1346,7 +1341,7 @@ export default {
   position: relative;
   overflow: hidden;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-transform: none;
   outline: none;
@@ -1375,12 +1370,12 @@ export default {
 }
 
 .action-btn:hover {
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .action-btn:active {
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -1430,18 +1425,18 @@ export default {
 }
 
 .pickup-btn {
-  background: #FFF3E0;
-  color: #E65100;
-  border: 1px solid rgba(230, 81, 0, 0.2);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid color-mix(in srgb, var(--warning-text) 28%, transparent);
 }
 
 .pickup-btn:hover {
-  background: #FFE0B2;
-  border-color: rgba(230, 81, 0, 0.4);
+  background: color-mix(in srgb, var(--warning-text) 12%, var(--warning-bg));
+  border-color: color-mix(in srgb, var(--warning-text) 40%, transparent);
 }
 
 .pickup-btn:active {
-  background: #FFCC80;
+  background: color-mix(in srgb, var(--warning-text) 18%, var(--warning-bg));
 }
 
 .confirm-btn {
@@ -1530,10 +1525,10 @@ export default {
 
 .page-btn {
   padding: 10px 24px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border-default);
   border-radius: 24px;
-  background: #FFFFFF;
-  color: rgba(0, 0, 0, 0.87);
+  background: var(--surface-card);
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 14px;
@@ -1543,7 +1538,7 @@ export default {
   position: relative;
   overflow: hidden;
   outline: none;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
 }
 
 .page-btn::before {
@@ -1561,15 +1556,15 @@ export default {
 }
 
 .page-btn:hover:not(:disabled) {
-  background: #FFF3E0;
-  color: #E65100;
-  border-color: rgba(230, 81, 0, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
-  transform: translateY(-1px);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+  box-shadow: none;
+  transform: none;
 }
 
 .page-btn:active:not(:disabled) {
-  box-shadow: 0px 1px 3px rgba(255, 140, 0, 0.3), 0px 1px 2px rgba(255, 140, 0, 0.2);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(0);
 }
 
@@ -1606,7 +1601,7 @@ export default {
   background: #E0F2F1;
   color: #00695C;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   position: relative;
   overflow: hidden;
   outline: none;
@@ -1629,13 +1624,13 @@ export default {
 .qr-scanner-btn:hover {
   background: #B2DFDB;
   border-color: rgba(0, 105, 92, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .qr-scanner-btn:active {
   background: #80CBC4;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -1662,7 +1657,7 @@ export default {
 }
 
 .modal-content {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 24px;
   max-width: 800px;
   width: 100%;
@@ -1687,8 +1682,8 @@ export default {
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
-  background: var(--gradient-primary);
-  border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
   border-radius: 24px 24px 0 0;
   position: relative;
 }
@@ -1701,7 +1696,7 @@ export default {
   left: 0;
   right: 0;
   height: env(safe-area-inset-top);
-  background: var(--gradient-primary);
+  background: var(--surface-card);
   border-radius: 24px 24px 0 0;
 }
 
@@ -1720,7 +1715,7 @@ export default {
   justify-content: center;
   background: rgba(255, 255, 255, 0.9);
   border-radius: 10px;
-  color: #FF8C00;
+  color: var(--brand-ink);
 }
 
 .header-icon svg {
@@ -1791,7 +1786,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   padding: var(--md-spacing-md);
-  background: #FAFAFA;
+  background: var(--surface-subtle);
 }
 
 .modal-footer {
@@ -1799,7 +1794,7 @@ export default {
   gap: var(--md-spacing-md);
   padding: var(--md-spacing-md);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 0 0 24px 24px;
 }
 
@@ -1864,11 +1859,11 @@ export default {
   letter-spacing: 0.1px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(230, 81, 0, 0.2);
-  background: #FFF3E0;
-  color: #E65100;
+  border: none;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: none;
   position: relative;
   overflow: hidden;
   outline: none;
@@ -1886,23 +1881,22 @@ export default {
   width: 0;
   height: 0;
   border-radius: 50%;
-  background: rgba(230, 81, 0, 0.1);
+  background: rgba(255, 255, 255, 0.2);
   transform: translate(-50%, -50%);
   transition: width 0.6s, height 0.6s, opacity 0.3s;
   opacity: 0;
 }
 
 .update-order-btn:hover:not(:disabled) {
-  background: #FFE0B2;
-  border-color: rgba(230, 81, 0, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
-  transform: translateY(-1px);
+  background: var(--brand-hover);
+  box-shadow: none;
+  transform: none;
 }
 
 .update-order-btn:active:not(:disabled) {
-  background: #FFCC80;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
-  transform: translateY(0);
+  background: var(--brand-pressed);
+  box-shadow: none;
+  transform: none;
 }
 
 .update-order-btn:active:not(:disabled)::before {
@@ -1934,7 +1928,7 @@ export default {
 }
 
 .modal-content-inner {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 16px;
   max-width: 500px;
   width: 100%;
@@ -1996,7 +1990,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
@@ -2014,7 +2008,7 @@ export default {
 
 .product-price {
   font-weight: 600;
-  color: #E65100;
+  color: var(--md-primary);
 }
 
 .empty-products {
@@ -2031,7 +2025,7 @@ export default {
 
 .order-info-section,
 .order-items-section {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: var(--md-spacing-md);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.08), 0px 1px 2px rgba(0, 0, 0, 0.06);
@@ -2070,7 +2064,7 @@ export default {
 .section-header svg {
   width: 20px;
   height: 20px;
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .order-info-section h3,
@@ -2142,7 +2136,7 @@ export default {
 
 .payment-method-select:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -2177,7 +2171,7 @@ export default {
 
 .order-status-select:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -2196,7 +2190,7 @@ export default {
   background: #E8F5E9;
   color: #2E7D32;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   position: relative;
   overflow: hidden;
   outline: none;
@@ -2221,13 +2215,13 @@ export default {
 .mark-paid-btn:hover {
   background: #C8E6C9;
   border-color: rgba(46, 125, 50, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .mark-paid-btn:active {
   background: #A5D6A7;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -2250,7 +2244,7 @@ export default {
   background: #E8F5E9;
   color: #2E7D32;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   position: relative;
   overflow: hidden;
   outline: none;
@@ -2277,13 +2271,13 @@ export default {
 .complete-order-btn:hover:not(:disabled) {
   background: #C8E6C9;
   border-color: rgba(46, 125, 50, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .complete-order-btn:active:not(:disabled) {
   background: #A5D6A7;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -2338,7 +2332,7 @@ export default {
   justify-content: space-between;
   align-items: flex-start;
   padding: var(--md-spacing-sm);
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-radius: 8px;
   border: 1px solid rgba(0, 0, 0, 0.06);
   transition: all 0.2s;
@@ -2383,7 +2377,7 @@ export default {
   height: 28px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 4px;
-  background: #FFFFFF;
+  background: var(--surface-card);
   color: rgba(0, 0, 0, 0.87);
   cursor: pointer;
   display: flex;
@@ -2395,7 +2389,7 @@ export default {
 }
 
 .qty-btn:hover:not(:disabled) {
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-color: rgba(0, 0, 0, 0.2);
 }
 
@@ -2443,9 +2437,9 @@ export default {
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: rgba(230, 81, 0, 0.1);
+  background: var(--brand-tint);
   border-radius: 12px;
-  color: #E65100;
+  color: var(--brand-ink);
   font-weight: 500;
   font-size: 0.8125rem;
 }
@@ -2475,7 +2469,7 @@ export default {
 }
 
 .weight-input-group label svg {
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .weight-input {
@@ -2491,7 +2485,7 @@ export default {
 
 .weight-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -2677,7 +2671,7 @@ export default {
   background: #F3E5F5;
   color: #7B1FA2;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   position: relative;
   overflow: hidden;
   outline: none;
@@ -2700,13 +2694,13 @@ export default {
 .duplicates-btn:hover:not(:disabled) {
   background: #E1BEE7;
   border-color: rgba(123, 31, 162, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .duplicates-btn:active:not(:disabled) {
   background: #CE93D8;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -2734,7 +2728,7 @@ export default {
 }
 
 .duplicate-set {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: var(--md-spacing-md);
   box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
@@ -2781,7 +2775,7 @@ export default {
 
 .duplicate-order {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-radius: 8px;
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
@@ -2813,19 +2807,19 @@ export default {
   background: #F3E5F5;
   color: #7B1FA2;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
 }
 
 .merge-btn-action:hover {
   background: #E1BEE7;
   border-color: rgba(123, 31, 162, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .merge-btn-action:active {
   background: #CE93D8;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 </style>

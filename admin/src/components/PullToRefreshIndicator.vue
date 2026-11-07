@@ -54,7 +54,7 @@ export default {
   justify-content: center;
   gap: 0.5rem;
   overflow: hidden;
-  color: var(--md-primary);
+  color: var(--brand-ink);
   transition: height 0.2s ease;
   user-select: none;
   pointer-events: none;
@@ -83,7 +83,7 @@ export default {
 }
 
 .pull-to-refresh-indicator.ready .ptr-label {
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 
 @keyframes ptr-spin {

@@ -132,7 +132,7 @@ export default {
 
 <style scoped>
 .fulfillment-section {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 1rem 1.25rem;
   margin-bottom: 1.5rem;
@@ -165,12 +165,12 @@ export default {
   padding: 0.65rem 0.75rem;
   border-radius: 8px;
   border: 1px solid #eee;
-  background: #fafafa;
+  background: var(--surface-subtle);
 }
 
 .fulfillment-row.status--partial {
-  border-color: #ffe0b2;
-  background: #fff8e1;
+  border-color: color-mix(in srgb, var(--warning-text) 35%, transparent);
+  background: var(--warning-bg);
 }
 
 .fulfillment-row.status--unavailable {
@@ -217,7 +217,7 @@ export default {
   border-radius: 6px;
   border: none;
   background: #c62828;
-  color: #fff;
+  color: var(--text-on-brand);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -228,7 +228,7 @@ export default {
 }
 
 .action-btn--secondary {
-  background: #fff;
+  background: var(--surface-card);
   color: #333;
   border: 1px solid #ccc;
 }

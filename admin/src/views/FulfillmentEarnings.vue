@@ -630,7 +630,7 @@ export default {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: var(--md-radius-md);
-  background: #fff;
+  background: var(--surface-card);
   font-size: 16px;
 }
 .text-input {
@@ -669,12 +669,12 @@ export default {
   color: var(--md-on-surface-variant);
 }
 .billing-card {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12);
   margin-bottom: var(--md-spacing-lg);
-  border: 1px solid rgba(255, 140, 0, 0.28);
+  border: 1px solid rgba(240, 168, 0, 0.28);
 }
 .billing-row {
   display: grid;
@@ -776,7 +776,7 @@ export default {
   min-height: 44px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--md-radius-md);
-  background: #fff;
+  background: var(--surface-card);
   color: var(--md-on-surface-variant);
   font-size: 13px;
   font-weight: 500;
@@ -787,11 +787,11 @@ export default {
 }
 .lane-tab.active {
   background: var(--md-primary);
-  border-color: var(--md-primary);
-  color: #fff;
+  border-color: transparent;
+  color: var(--text-on-brand);
 }
 .highlight-text {
-  color: #E65100;
+  color: var(--warning-text);
 }
 .billing-row--stats {
   margin-top: var(--md-spacing-md);
@@ -947,14 +947,14 @@ export default {
   }
 }
 .summary-card {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12);
   min-width: 0;
 }
 .summary-card.highlight {
-  border: 1px solid rgba(255, 140, 0, 0.35);
+  border: 1px solid rgba(240, 168, 0, 0.35);
 }
 .summary-card .label {
   color: var(--md-on-surface-variant);
@@ -970,7 +970,7 @@ export default {
   color: var(--md-on-surface-variant);
 }
 .panel {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12);
@@ -1002,7 +1002,7 @@ export default {
 }
 .add-btn {
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 .ghost-btn {
   background: rgba(0, 0, 0, 0.05);
@@ -1145,8 +1145,8 @@ export default {
   color: var(--md-on-surface-variant);
 }
 .open-session {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   border-radius: var(--md-radius-sm);
 }

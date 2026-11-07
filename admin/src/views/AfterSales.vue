@@ -656,7 +656,6 @@ export default {
   --as-teal-border: rgba(0, 121, 107, 0.35);
   width: 100%;
   min-width: 0;
-  max-width: min(960px, 100%);
   box-sizing: border-box;
   padding: 2px 0 8px;
   border-radius: var(--md-radius-md);
@@ -692,8 +691,8 @@ export default {
 }
 
 .tab.active {
-  background: rgba(255, 140, 0, 0.14);
-  color: #e65100;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   font-weight: 500;
 }
 
@@ -750,7 +749,7 @@ export default {
 }
 
 .filter-label--icon:hover {
-  color: #e65100;
+  color: var(--warning-text);
 }
 
 .filter-icon-svg {
@@ -775,8 +774,8 @@ export default {
 
 .deal-select:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .search-input {
@@ -794,8 +793,8 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .search-clear {
@@ -827,8 +826,8 @@ export default {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  background: rgba(255, 140, 0, 0.06);
-  border: 1px solid rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.06);
+  border: 1px solid rgba(240, 168, 0, 0.2);
   border-left: 3px solid var(--md-primary);
   border-radius: var(--md-radius-md);
   box-shadow: var(--md-elevation-1);
@@ -902,8 +901,8 @@ export default {
 
 .inline-num:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .hint-note {
@@ -941,7 +940,7 @@ export default {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--surface-card);
   border-radius: var(--md-radius-md);
   border: 1px solid var(--md-surface-variant);
   box-shadow: var(--md-elevation-1);
@@ -1004,7 +1003,7 @@ export default {
 }
 
 .status-pill--todo {
-  color: #e65100;
+  color: var(--warning-text);
   background: rgba(255, 152, 0, 0.2);
 }
 
@@ -1036,9 +1035,9 @@ export default {
 }
 
 .deal-chip--ordered {
-  color: #e65100;
-  background: rgba(255, 140, 0, 0.16);
-  border: 1px solid rgba(255, 140, 0, 0.5);
+  color: var(--warning-text);
+  background: rgba(240, 168, 0, 0.16);
+  border: 1px solid rgba(240, 168, 0, 0.5);
 }
 
 .deal-chip--none {
@@ -1097,8 +1096,8 @@ export default {
   padding: 2px 8px;
   border-radius: 6px;
   font-weight: 500;
-  background: rgba(255, 140, 0, 0.15);
-  color: #e65100;
+  background: rgba(240, 168, 0, 0.15);
+  color: var(--warning-text);
 }
 
 .rec-time {
@@ -1317,7 +1316,7 @@ export default {
 .btn-primary {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   cursor: pointer;
@@ -1344,7 +1343,7 @@ export default {
   overflow-x: auto;
   border: 1px solid var(--md-surface-variant);
   border-radius: var(--md-radius-md);
-  background: #fff;
+  background: var(--surface-card);
 }
 
 .repurchase-table {
@@ -1421,7 +1420,7 @@ export default {
   }
 
   .tab.active {
-    background: rgba(255, 140, 0, 0.15);
+    background: var(--md-primary);
   }
 
   .search-toolbar {

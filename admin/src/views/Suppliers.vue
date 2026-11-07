@@ -260,7 +260,7 @@ export default {
 
 <style scoped>
 .suppliers-page {
-  max-width: 1400px;
+  width: 100%;
 }
 
 .page-header-actions {
@@ -283,9 +283,9 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .add-btn {
@@ -294,7 +294,7 @@ export default {
   gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -305,7 +305,7 @@ export default {
 }
 
 .add-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -325,7 +325,7 @@ export default {
   margin-top: var(--md-spacing-md);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -432,17 +432,17 @@ export default {
 
 .activate-btn:hover {
   background: #2E7D32;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .deactivate-btn {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .deactivate-btn:hover {
-  background: #E65100;
-  color: white;
+  background: var(--brand-pressed);
+  color: var(--text-on-brand);
 }
 
 .delete-btn {
@@ -452,7 +452,7 @@ export default {
 
 .delete-btn:hover {
   background: #C62828;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 /* Modal Styles */
@@ -551,9 +551,9 @@ export default {
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .form-group input[type="checkbox"] {
@@ -593,11 +593,11 @@ export default {
 
 .save-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .save-btn:hover {
-  background: #e67e00;
+  background: var(--brand-hover);
 }
 
 /* Laptop Responsive Styles */

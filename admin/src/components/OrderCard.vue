@@ -464,10 +464,10 @@ export default {
 <style scoped>
 .order-card {
   position: relative;
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 16px;
   padding: var(--md-spacing-md);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
   overflow: visible;
@@ -483,7 +483,7 @@ export default {
 }
 
 .order-card:hover {
-  background: #FFFFFF;
+  background: var(--surface-card);
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
 }
@@ -610,9 +610,9 @@ export default {
 }
 
 .cutting-badge {
-  background: #FFF3E0;
-  color: #E65100;
-  border: 1px solid rgba(230, 81, 0, 0.28);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid color-mix(in srgb, var(--warning-text) 28%, transparent);
 }
 
 .order-status,
@@ -637,8 +637,8 @@ export default {
 }
 
 .status-submitted {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .status-confirmed {
@@ -683,8 +683,8 @@ export default {
 }
 
 .payment-unpaid {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .payment-paid {
@@ -800,8 +800,8 @@ export default {
 .phone-badge {
   margin-left: 8px;
   padding: 2px 8px;
-  background: #E3F2FD;
-  color: #1565C0;
+  background: var(--brand-tint);
+  color: var(--text-primary);
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
@@ -879,7 +879,7 @@ export default {
   position: relative;
   overflow: hidden;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-transform: none;
   outline: none;
@@ -910,12 +910,12 @@ export default {
 }
 
 .action-btn:hover {
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .action-btn:active {
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -949,14 +949,14 @@ export default {
 }
 
 .pickup-btn {
-  background: #FFF3E0;
-  color: #E65100;
-  border: 1px solid rgba(230, 81, 0, 0.2);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid color-mix(in srgb, var(--warning-text) 28%, transparent);
 }
 
 .pickup-btn:hover {
-  background: #FFE0B2;
-  border-color: rgba(230, 81, 0, 0.4);
+  background: color-mix(in srgb, var(--warning-text) 12%, var(--warning-bg));
+  border-color: color-mix(in srgb, var(--warning-text) 40%, transparent);
 }
 
 .preparing-btn {
@@ -1150,13 +1150,13 @@ export default {
   margin-top: 4px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.14) 0%, rgba(255, 165, 0, 0.22) 100%);
-  border: 1px solid rgba(255, 140, 0, 0.45);
+  background: var(--warning-bg);
+  border: 1px solid rgba(240, 168, 0, 0.45);
 }
 
 .breakdown-row--due .breakdown-label {
   font-weight: 700;
-  color: #e65100;
+  color: var(--warning-text);
 }
 
 .breakdown-value--due {
@@ -1240,7 +1240,7 @@ export default {
 }
 
 .product-info-icon:hover {
-  color: var(--md-primary);
+  color: var(--brand-ink);
   transform: scale(1.1);
 }
 
@@ -1263,7 +1263,7 @@ export default {
 }
 
 .tooltip-content {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 12px;
   box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.15), 0px 2px 8px rgba(0, 0, 0, 0.1);
   padding: 12px 16px;
@@ -1281,7 +1281,7 @@ export default {
   top: 50%;
   width: 12px;
   height: 12px;
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-left: 1px solid rgba(0, 0, 0, 0.08);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   transform: translateY(-50%) rotate(45deg);
@@ -1351,7 +1351,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 4px 8px;
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
   border-radius: 6px;
   font-size: 0.75rem;
   gap: 8px;

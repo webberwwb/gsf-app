@@ -6,7 +6,14 @@ from models import db
 from models.user import AuthToken, User
 from services import recipe_service
 from services.recipe_service import RecipeError
-from utils.recipe_images import GCS_AVAILABLE, PIL_AVAILABLE, resize_to_jpeg, store_recipe_jpeg
+from utils.recipe_images import (
+    GCS_AVAILABLE,
+    PIL_AVAILABLE,
+    UnidentifiedImageError,
+    resize_to_jpeg,
+    store_recipe_jpeg,
+    supported_recipe_photo,
+)
 
 recipes_bp = Blueprint('recipes', __name__)
 
@@ -69,14 +76,16 @@ def upload_recipe_image():
     if not PIL_AVAILABLE or not GCS_AVAILABLE:
         return jsonify({'error': '图片上传暂不可用'}), 503
     file = request.files.get('image')
-    if not file or not file.filename:
+    if not file:
         return jsonify({'error': '请选择照片'}), 400
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    if ext not in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
-        return jsonify({'error': '请上传 jpg、png 或 webp 照片'}), 400
+    raw = file.read()
+    if not raw or not supported_recipe_photo(file.filename or '', file.mimetype or '', raw):
+        return jsonify({'error': '请上传 jpg、png、webp 或 heic 照片'}), 400
     try:
-        jpeg, _size = resize_to_jpeg(file.read())
+        jpeg, _size = resize_to_jpeg(raw)
         url = store_recipe_jpeg(jpeg)
+    except UnidentifiedImageError:
+        return jsonify({'error': '这张照片无法识别，请换一张'}), 400
     except Exception:
         return jsonify({'error': '照片上传失败'}), 500
     return jsonify({'url': url}), 200

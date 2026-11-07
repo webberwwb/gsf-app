@@ -125,8 +125,8 @@ export default {
 }
 
 .order-line.is-pending-sub {
-  background: #fff8e1;
-  border-left: 3px solid #f57c00;
+  background: var(--warning-bg);
+  border-left: 3px solid var(--warning-text);
 }
 
 .line-main {
@@ -180,8 +180,8 @@ export default {
 }
 
 .badge-pending {
-  background: #ffe0b2;
-  color: #e65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .line-meta {
@@ -216,8 +216,8 @@ export default {
 }
 
 .price-notice.is-locked {
-  color: #e65100;
-  background: #fff3e0;
+  color: var(--warning-text);
+  background: var(--warning-bg);
 }
 
 .line-catalog {

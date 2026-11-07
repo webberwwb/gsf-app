@@ -155,7 +155,7 @@ export default {
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
-  background: rgb(255, 140, 0);
+  background: var(--surface-card);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0;
   flex-shrink: 0;
@@ -169,12 +169,12 @@ export default {
   left: 0;
   right: 0;
   height: env(safe-area-inset-top);
-  background: rgb(255, 140, 0);
+  background: var(--surface-card);
 }
 
 .modal-header h2 {
   font-size: var(--md-title-size);
-  color: #fff;
+  color: var(--text-primary);
   font-weight: 600;
   margin: 0;
 }
@@ -184,7 +184,7 @@ export default {
   border: none;
   cursor: pointer;
   padding: var(--md-spacing-xs);
-  color: #fff;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -229,8 +229,8 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .empty-state {
@@ -259,7 +259,7 @@ export default {
 
 .deal-item:hover {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
 }
 
 .deal-item-header {
@@ -285,10 +285,10 @@ export default {
   flex-shrink: 0;
 }
 
-.status-badge.draft { background: #F5F5F5; color: #757575; }
+.status-badge.draft { background: var(--surface-subtle); color: #757575; }
 .status-badge.upcoming { background: #E3F2FD; color: #1976D2; }
 .status-badge.active { background: #E8F5E9; color: #2E7D32; }
-.status-badge.closed { background: #FFF3E0; color: #F57C00; }
+.status-badge.closed { background: var(--warning-bg); color: var(--warning-text); }
 .status-badge.preparing { background: #F3E5F5; color: #7B1FA2; }
 .status-badge.ready_for_pickup { background: #E8F5E9; color: #2E7D32; }
 .status-badge.completed { background: #F3E5F5; color: #7B1FA2; }
@@ -341,17 +341,17 @@ export default {
 
 .cancel-btn:hover {
   background: var(--md-outline);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .blank-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   box-shadow: var(--md-elevation-2);
 }
 
 .blank-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
 }
 

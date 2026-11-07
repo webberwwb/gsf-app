@@ -10,6 +10,7 @@ from models.order import Order
 from models.product import Product
 from models.user import AuthToken, User, UserRole
 from utils.stock_management import (
+    check_and_reserve_stock,
     get_available_stock,
     qty_by_product,
     update_stock_after_order_modification,
@@ -566,3 +567,115 @@ def test_customer_patch_reprices_quantity_break_siblings(app, db_session):
     assert len(left) == 1
     assert left[0]['id'] == uncut['id']
     assert float(left[0]['unit_price']) == 10.0
+
+
+def test_variant_stock_is_per_flavor(app, db_session):
+    from constants.status_enums import DeliveryMethod, PaymentStatus
+    from models.order import Order, OrderItem
+    from models.product_variant import ProductVariant
+    from utils.deal_products import load_group_deal_products, serialize_loaded_deal_products
+
+    user = _user('+15551111088', '规格库存')
+    deal = _deal(title='规格库存团')
+    product = _product('猪肉水饺')
+    pork = ProductVariant(product_id=product.id, name='猪肉', price_delta=0)
+    chive = ProductVariant(product_id=product.id, name='韭菜', price_delta=0)
+    db.session.add_all([pork, chive])
+    db.session.flush()
+    link = _link(deal, product, stock=None)
+    link.variant_stock_limits = {str(pork.id): 2, str(chive.id): 5}
+    db.session.flush()
+
+    ok, err = check_and_reserve_stock(deal.id, [
+        {'product_id': product.id, 'variant_id': pork.id, 'quantity': 2},
+    ])
+    assert ok, err
+    ok, err = check_and_reserve_stock(deal.id, [
+        {'product_id': product.id, 'variant_id': pork.id, 'quantity': 3},
+    ])
+    assert ok is False
+    assert '猪肉' in err
+
+    order = Order(
+        user_id=user.id,
+        group_deal_id=deal.id,
+        order_number=f'VAR-STOCK-{deal.id}',
+        subtotal=Decimal('20'),
+        tax=Decimal('0'),
+        shipping_fee=Decimal('0'),
+        total=Decimal('20'),
+        adjustment_amount=Decimal('0'),
+        points_earned=0,
+        delivery_method=DeliveryMethod.PICKUP.value,
+        payment_method='cash',
+        payment_status=PaymentStatus.UNPAID.value,
+        status=OrderStatus.SUBMITTED.value,
+        store_credit_applied=Decimal('0'),
+    )
+    db.session.add(order)
+    db.session.flush()
+    db.session.add(OrderItem(
+        order_id=order.id,
+        product_id=product.id,
+        variant_id=pork.id,
+        variant_name='猪肉',
+        quantity=2,
+        unit_price=Decimal('10'),
+        total_price=Decimal('20'),
+    ))
+    db.session.flush()
+
+    ok, err = check_and_reserve_stock(deal.id, [
+        {'product_id': product.id, 'variant_id': pork.id, 'quantity': 1},
+    ])
+    assert ok is False
+    ok, err = check_and_reserve_stock(deal.id, [
+        {'product_id': product.id, 'variant_id': chive.id, 'quantity': 5},
+    ])
+    assert ok, err
+
+    ok, err = update_stock_after_order_modification(
+        deal.id,
+        [{'product_id': product.id, 'variant_id': pork.id, 'quantity': 2}],
+        [{'product_id': product.id, 'variant_id': chive.id, 'quantity': 4}],
+    )
+    assert ok, err
+    ok, err = update_stock_after_order_modification(
+        deal.id,
+        [{'product_id': product.id, 'variant_id': pork.id, 'quantity': 2}],
+        [{'product_id': product.id, 'variant_id': pork.id, 'quantity': 3}],
+    )
+    assert ok is False
+
+    storefront = serialize_loaded_deal_products(load_group_deal_products(deal.id))
+    flavors = {row['name']: row for row in storefront[0]['variants']}
+    assert flavors['猪肉']['deal_stock_limit'] == 0
+    assert flavors['韭菜']['deal_stock_limit'] == 5
+    assert 'variant_stock_limits' not in storefront[0]
+
+    admin_rows = serialize_loaded_deal_products(
+        load_group_deal_products(deal.id), expose_stock_cap=True
+    )
+    admin_flavors = {row['name']: row for row in admin_rows[0]['variants']}
+    assert admin_flavors['猪肉']['deal_stock_limit'] == 2
+    assert admin_flavors['猪肉']['deal_stock_remaining'] == 0
+    assert admin_rows[0]['variant_stock_limits'][str(pork.id)] == 2
+
+
+def test_product_cap_still_applies_across_flavors(app, db_session):
+    from models.product_variant import ProductVariant
+
+    deal = _deal(title='合计库存团')
+    product = _product('水饺')
+    pork = ProductVariant(product_id=product.id, name='猪肉', price_delta=0)
+    db.session.add(pork)
+    db.session.flush()
+    link = _link(deal, product, stock=3)
+    link.variant_stock_limits = {str(pork.id): 10}
+    db.session.flush()
+
+    ok, err = check_and_reserve_stock(deal.id, [
+        {'product_id': product.id, 'variant_id': pork.id, 'quantity': 4},
+    ])
+    assert ok is False
+    assert '商品' in err

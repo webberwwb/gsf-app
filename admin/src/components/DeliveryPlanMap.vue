@@ -226,8 +226,8 @@ export default {
   border-radius: 50%;
   display: inline-block;
 }
-.swatch.unassigned { background: #F9A825; }
-.swatch.self { background: #FB8C00; }
+.swatch.unassigned { background: var(--md-primary); }
+.swatch.self { background: var(--md-primary); }
 .swatch.third { background: #1E88E5; }
 .rings-toggle {
   font-size: 13px;

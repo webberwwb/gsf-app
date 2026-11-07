@@ -84,7 +84,7 @@
                   :variants="activeVariants(line.product)"
                   :product="line.product"
                   :model-value="line.variant_id"
-                  @update:model-value="line.variant_id = $event"
+                  @update:model-value="setLineVariant(line, $event)"
                 />
               </div>
               <div class="qty-controls">
@@ -330,7 +330,7 @@ export default {
       const variantId = variants.length === 1 ? variants[0].id : null
       const existing = this.lines.find((line) => line.product.id === product.id && line.variant_id === variantId)
       if (existing && variants.length <= 1) {
-        existing.quantity += 1
+        this.changeQty(existing, 1)
       } else {
         this.lines.push({
           key: ++this.lineKey,
@@ -342,7 +342,39 @@ export default {
       this.showProductPicker = false
       this.productQuery = ''
     },
+    variantRemaining(product, variantId) {
+      if (variantId == null) return null
+      const variant = (product.variants || []).find((row) => String(row.id) === String(variantId))
+      if (!variant || variant.deal_stock_remaining == null) return null
+      return Number(variant.deal_stock_remaining)
+    },
+    lineQty(productId, variantId = null) {
+      return this.lines
+        .filter((line) => line.product.id === productId && (variantId == null || String(line.variant_id) === String(variantId)))
+        .reduce((sum, line) => sum + line.quantity, 0)
+    },
+    setLineVariant(line, variantId) {
+      line.variant_id = variantId
+      const variantLeft = this.variantRemaining(line.product, variantId)
+      if (variantLeft != null && line.quantity > variantLeft) {
+        line.quantity = Math.max(1, variantLeft)
+        this.errorMessage = variantLeft <= 0 ? '该规格已售罄' : '该规格库存不足，已按剩余数量调整'
+      }
+    },
     changeQty(line, delta) {
+      if (delta > 0) {
+        const productLeft = line.product.deal_stock_remaining
+        if (productLeft != null && this.lineQty(line.product.id) >= Number(productLeft)) {
+          this.errorMessage = '库存不足'
+          return
+        }
+        const variantLeft = this.variantRemaining(line.product, line.variant_id)
+        if (line.variant_id != null && variantLeft != null && this.lineQty(line.product.id, line.variant_id) >= variantLeft) {
+          this.errorMessage = '该规格库存不足'
+          return
+        }
+      }
+      this.errorMessage = ''
       line.quantity = Math.max(1, line.quantity + delta)
     },
     removeLine(key) {
@@ -418,7 +450,7 @@ export default {
 }
 
 .modal-content {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: 20px;
   width: min(720px, 100%);
   max-height: 90vh;
@@ -476,7 +508,7 @@ export default {
   margin: 0 0 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: #fff4e5;
+  background: var(--brand-tint);
   color: #8a4b08;
   font-size: 14px;
 }
@@ -573,7 +605,7 @@ export default {
 .result-btn {
   width: 100%;
   text-align: left;
-  background: #fff;
+  background: var(--surface-card);
   border: none;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   padding: 10px 12px;
@@ -584,7 +616,7 @@ export default {
 }
 
 .result-btn:hover {
-  background: #fff8f0;
+  background: var(--brand-tint);
 }
 
 .selected-user,
@@ -593,7 +625,7 @@ export default {
   margin-top: 8px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: #fafafa;
+  background: var(--surface-subtle);
 }
 
 .selected-user {
@@ -623,7 +655,7 @@ export default {
   width: 28px;
   height: 28px;
   border: 1px solid rgba(0, 0, 0, 0.16);
-  background: #fff;
+  background: var(--surface-card);
 }
 
 .secondary-btn,
@@ -638,14 +670,14 @@ export default {
 }
 
 .primary-btn {
-  background: var(--md-primary, #ff8c00);
-  color: #fff;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .text-btn {
   border: none;
   background: transparent;
-  color: var(--md-primary, #ff8c00);
+  color: var(--md-primary, var(--brand-ink));
   padding: 0;
 }
 

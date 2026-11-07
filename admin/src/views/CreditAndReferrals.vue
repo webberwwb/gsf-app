@@ -467,8 +467,6 @@ export default {
 
 <style scoped>
 .promo-page {
-  /* Match Users.vue: constrain width but stay flush-left in .content-area (no margin: auto) */
-  max-width: 1200px;
   box-sizing: border-box;
 }
 
@@ -513,13 +511,10 @@ export default {
 }
 
 .tab:hover:not(.active) {
-  color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.14);
-  background: color-mix(in srgb, var(--md-primary) 16%, var(--md-surface, #fff) 84%);
-  box-shadow:
-    0 -1px 0 rgba(255, 140, 0, 0.12),
-    0 6px 16px rgba(255, 140, 0, 0.14);
-  transform: translateY(-2px);
+  color: var(--text-primary);
+  background: var(--surface-subtle);
+  box-shadow: none;
+  transform: none;
   border-bottom-color: transparent;
 }
 
@@ -530,7 +525,7 @@ export default {
 
 .tab:active:not(.active) {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(255, 140, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(240, 168, 0, 0.1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -545,11 +540,10 @@ export default {
 }
 
 .tab.active {
-  color: var(--md-primary);
+  color: var(--text-on-brand);
   border-bottom-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.09);
-  background: color-mix(in srgb, var(--md-primary) 10%, var(--md-surface, #fff) 90%);
-  box-shadow: 0 6px 14px rgba(255, 140, 0, 0.08);
+  background: var(--md-primary);
+  box-shadow: none;
 }
 
 .panel-card {
@@ -664,7 +658,7 @@ export default {
 
 .user-picker__opt-credit {
   font-size: var(--md-label-size);
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 500;
 }
 
@@ -714,7 +708,7 @@ export default {
 .checkbox-input {
   width: 1.125rem;
   height: 1.125rem;
-  accent-color: var(--md-primary);
+  accent-color: var(--brand-ink);
 }
 
 .form-input {
@@ -731,7 +725,7 @@ export default {
 
 .form-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   box-shadow: 0 0 0 3px var(--overlay-primary);
 }
 
@@ -747,8 +741,8 @@ export default {
 
 .btn-primary {
   padding: var(--md-spacing-sm) var(--md-spacing-lg);
-  background: var(--gradient-primary);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-sm);
   font-size: var(--md-label-size);

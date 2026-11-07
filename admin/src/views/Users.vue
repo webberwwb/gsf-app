@@ -690,10 +690,6 @@ export default {
 </script>
 
 <style scoped>
-.users-page {
-  max-width: 1200px;
-}
-
 .page-header-actions {
   margin-bottom: var(--md-spacing-lg);
 }
@@ -718,26 +714,26 @@ export default {
   font-weight: 500;
   cursor: pointer;
   transition: var(--transition-fast);
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   color: var(--md-primary);
-  border: 1px solid rgba(255, 140, 0, 0.3);
+  border: 1px solid rgba(240, 168, 0, 0.3);
   white-space: nowrap;
 }
 
 .add-source-btn:hover {
-  background: rgba(255, 140, 0, 0.2);
-  border-color: rgba(255, 140, 0, 0.5);
+  background: rgba(240, 168, 0, 0.2);
+  border-color: rgba(240, 168, 0, 0.5);
 }
 
 .add-source-btn.active {
-  background: var(--gradient-primary);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border-color: transparent;
 }
 
 .add-source-btn.active:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .bulk-actions {
@@ -745,15 +741,15 @@ export default {
   align-items: center;
   gap: var(--md-spacing-md);
   padding: var(--md-spacing-md);
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   border-radius: var(--md-radius-md);
-  border: 1px solid rgba(255, 140, 0, 0.3);
+  border: 1px solid rgba(240, 168, 0, 0.3);
 }
 
 .selected-count {
   font-size: var(--md-body-size);
   font-weight: 500;
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 
 .bulk-assign-btn,
@@ -768,13 +764,13 @@ export default {
 }
 
 .bulk-assign-btn {
-  background: var(--gradient-primary);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .bulk-assign-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .clear-selection-btn {
@@ -801,9 +797,9 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .loading, .error, .empty-state {
@@ -835,10 +831,10 @@ export default {
 }
 
 .user-card {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   display: flex;
   align-items: center;
   gap: var(--md-spacing-lg);
@@ -850,7 +846,7 @@ export default {
 
 .user-card.selected {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
+  background: var(--brand-tint);
 }
 
 .user-checkbox {
@@ -863,11 +859,11 @@ export default {
   width: 20px;
   height: 20px;
   cursor: pointer;
-  accent-color: var(--md-primary);
+  accent-color: var(--brand-ink);
 }
 
 .user-card:hover {
-  background: #FFFFFF;
+  background: var(--surface-card);
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
 }
@@ -913,7 +909,7 @@ export default {
   display: inline-block;
   padding: 0.125rem 0.5rem;
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border-radius: var(--md-radius-sm);
   font-size: var(--md-label-size);
   font-weight: 500;
@@ -922,8 +918,8 @@ export default {
 .fulfillment-badge {
   display: inline-block;
   padding: 0.125rem 0.5rem;
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
   border-radius: var(--md-radius-sm);
   font-size: var(--md-label-size);
   font-weight: 500;
@@ -932,7 +928,7 @@ export default {
 .influencer-badge {
   display: inline-block;
   padding: 0.125rem 0.5rem;
-  background: rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.2);
   color: var(--md-primary);
   border-radius: var(--md-radius-sm);
   font-size: var(--md-label-size);
@@ -987,7 +983,7 @@ export default {
 }
 
 .role-badge.admin {
-  background: rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.2);
   color: var(--md-primary);
 }
 
@@ -997,7 +993,7 @@ export default {
 }
 
 .role-badge.influencer {
-  background: rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.2);
   color: var(--md-primary);
 }
 
@@ -1051,24 +1047,24 @@ export default {
 
 .edit-btn:hover {
   background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
-  color: white;
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
 }
 
 .roles-btn {
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   color: var(--md-primary);
-  border: 1px solid rgba(255, 140, 0, 0.3);
+  border: 1px solid rgba(240, 168, 0, 0.3);
 }
 
 .roles-btn:hover {
-  background: var(--gradient-primary);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .impersonate-btn {
@@ -1079,7 +1075,7 @@ export default {
 
 .impersonate-btn:hover {
   background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-  color: white;
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
@@ -1104,7 +1100,7 @@ export default {
 
 .ban-btn:hover {
   background: var(--gradient-accent);
-  color: white;
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3);
@@ -1118,7 +1114,7 @@ export default {
 
 .unban-btn:hover {
   background: var(--gradient-success);
-  color: white;
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(17, 153, 142, 0.3);
@@ -1151,7 +1147,8 @@ export default {
 }
 
 .tab.active {
-  color: var(--md-primary);
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border-bottom-color: var(--md-primary);
 }
 
@@ -1286,7 +1283,7 @@ export default {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   max-width: 500px;
   width: 100%;
@@ -1370,7 +1367,7 @@ export default {
   border-radius: 8px;
   font-size: 14px;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   cursor: pointer;
   transition: border-color 0.2s;
 }
@@ -1405,7 +1402,7 @@ export default {
 }
 
 .cancel-btn {
-  background: white;
+  background: var(--surface-card);
   color: #374151;
   border: 1px solid #d1d5db;
 }
@@ -1416,7 +1413,7 @@ export default {
 
 .confirm-btn {
   background: #3b82f6;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .confirm-btn:hover:not(:disabled) {
@@ -1456,7 +1453,7 @@ export default {
   border-radius: 8px;
   font-size: 14px;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   transition: border-color 0.2s;
 }
 

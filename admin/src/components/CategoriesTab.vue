@@ -242,10 +242,6 @@ export default {
 </script>
 
 <style scoped>
-.categories-tab {
-  max-width: 1200px;
-}
-
 .page-header-actions {
   margin-bottom: var(--md-spacing-lg);
   display: flex;
@@ -266,7 +262,7 @@ export default {
 }
 
 .sort-select:hover {
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
 }
 
 .add-btn, .save-btn {
@@ -275,7 +271,7 @@ export default {
   gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -291,7 +287,7 @@ export default {
 }
 
 .add-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -322,7 +318,7 @@ export default {
   margin-top: var(--md-spacing-md);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -333,7 +329,7 @@ export default {
 }
 
 .add-first-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -366,7 +362,7 @@ export default {
 
 .category-card.drag-over {
   border: 2px dashed var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
 }
 
 .drag-handle {
@@ -463,6 +459,6 @@ export default {
 
 .delete-btn:hover {
   background: #C62828;
-  color: white;
+  color: var(--text-on-brand);
 }
 </style>

@@ -250,8 +250,8 @@ export default {
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .form-group textarea {
@@ -311,12 +311,12 @@ export default {
 
 .submit-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   box-shadow: var(--md-elevation-2);
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }

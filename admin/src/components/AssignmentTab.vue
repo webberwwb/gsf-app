@@ -317,10 +317,6 @@ export default {
 </script>
 
 <style scoped>
-.assignment-tab {
-  max-width: 1400px;
-}
-
 .page-header {
   margin-bottom: var(--md-spacing-lg);
 }
@@ -433,7 +429,7 @@ export default {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: var(--md-primary);
+  accent-color: var(--brand-ink);
 }
 
 .col-image {
@@ -516,8 +512,8 @@ export default {
 }
 
 .category-badge.current {
-  background: #F3E5F5;
-  color: #7B1FA2;
+  background: var(--brand-tint);
+  color: var(--brand-ink);
 }
 
 .no-category {
@@ -538,8 +534,8 @@ export default {
 
 .category-select:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .save-btn {
@@ -551,11 +547,11 @@ export default {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .save-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-2);
 }
 
@@ -588,7 +584,7 @@ export default {
 
 .selected-count {
   font-size: var(--md-body-size);
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 600;
 }
 
@@ -635,7 +631,7 @@ export default {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: #4CAF50;
-  color: white;
+  color: var(--text-on-brand);
   box-shadow: var(--md-elevation-2);
 }
 

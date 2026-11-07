@@ -692,7 +692,7 @@ export default {
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: var(--md-radius-md);
   font-size: 16px;
-  background: #fff;
+  background: var(--surface-card);
 }
 .print-labels-btn {
   display: inline-flex;
@@ -741,8 +741,8 @@ export default {
   margin-bottom: var(--md-spacing-md);
 }
 .lock-banner-warn {
-  background: #FFF3E0;
-  color: #F57C00;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 .lane-tabs {
   display: none;
@@ -764,14 +764,14 @@ export default {
   }
 }
 .lane {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-md);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12);
   min-width: 0;
 }
 .lane-self {
-  border: 1px solid rgba(255, 140, 0, 0.25);
+  border: 1px solid rgba(240, 168, 0, 0.25);
 }
 .lane-header {
   display: flex;
@@ -793,13 +793,13 @@ export default {
   white-space: nowrap;
 }
 .lane-cash.due {
-  color: #fff;
+  color: var(--text-on-brand);
   background: #b71c1c;
   border-color: #b71c1c;
 }
 .lane-cash.collected {
-  color: #e65100;
-  background: #fff3e0;
+  color: var(--warning-text);
+  background: var(--warning-bg);
   border-color: #ef6c00;
 }
 .lane-header h3 {
@@ -864,7 +864,7 @@ export default {
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -876,8 +876,8 @@ export default {
   border-radius: var(--md-radius-xl);
   font-size: 12px;
   font-weight: 600;
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 .status-chip.delivered {
   background: #E3F2FD;
@@ -889,7 +889,7 @@ export default {
 }
 .cash-btn {
   background: #2e7d32;
-  color: #fff;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-sm);
   padding: 0.4rem 0.75rem;
@@ -923,7 +923,7 @@ export default {
 .tel-link {
   display: inline-flex;
   align-items: center;
-  color: var(--md-primary);
+  color: var(--brand-ink);
   text-decoration: none;
   font-weight: 500;
 }
@@ -935,7 +935,7 @@ export default {
 }
 .add-btn {
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-sm);
   padding: 0.4rem 0.75rem;
@@ -984,7 +984,7 @@ export default {
   margin: 0.4rem 0 0;
   font-size: 13px;
   font-weight: 600;
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 .photo-btn.busy {
   opacity: 0.6;
@@ -1001,12 +1001,12 @@ export default {
   padding: 0.125rem 0.5rem;
   border-radius: var(--md-radius-xl);
   font-size: 12px;
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   flex-shrink: 0;
 }
 .status-badge.out_for_delivery, .status-badge.preparing {
-  background: #FFF3E0;
-  color: #F57C00;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 .status-badge.completed {
   background: #E8F5E9;
@@ -1024,7 +1024,7 @@ export default {
   padding-bottom: calc(var(--md-spacing-md) + env(safe-area-inset-bottom));
 }
 .modal-content {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   max-width: 420px;
   width: 100%;
@@ -1076,12 +1076,12 @@ export default {
 }
 .form-input:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.15);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 .modal-footer {
   padding: var(--md-spacing-md) var(--md-spacing-lg);
-  background: #fafafa;
+  background: var(--surface-subtle);
   display: flex;
   justify-content: flex-end;
   gap: var(--md-spacing-sm);
@@ -1094,13 +1094,13 @@ export default {
   cursor: pointer;
 }
 .cancel-btn {
-  background: #fff;
+  background: var(--surface-card);
   color: var(--md-on-surface);
   border: 1px solid rgba(0, 0, 0, 0.12);
 }
 .confirm-btn {
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 @media (max-width: 959px) {
@@ -1112,14 +1112,14 @@ export default {
     gap: 0.4rem;
     margin: 0 0 var(--md-spacing-md);
     padding: 0.35rem 0 0.55rem;
-    background: var(--md-background, #f5f5f5);
+    background: var(--md-background, var(--surface-subtle));
   }
   .lane-tab {
     flex: 1;
     min-height: 44px;
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: var(--md-radius-md);
-    background: #fff;
+    background: var(--surface-card);
     color: var(--md-on-surface-variant);
     font-size: 13px;
     font-weight: 500;
@@ -1131,12 +1131,12 @@ export default {
   }
   .lane-tab.active {
     background: var(--md-primary);
-    border-color: var(--md-primary);
-    color: #fff;
+    border-color: transparent;
+    color: var(--text-on-brand);
   }
   .lane-tab.active .lane-count {
-    background: rgba(255, 255, 255, 0.22);
-    color: #fff;
+    background: var(--surface-card);
+    color: var(--md-primary);
   }
   .lane-grid {
     display: block;
@@ -1163,13 +1163,13 @@ export default {
     padding: 0.45rem 0.75rem;
   }
   .mobile-cash-banner.due {
-    color: #fff;
+    color: var(--text-on-brand);
     background: #b71c1c;
     border-color: #b71c1c;
   }
   .mobile-cash-banner.collected {
-    color: #e65100;
-    background: #fff3e0;
+    color: var(--warning-text);
+    background: var(--warning-bg);
     border-color: #ef6c00;
   }
   .deal-select {

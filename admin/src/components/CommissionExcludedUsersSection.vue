@@ -210,7 +210,7 @@ export default {
 
 <style scoped>
 .excluded-users-section {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid var(--md-outline-variant);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
@@ -250,8 +250,8 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .search-status {
@@ -339,7 +339,7 @@ export default {
 
 .add-btn:hover:not(:disabled) {
   background: #10b981;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .remove-btn {
@@ -350,7 +350,7 @@ export default {
 
 .remove-btn:hover:not(:disabled) {
   background: #dc2626;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .add-btn:disabled,

@@ -258,10 +258,10 @@ export default {
 <style scoped>
 .order-list-item {
   position: relative;
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 12px 16px 12px 44px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border-left: 4px solid transparent;
   cursor: pointer;
@@ -269,11 +269,11 @@ export default {
 
 .order-list-item:hover {
   box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
-  border-left-color: var(--md-primary);
+  border-left-color: var(--brand-ink);
 }
 
 .order-list-item.expanded {
-  border-left-color: var(--md-primary);
+  border-left-color: var(--brand-ink);
 }
 
 .toggle-expand-btn {
@@ -372,9 +372,9 @@ export default {
 }
 
 .cutting-badge {
-  background: #FFF3E0;
-  color: #E65100;
-  border: 1px solid rgba(230, 81, 0, 0.28);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid color-mix(in srgb, var(--warning-text) 28%, transparent);
 }
 
 .status-badge,
@@ -383,8 +383,8 @@ export default {
 }
 
 .status-submitted {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .status-confirmed {
@@ -425,8 +425,8 @@ export default {
 }
 
 .payment-unpaid {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .payment-paid {
@@ -493,7 +493,7 @@ export default {
 
 .user-phone {
   font-size: 0.75rem;
-  color: #1565C0;
+  color: var(--text-secondary);
   padding: 2px 6px;
   background: #E3F2FD;
   border-radius: 8px;
@@ -545,16 +545,16 @@ export default {
   margin-top: 2px;
   padding: 6px 10px;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.14) 0%, rgba(255, 165, 0, 0.22) 100%);
-  border: 1px solid rgba(255, 140, 0, 0.45);
-  box-shadow: 0 1px 3px rgba(255, 140, 0, 0.2);
+  background: var(--warning-bg);
+  border: 1px solid rgba(240, 168, 0, 0.45);
+  box-shadow: 0 1px 3px rgba(240, 168, 0, 0.2);
   justify-content: space-between;
 }
 
 .pricing-line--due .pricing-label {
   font-size: 0.8125rem;
   font-weight: 700;
-  color: #e65100;
+  color: var(--warning-text);
 }
 
 .pricing-value {

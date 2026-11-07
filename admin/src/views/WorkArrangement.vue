@@ -797,7 +797,7 @@ export default {
 
 .document-card:hover {
   box-shadow: var(--md-elevation-3);
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   transform: translateY(-2px);
 }
 
@@ -894,8 +894,8 @@ export default {
 
 .document-select:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .btn-primary, .btn-secondary, .btn-danger {
@@ -910,11 +910,11 @@ export default {
 
 .btn-primary {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #e67e00;
+  background: var(--brand-hover);
 }
 
 .btn-primary:disabled {
@@ -934,7 +934,7 @@ export default {
 
 .btn-danger {
   background: #dc3545;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .btn-danger:hover {
@@ -981,7 +981,7 @@ export default {
 }
 
 .editor-notification {
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   border: 1px solid var(--md-primary);
   border-radius: var(--md-radius-md);
   padding: var(--md-spacing-sm) var(--md-spacing-md);
@@ -1021,7 +1021,7 @@ export default {
 
 .title-input:focus {
   outline: none;
-  border-bottom-color: var(--md-primary);
+  border-bottom-color: var(--brand-ink);
 }
 
 .document-title {
@@ -1073,8 +1073,8 @@ export default {
 }
 
 .editor-tab.active {
-  background: var(--md-surface);
-  color: var(--md-primary);
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   font-weight: 500;
 }
 
@@ -1245,7 +1245,7 @@ export default {
 }
 
 .action-item-card.status-in_progress {
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
   border-left: 3px solid var(--md-primary);
 }
 
@@ -1279,8 +1279,8 @@ export default {
 }
 
 .status-badge.status-in_progress {
-  background: rgba(255, 140, 0, 0.2);
-  color: #e65100;
+  background: rgba(240, 168, 0, 0.2);
+  color: var(--warning-text);
 }
 
 .status-badge.status-completed {
@@ -1403,8 +1403,8 @@ export default {
 
 .field-input:focus, .field-textarea:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .field-textarea {

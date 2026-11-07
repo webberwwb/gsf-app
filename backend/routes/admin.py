@@ -96,6 +96,7 @@ from utils.product_price_choices import (
     apply_order_price_choices,
     open_order_price_impact,
     price_choice_rejection,
+    sync_bundled_weight_bounds_to_open_orders,
 )
 from utils.order_points import award_order_points, revoke_order_points
 from schemas.utils import validate_request
@@ -110,6 +111,7 @@ from decimal import Decimal
 from utils.shipping import calculate_shipping_fee
 from utils.stock_management import (
     check_and_reserve_stock,
+    normalize_variant_stock_limits,
     restore_stock,
     update_stock_after_order_modification,
 )
@@ -133,7 +135,7 @@ except ImportError:
     service_account = None
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -224,6 +226,9 @@ def upload_image():
         # Read and validate image
         image_data = file.read()
         image = Image.open(io.BytesIO(image_data))
+        # iPhone JPEGs keep the sensor pixels and store rotation in EXIF.
+        # Re-saving drops that tag, so apply it to the pixels first.
+        image = ImageOps.exif_transpose(image)
         
         # Convert to RGB if necessary (for JPEG compatibility)
         if image.mode in ('RGBA', 'LA', 'P'):
@@ -246,7 +251,7 @@ def upload_image():
         
         # Generate unique filename
         folder = (request.form.get('folder') or 'products').strip().lower()
-        if folder not in ('products', 'deliveries'):
+        if folder not in ('products', 'deliveries', 'b-deliveries'):
             folder = 'products'
         filename = f"{folder}/{uuid.uuid4()}.{format.lower()}"
         
@@ -430,6 +435,7 @@ def update_product(product_id):
             sync_product_variants(product, validated_data.get('variants'))
 
         apply_order_price_choices(product, impact, (raw_data or {}).get('order_price_choices'))
+        sync_bundled_weight_bounds_to_open_orders(product)
         from utils.order_item_pricing import clear_locked_price_choices_matching_catalog
         clear_locked_price_choices_matching_catalog(product)
 
@@ -1446,6 +1452,9 @@ def create_group_deal():
                 group_deal_id=group_deal.id,
                 product_id=product_id,
                 deal_stock_limit=product_data.get('deal_stock_limit'),
+                variant_stock_limits=normalize_variant_stock_limits(
+                    product_data.get('variant_stock_limits')
+                ),
                 is_discount=bool(product_data.get('is_discount')),
             )
             db.session.add(deal_product)
@@ -1646,6 +1655,9 @@ def update_group_deal(deal_id):
                     group_deal_id=deal.id,
                     product_id=product_id,
                     deal_stock_limit=product_data.get('deal_stock_limit'),
+                    variant_stock_limits=normalize_variant_stock_limits(
+                        product_data.get('variant_stock_limits')
+                    ),
                     is_discount=on_sale,
                 )
                 db.session.add(deal_product)

@@ -203,7 +203,7 @@ export default {
 
 <style scoped>
 .group-deals-page {
-  max-width: 1200px;
+  width: 100%;
 }
 
 .page-header-actions {
@@ -218,7 +218,7 @@ export default {
   gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -234,7 +234,7 @@ export default {
 }
 
 .add-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -249,7 +249,7 @@ export default {
   margin-top: var(--md-spacing-md);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -260,7 +260,7 @@ export default {
 }
 
 .add-first-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -272,10 +272,10 @@ export default {
 }
 
 .deal-card {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
   cursor: pointer;
@@ -334,7 +334,7 @@ export default {
 }
 
 .status-badge.draft {
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   color: #757575;
 }
 
@@ -349,8 +349,8 @@ export default {
 }
 
 .status-badge.closed {
-  background: #FFF3E0;
-  color: #F57C00;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .status-badge.preparing {
@@ -369,8 +369,8 @@ export default {
 }
 
 .status-badge.online-payment {
-  background: rgba(255, 140, 0, 0.12);
-  color: #E65100;
+  background: rgba(240, 168, 0, 0.12);
+  color: var(--warning-text);
 }
 
 .deal-actions {
@@ -406,7 +406,7 @@ export default {
 
 .delete-btn:hover {
   background: #C62828;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .deal-description {

@@ -1,9 +1,9 @@
 /** Mirror of backend/utils/order_business_rules.py — keep in sync via test_order_business_rules_parity.py */
 
-export const RULES_VERSION = '2026-10-23-price-snapshot'
+export const RULES_VERSION = '2026-11-02-bundled-min-weight'
 
 export const ORDER_PRICING_AND_POINTS_RULES = `
-ORDER PRICING AND POINTS RULES (v2026-10-23)
+ORDER PRICING AND POINTS RULES (v2026-11-02)
 ============================================
 
 Change this text and RULES_VERSION when business rules change. Update tests and
@@ -129,7 +129,13 @@ applied_new replaces it with the new list schedule and recalculates the order.
 No default. List price means the per-item price, price per unit, weight-range
 band, bundle rate, variant price or price delta, and quantity breaks. Sale
 fields (sale_price, sale_price_per_unit, sale_amount_off, variant sale_price)
-do not ask for a choice. Turning 本团折扣 on or off for this deal immediately
+do not ask for a choice. bundled_weight min_weight and max_weight are not a
+list-price choice either. Saving a new minimum or maximum weight updates that
+product's snapshots on every order that is not paid, completed, or cancelled,
+including orders whose deal is already 截单, then recalculates those orders.
+The saved rate is kept. A line with final_weight stays rate × final_weight.
+A line still waiting to be weighed is estimated as rate × min_weight.
+Turning 本团折扣 on or off for this deal immediately
 reprices that deal's open, unpaid orders. No per-order choice. Other deals,
 and paid or already-截单 orders, stay on the price already stored.
 Customers see 「此商品已按新价格计算」 or 「标价已更新，本单仍按原团购价」.

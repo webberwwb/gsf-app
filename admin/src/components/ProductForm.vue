@@ -1376,9 +1376,9 @@ label {
 .form-input:focus,
 .form-textarea:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .form-textarea {
@@ -1463,7 +1463,7 @@ label {
   height: 32px;
   border-radius: 50%;
   background: #ff4444;
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   cursor: pointer;
   font-size: 1.5rem;
@@ -1514,7 +1514,7 @@ label {
 .upload-progress {
   margin-top: var(--md-spacing-sm);
   font-size: var(--md-label-size);
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 
 .checkbox-label {
@@ -1568,17 +1568,17 @@ label {
 
 .cancel-btn:hover {
   background: var(--md-outline);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .submit-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   box-shadow: var(--md-elevation-2);
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -1625,12 +1625,12 @@ label {
 
 .add-range-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   margin-top: var(--md-spacing-sm);
 }
 
 .add-range-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
 }
 
 .remove-range-btn {
@@ -1640,7 +1640,7 @@ label {
 
 .remove-range-btn:hover {
   background: #C62828;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .price-choice-overlay {
@@ -1738,9 +1738,9 @@ label {
 
 .choice-btn.selected {
   background: var(--md-primary);
-  border-color: var(--md-primary);
-  color: white;
-  box-shadow: var(--md-elevation-1);
+  border-color: transparent;
+  color: var(--text-on-brand);
+  box-shadow: none;
 }
 
 .price-choice-modal .form-actions {

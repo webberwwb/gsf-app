@@ -1,6 +1,7 @@
 from models.base import BaseModel, utc_now
 from models import db
 from datetime import datetime
+from sqlalchemy import JSON
 from constants.status_enums import GroupDealStatus
 
 class GroupDeal(BaseModel):
@@ -64,8 +65,11 @@ class GroupDealProduct(BaseModel):
     group_deal_id = db.Column(db.Integer, db.ForeignKey('group_deals.id'), nullable=False, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
     
-    # Stock limit for this deal (optional)
+    # Stock limit for this deal (optional). None means the flavors share no total cap.
     deal_stock_limit = db.Column(db.Integer, nullable=True)
+
+    # Per-variant caps for this deal: {"<variant_id>": <int>}. Missing key means unlimited.
+    variant_stock_limits = db.Column(JSON, nullable=True)
 
     # Sale applies only in this group deal (catalog product stays at list price)
     is_discount = db.Column(db.Boolean, default=False, nullable=False)
@@ -76,6 +80,7 @@ class GroupDealProduct(BaseModel):
             'group_deal_id': self.group_deal_id,
             'product_id': self.product_id,
             'deal_stock_limit': self.deal_stock_limit,
+            'variant_stock_limits': self.variant_stock_limits if isinstance(self.variant_stock_limits, dict) else None,
             'is_discount': bool(self.is_discount),
         })
         return data

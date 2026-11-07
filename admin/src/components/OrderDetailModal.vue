@@ -376,8 +376,8 @@
                 <div class="item-info">
                   <div class="item-name">
                     {{ item.display_name || item.product?.name || 'N/A' }}
-                    <span v-if="stockLabel(item.product_id)" class="item-stock-label" :class="{ 'item-stock-label--out': !canIncreaseItem(item) }">
-                      {{ stockLabel(item.product_id) }}
+                    <span v-if="itemStockLabel(item)" class="item-stock-label" :class="{ 'item-stock-label--out': !canIncreaseItem(item) }">
+                      {{ itemStockLabel(item) }}
                     </span>
                     <span v-if="item.is_substituted" class="item-badge sub">替代品</span>
                     <span v-if="item.is_unavailable && item.accept_substitute === false" class="item-badge declined">缺货·不要备选</span>
@@ -1670,6 +1670,12 @@ export default {
         item.pricing_snapshot = null
         item.price_choice = null
       }
+      const variantMax = this.maxQtyForVariant(item.product_id, item.variant_id)
+      if (variantMax != null) {
+        const others = this.editableQtyForVariant(item.product_id, item.variant_id) - (parseInt(item.quantity, 10) || 0)
+        const allowed = Math.max(1, variantMax - others)
+        if ((parseInt(item.quantity, 10) || 0) > allowed) item.quantity = allowed
+      }
       this.recalculateItemPrice(index)
     },
     recalculateItemPrice(index, { skipSiblings = false } = {}) {
@@ -1927,6 +1933,51 @@ export default {
       if (cap == null || left == null) return ''
       return `库存${cap} 剩余${left}`
     },
+    dealVariant(productId, variantId) {
+      if (variantId == null) return null
+      const deal = this.dealProductById(productId)
+      return (deal?.variants || []).find((variant) => String(variant.id) === String(variantId)) || null
+    },
+    variantStockCap(productId, variantId) {
+      const variant = this.dealVariant(productId, variantId)
+      if (!variant || variant.deal_stock_limit == null) return null
+      return Number(variant.deal_stock_limit)
+    },
+    variantServerRemaining(productId, variantId) {
+      const variant = this.dealVariant(productId, variantId)
+      if (!variant || variant.deal_stock_remaining == null) return null
+      return Number(variant.deal_stock_remaining)
+    },
+    originalQtyForVariant(productId, variantId) {
+      return (this.order?.items || [])
+        .filter((item) => item.product_id === productId && String(item.variant_id) === String(variantId))
+        .reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)
+    },
+    editableQtyForVariant(productId, variantId) {
+      return (this.editableItems || [])
+        .filter((item) => item.product_id === productId && String(item.variant_id) === String(variantId))
+        .reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)
+    },
+    maxQtyForVariant(productId, variantId) {
+      const remaining = this.variantServerRemaining(productId, variantId)
+      if (remaining == null) return null
+      return this.originalQtyForVariant(productId, variantId) + remaining
+    },
+    variantDraftRemaining(productId, variantId) {
+      const server = this.variantServerRemaining(productId, variantId)
+      if (server == null) return null
+      const extra = this.editableQtyForVariant(productId, variantId) - this.originalQtyForVariant(productId, variantId)
+      return Math.max(0, server - extra)
+    },
+    itemStockLabel(item) {
+      const base = this.stockLabel(item.product_id)
+      const cap = this.variantStockCap(item.product_id, item.variant_id)
+      const left = this.variantDraftRemaining(item.product_id, item.variant_id)
+      if (cap == null || left == null) return base
+      const flavor = item.variant_name ? `${item.variant_name} ` : ''
+      const variantText = `${flavor}库存${cap} 剩余${left}`
+      return base ? `${base} · ${variantText}` : variantText
+    },
     maxQtyForProduct(productId) {
       const remaining = this.serverRemaining(productId)
       if (remaining == null) return null
@@ -1949,7 +2000,10 @@ export default {
       return this.editableQtyForProduct(productId) < maxQty
     },
     canIncreaseItem(item) {
-      return this.canIncreaseProduct({ id: item.product_id })
+      if (!this.canIncreaseProduct({ id: item.product_id })) return false
+      const maxQty = this.maxQtyForVariant(item.product_id, item.variant_id)
+      if (maxQty == null) return true
+      return this.editableQtyForVariant(item.product_id, item.variant_id) < maxQty
     },
     isOutOfStock(product) {
       return !this.canIncreaseProduct(product)
@@ -2033,12 +2087,20 @@ export default {
       const item = this.editableItems[index]
       if (!item) return
       const maxQty = this.maxQtyForProduct(item.product_id)
+      const variantMax = this.maxQtyForVariant(item.product_id, item.variant_id)
       let qty = parseInt(item.quantity, 10) || 1
       if (qty < 1) qty = 1
+      const capQty = (limit, others) => {
+        if (limit == null) return qty
+        return Math.min(qty, Math.max(1, limit - others))
+      }
       if (maxQty != null) {
         const others = this.editableQtyForProduct(item.product_id) - (parseInt(item.quantity, 10) || 0)
-        const allowed = Math.max(1, maxQty - others)
-        if (qty > allowed) qty = allowed
+        qty = capQty(maxQty, others)
+      }
+      if (variantMax != null) {
+        const others = this.editableQtyForVariant(item.product_id, item.variant_id) - (parseInt(item.quantity, 10) || 0)
+        qty = capQty(variantMax, others)
       }
       item.quantity = qty
       this.recalculateItemPrice(index)
@@ -2396,7 +2458,7 @@ export default {
 }
 
 .modal-content {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 24px;
   max-width: 800px;
   width: 100%;
@@ -2417,8 +2479,8 @@ export default {
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
-  background: var(--gradient-primary);
-  border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
   border-radius: 24px 24px 0 0;
   position: relative;
 }
@@ -2431,7 +2493,7 @@ export default {
   left: 0;
   right: 0;
   height: env(safe-area-inset-top);
-  background: var(--gradient-primary);
+  background: var(--surface-card);
   border-radius: 24px 24px 0 0;
 }
 
@@ -2450,7 +2512,7 @@ export default {
   justify-content: center;
   background: rgba(255, 255, 255, 0.9);
   border-radius: 10px;
-  color: #FF8C00;
+  color: var(--brand-ink);
 }
 
 .header-icon svg {
@@ -2498,8 +2560,8 @@ export default {
 }
 
 .payment-status-badge-header.payment-unpaid {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .payment-status-badge-header.payment-paid {
@@ -2549,7 +2611,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: #FAFAFA;
+  background: var(--surface-subtle);
 }
 
 .money-locked-banner {
@@ -2581,15 +2643,15 @@ export default {
 }
 
 .price-notice.is-locked {
-  color: #e65100;
-  background: #fff3e0;
+  color: var(--warning-text);
+  background: var(--warning-bg);
 }
 
 .final-weight-alert-banner {
   margin-bottom: var(--md-spacing-md);
   padding: 12px 14px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #FFEBEE 0%, #FFF3E0 100%);
+  background: #FFEBEE;
   border: 1px solid rgba(183, 28, 28, 0.35);
   color: rgba(0, 0, 0, 0.88);
   font-size: 0.875rem;
@@ -2607,13 +2669,13 @@ export default {
   display: flex;
   justify-content: flex-end;
   padding-top: var(--md-spacing-xs);
-  border-top: 1px solid rgba(255, 140, 0, 0.15);
+  border-top: 1px solid rgba(240, 168, 0, 0.15);
 }
 
 .save-adjustments-btn {
   padding: 6px 16px;
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -2624,7 +2686,7 @@ export default {
 
 .save-adjustments-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+  box-shadow: 0 4px 12px var(--brand-focus);
 }
 
 .save-adjustments-btn:disabled {
@@ -2648,7 +2710,7 @@ export default {
 
 .total-row.final-total-row {
   padding-top: var(--md-spacing-sm);
-  border-top: 2px solid rgba(255, 140, 0, 0.3);
+  border-top: 2px solid rgba(240, 168, 0, 0.3);
   margin-top: var(--md-spacing-sm);
 }
 
@@ -2658,7 +2720,7 @@ export default {
   padding: var(--md-spacing-sm);
   background: rgba(255, 255, 255, 0.7);
   border-radius: 8px;
-  border: 1px solid rgba(255, 140, 0, 0.2);
+  border: 1px solid rgba(240, 168, 0, 0.2);
 }
 
 .adjustment-header {
@@ -2672,7 +2734,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid #d1d5db;
   border-radius: 6px;
   padding: 6px 10px;
@@ -2680,8 +2742,8 @@ export default {
 }
 
 .adjustment-input-wrapper:focus-within {
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .adjustment-currency {
@@ -2724,7 +2786,7 @@ export default {
   border-radius: 6px;
   font-size: 13px;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   font-family: inherit;
   resize: vertical;
   transition: border-color 0.2s;
@@ -2732,8 +2794,8 @@ export default {
 
 .adjustment-textarea-inline:focus {
   outline: none;
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .adjustment-textarea-inline::placeholder {
@@ -2775,7 +2837,7 @@ export default {
 .total-value-large {
   font-size: 24px;
   font-weight: 700;
-  color: #ff8c00;
+  color: var(--brand-ink);
 }
 
 .modal-footer {
@@ -2784,7 +2846,7 @@ export default {
   gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 0 0 24px 24px;
 }
 
@@ -2823,11 +2885,11 @@ export default {
   letter-spacing: 0.1px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(230, 81, 0, 0.2);
-  background: #FFF3E0;
-  color: #E65100;
+  border: none;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: none;
   position: relative;
   overflow: hidden;
   outline: none;
@@ -2845,23 +2907,22 @@ export default {
   width: 0;
   height: 0;
   border-radius: 50%;
-  background: rgba(230, 81, 0, 0.1);
+  background: rgba(255, 255, 255, 0.2);
   transform: translate(-50%, -50%);
   transition: width 0.6s, height 0.6s, opacity 0.3s;
   opacity: 0;
 }
 
 .update-order-btn:hover:not(:disabled) {
-  background: #FFE0B2;
-  border-color: rgba(230, 81, 0, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
-  transform: translateY(-1px);
+  background: var(--brand-hover);
+  box-shadow: none;
+  transform: none;
 }
 
 .update-order-btn:active:not(:disabled) {
-  background: #FFCC80;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
-  transform: translateY(0);
+  background: var(--brand-pressed);
+  box-shadow: none;
+  transform: none;
 }
 
 .update-order-btn:active:not(:disabled)::before {
@@ -2893,7 +2954,7 @@ export default {
 }
 
 .modal-content-inner {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 16px;
   max-width: 500px;
   width: 100%;
@@ -2955,7 +3016,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
@@ -2967,7 +3028,7 @@ export default {
 }
 
 .product-item.out-of-stock {
-  border-left: 3px solid #FF9800;
+  border-left: 3px solid var(--md-primary);
 }
 
 .product-name {
@@ -2983,7 +3044,7 @@ export default {
 
 .product-price {
   font-weight: 600;
-  color: #E65100;
+  color: var(--md-primary);
 }
 
 .product-price-original {
@@ -2995,8 +3056,8 @@ export default {
 
 .out-of-stock-badge {
   padding: 2px 8px;
-  background: #FF9800;
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
@@ -3018,7 +3079,7 @@ export default {
 
 .order-info-section,
 .order-items-section {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 8px;
   padding: var(--md-spacing-md);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.08), 0px 1px 2px rgba(0, 0, 0, 0.06);
@@ -3032,8 +3093,8 @@ export default {
 }
 
 .pricing-section {
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.03) 0%, rgba(255, 140, 0, 0.08) 100%);
-  border: 2px solid rgba(255, 140, 0, 0.15);
+  background: var(--brand-tint);
+  border: 2px solid rgba(240, 168, 0, 0.15);
 }
 
 .audit-section-header {
@@ -3050,14 +3111,14 @@ export default {
   font-size: 0.75rem;
   border-radius: 16px;
   border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
+  background: var(--surface-card);
   color: rgba(0, 0, 0, 0.7);
   cursor: pointer;
 }
 
 .audit-refresh-btn:hover:not(:disabled) {
-  background: rgba(255, 140, 0, 0.08);
-  border-color: rgba(255, 140, 0, 0.3);
+  background: rgba(240, 168, 0, 0.08);
+  border-color: rgba(240, 168, 0, 0.3);
 }
 
 .audit-refresh-btn:disabled {
@@ -3136,8 +3197,8 @@ export default {
 
 .audit-event {
   padding: var(--md-spacing-xs) var(--md-spacing-sm);
-  border-left: 3px solid rgba(255, 140, 0, 0.5);
-  background: rgba(255, 140, 0, 0.04);
+  border-left: 3px solid rgba(240, 168, 0, 0.5);
+  background: rgba(240, 168, 0, 0.04);
   border-radius: 0 6px 6px 0;
   margin-bottom: var(--md-spacing-xs);
 }
@@ -3203,13 +3264,13 @@ export default {
   gap: var(--md-spacing-xs);
   margin-bottom: var(--md-spacing-sm);
   padding-bottom: var(--md-spacing-xs);
-  border-bottom: 1px solid rgba(255, 140, 0, 0.2);
+  border-bottom: 1px solid rgba(240, 168, 0, 0.2);
 }
 
 .section-header svg {
   width: 18px;
   height: 18px;
-  color: #E65100;
+  color: var(--warning-text);
   flex-shrink: 0;
 }
 
@@ -3243,7 +3304,7 @@ export default {
 .section-header svg {
   width: 20px;
   height: 20px;
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 
@@ -3293,8 +3354,8 @@ export default {
 }
 
 .info-item-user .phone-badge {
-  background: #E3F2FD;
-  color: #1565C0;
+  background: var(--brand-tint);
+  color: var(--text-primary);
 }
 
 .info-item-user .wechat-badge {
@@ -3385,7 +3446,7 @@ export default {
 
 .payment-method-select:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -3442,18 +3503,18 @@ export default {
 
 .stripe-charge-btn {
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 .stripe-link-btn {
-  background: #fff;
+  background: var(--surface-card);
   border: 1px solid var(--md-primary);
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .stripe-dashboard-link {
   font-size: 0.8125rem;
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .info-item-order-status {
@@ -3487,7 +3548,7 @@ export default {
 
 .order-status-select:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -3532,13 +3593,13 @@ export default {
 .mark-paid-btn:hover {
   background: #C8E6C9;
   border-color: rgba(46, 125, 50, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .mark-paid-btn:active {
   background: #A5D6A7;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -3590,14 +3651,14 @@ export default {
 .mark-unpaid-btn:hover {
   background: #FFCDD2;
   border-color: rgba(229, 57, 53, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .mark-unpaid-btn:active {
   background: #EF9A9A;
   transform: translateY(0);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
 }
 
 .mark-unpaid-btn:active::before {
@@ -3619,7 +3680,7 @@ export default {
   background: #E8F5E9;
   color: #2E7D32;
   min-height: 40px;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   position: relative;
   overflow: hidden;
   outline: none;
@@ -3646,13 +3707,13 @@ export default {
 .complete-order-btn:hover:not(:disabled) {
   background: #C8E6C9;
   border-color: rgba(46, 125, 50, 0.4);
-  box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.16), 0px 3px 6px rgba(0, 0, 0, 0.23);
+  box-shadow: var(--md-elevation-2);
   transform: translateY(-1px);
 }
 
 .complete-order-btn:active:not(:disabled) {
   background: #A5D6A7;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transform: translateY(0);
 }
 
@@ -3727,13 +3788,13 @@ export default {
   margin-top: 4px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.14) 0%, rgba(255, 165, 0, 0.22) 100%);
-  border: 1px solid rgba(255, 140, 0, 0.45);
+  background: var(--warning-bg);
+  border: 1px solid rgba(240, 168, 0, 0.45);
 }
 
 .items-list-breakdown .breakdown-row--due .breakdown-label {
   font-weight: 700;
-  color: #e65100;
+  color: var(--warning-text);
 }
 
 .items-list-breakdown .breakdown-value--due {
@@ -3747,7 +3808,7 @@ export default {
   justify-content: space-between;
   align-items: flex-start;
   padding: var(--md-spacing-sm);
-  background: #FAFAFA;
+  background: var(--surface-subtle);
   border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   transition: all 0.2s;
@@ -3758,8 +3819,8 @@ export default {
 }
 
 .order-item-row:hover {
-  background: #F5F5F5;
-  border-color: rgba(255, 140, 0, 0.3);
+  background: var(--surface-subtle);
+  border-color: rgba(240, 168, 0, 0.3);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 2002;
 }
@@ -3770,8 +3831,8 @@ export default {
 }
 
 .order-item-row--pending-sub {
-  background: #fff8e1;
-  border-left: 3px solid #f57c00;
+  background: var(--warning-bg);
+  border-left: 3px solid var(--warning-text);
 }
 
 .item-variant-tag {
@@ -3806,7 +3867,7 @@ export default {
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
   border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
+  background: var(--surface-card);
   color: var(--md-on-surface-variant);
   font-size: 0.6875rem;
   font-weight: 500;
@@ -3816,13 +3877,13 @@ export default {
 }
 
 .pref-chip:hover:not(:disabled):not(.pref-chip--on) {
-  border-color: rgba(255, 140, 0, 0.45);
+  border-color: rgba(240, 168, 0, 0.45);
   color: var(--md-on-surface);
 }
 
 .pref-chip--on {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   color: var(--md-primary);
   font-weight: 600;
 }
@@ -3845,15 +3906,15 @@ export default {
   padding: 0.25rem 0.5rem;
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface-card);
   color: var(--md-on-surface-variant);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .side-action-btn:hover {
-  border-color: var(--md-primary);
-  color: var(--md-primary);
+  border-color: var(--brand-ink);
+  color: var(--brand-ink);
 }
 
 .side-action-btn--active {
@@ -3883,8 +3944,8 @@ export default {
 }
 
 .item-badge.pending {
-  background: #ffe0b2;
-  color: #e65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .unavailable-btn {
@@ -3962,7 +4023,7 @@ export default {
   height: 28px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 4px;
-  background: #FFFFFF;
+  background: var(--surface-card);
   color: rgba(0, 0, 0, 0.87);
   cursor: pointer;
   display: flex;
@@ -3974,7 +4035,7 @@ export default {
 }
 
 .qty-btn:hover:not(:disabled) {
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-color: rgba(0, 0, 0, 0.2);
 }
 
@@ -4042,7 +4103,7 @@ export default {
 }
 
 .weight-input-group label svg {
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .weight-input {
@@ -4063,7 +4124,7 @@ export default {
 
 .weight-save-status--hint,
 .weight-save-status--draft {
-  color: #9a3412;
+  color: var(--warning-text);
 }
 
 .weight-save-status--saving {
@@ -4080,7 +4141,7 @@ export default {
 
 .weight-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -4114,7 +4175,7 @@ export default {
 
 .delivery-method-selector label:hover {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
 }
 
 .delivery-method-selector input[type="radio"] {
@@ -4124,13 +4185,13 @@ export default {
 }
 
 .delivery-method-selector input[type="radio"]:checked + span {
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 600;
 }
 
 .delivery-method-selector label:has(input:checked) {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   border-width: 2px;
 }
 
@@ -4153,9 +4214,9 @@ export default {
   font-weight: 500;
   color: rgba(0, 0, 0, 0.87);
   padding: 6px 12px;
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   border-radius: 6px;
-  border: 1px solid rgba(255, 140, 0, 0.2);
+  border: 1px solid rgba(240, 168, 0, 0.2);
 }
 
 .address-info-row {
@@ -4245,7 +4306,7 @@ export default {
   margin-top: 0.4rem;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 .delete-delivery-photo-btn {
   margin-top: 0.6rem;
@@ -4253,7 +4314,7 @@ export default {
   padding: 0.45rem 0.75rem;
   border: 1px solid rgba(198, 40, 40, 0.28);
   border-radius: var(--md-radius-sm);
-  background: #fff;
+  background: var(--surface-card);
   color: #C62828;
   font-weight: 500;
   cursor: pointer;
@@ -4286,13 +4347,13 @@ export default {
 }
 
 .address-item:hover {
-  border-color: rgba(255, 140, 0, 0.5);
-  background: rgba(255, 140, 0, 0.05);
+  border-color: rgba(240, 168, 0, 0.5);
+  background: rgba(240, 168, 0, 0.05);
 }
 
 .address-item.selected {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   border-width: 2px;
 }
 
@@ -4382,12 +4443,12 @@ export default {
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: var(--md-radius-sm);
   font-size: 0.875rem;
-  background: white;
+  background: var(--surface-card);
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -4406,7 +4467,7 @@ export default {
 .save-address-btn {
   padding: 10px 24px;
   background: #2E7D32;
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: 0.875rem;
@@ -4457,9 +4518,9 @@ export default {
 
 .order-notes-textarea:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .order-notes-textarea::placeholder {
@@ -4486,7 +4547,7 @@ export default {
 }
 
 .product-info-icon:hover {
-  color: var(--md-primary);
+  color: var(--brand-ink);
   transform: scale(1.1);
 }
 
@@ -4509,7 +4570,7 @@ export default {
 }
 
 .tooltip-content {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 12px;
   box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.15), 0px 2px 8px rgba(0, 0, 0, 0.1);
   padding: 12px 16px;
@@ -4527,7 +4588,7 @@ export default {
   top: 50%;
   width: 12px;
   height: 12px;
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-left: 1px solid rgba(0, 0, 0, 0.08);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   transform: translateY(-50%) rotate(45deg);
@@ -4590,7 +4651,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 4px 8px;
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
   border-radius: 6px;
   font-size: 0.75rem;
   gap: 8px;
@@ -4639,7 +4700,7 @@ export default {
     position: relative;
     flex-shrink: 0;
     z-index: 2;
-    background: var(--gradient-primary);
+    background: var(--surface-card);
   }
   
   /* Remove the ::before pseudo-element on mobile - not needed with full screen modal */
@@ -4861,7 +4922,7 @@ export default {
     padding: var(--md-spacing-sm);
     flex-shrink: 0;
     position: relative;
-    background: #FFFFFF;
+    background: var(--surface-card);
     border-top: 2px solid rgba(0, 0, 0, 0.08);
     padding-bottom: calc(var(--md-spacing-sm) + env(safe-area-inset-bottom));
   }

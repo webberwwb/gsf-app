@@ -755,6 +755,28 @@ def _compact_self_route(order):
     _renumber_self_route(_self_orders_for_deal(order.group_deal_id, exclude_id=order.id))
 
 
+def self_delivery_driver(actor):
+    """「我来送」belongs to the driver, not whoever tapped the button.
+
+    A fulfillment user claiming a stop is that driver. An admin (or anyone
+    else) credits the sole fulfillment account.
+    """
+    if actor is not None and actor.is_fulfillment:
+        return actor
+    drivers = (
+        db.session.query(User)
+        .join(UserRole, UserRole.user_id == User.id)
+        .filter(UserRole.role == 'fulfillment')
+        .order_by(User.id.asc())
+        .all()
+    )
+    if len(drivers) == 1:
+        return drivers[0]
+    if not drivers:
+        raise ValueError('没有配送司机')
+    raise ValueError('有多名司机，请用司机账号点「我来送」')
+
+
 def assign_delivery(order, handler, actor, third_party_note=None):
     if order.delivery_method != DeliveryMethod.DELIVERY.value:
         raise ValueError('仅配送订单可以分配')
@@ -763,7 +785,7 @@ def assign_delivery(order, handler, actor, third_party_note=None):
     previous = order.delivery_handler or DeliveryHandler.UNASSIGNED.value
     order.delivery_handler = handler
     if handler == DeliveryHandler.SELF.value:
-        order.delivery_assignee_id = actor.id
+        order.delivery_assignee_id = self_delivery_driver(actor).id
         order.third_party_note = None
         if previous != DeliveryHandler.SELF.value:
             _append_to_self_route(order)
@@ -825,9 +847,9 @@ def mark_delivered(order, actor, photo_url=None):
     handler = order.delivery_handler or DeliveryHandler.UNASSIGNED.value
     if handler == DeliveryHandler.SELF.value:
         if not order.delivery_assignee_id:
-            order.delivery_assignee_id = actor.id
+            order.delivery_assignee_id = self_delivery_driver(actor).id
         if order.delivery_fee_earned is None:
-            assignee_id = order.delivery_assignee_id or actor.id
+            assignee_id = order.delivery_assignee_id or self_delivery_driver(actor).id
             nearby, other = profile_region_fees(get_or_create_profile(assignee_id))
             order.delivery_fee_earned = delivery_fee_for_address(order.address, nearby, other)
     if photo_url:

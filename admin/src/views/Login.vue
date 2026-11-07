@@ -252,7 +252,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--md-primary-variant) 0%, var(--md-primary) 100%);
+  background: var(--surface-page);
   padding: var(--md-spacing-xl);
   width: 100%;
   overflow-x: hidden;
@@ -309,7 +309,7 @@ export default {
 .login-header h1 {
   font-size: var(--md-headline-size);
   margin-bottom: var(--md-spacing-sm);
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 500;
   letter-spacing: -0.5px;
 }
@@ -342,9 +342,9 @@ export default {
 .phone-input:focus,
 .otp-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .login-btn {
@@ -382,7 +382,7 @@ export default {
 }
 
 .google-btn {
-  background: white;
+  background: var(--surface-card);
   color: #757575;
   border: 1px solid #dadce0;
 }
@@ -399,7 +399,7 @@ export default {
 
 .dev-btn {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   text-transform: none;
   font-size: 0.875rem;
@@ -411,7 +411,7 @@ export default {
 
 .fulfillment-dev-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   text-transform: none;
   font-size: 0.875rem;

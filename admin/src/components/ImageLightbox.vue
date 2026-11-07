@@ -45,7 +45,7 @@ export default {
   min-width: 120px;
   border: none;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-card);
   color: #1c1b16;
   font-weight: 600;
   cursor: pointer;

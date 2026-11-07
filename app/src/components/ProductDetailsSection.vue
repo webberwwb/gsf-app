@@ -12,6 +12,7 @@
             <span class="variant-qty-name">{{ row.name }}</span>
             <span v-if="row.priceLabel" class="chip-extra">{{ row.priceLabel }}</span>
             <span v-if="row.feeLabel" class="chip-extra">{{ row.feeLabel }}</span>
+            <span v-if="row.stockLabel" class="chip-extra" :class="{ 'stock-out': row.stockLimit === 0 }">{{ row.stockLabel }}</span>
           </div>
           <div class="variant-qty-control">
             <button
@@ -31,13 +32,13 @@
             <button
               type="button"
               class="vq-btn"
-              :class="{ 'at-limit': atStockLimit }"
-              :disabled="disabled"
+              :class="{ 'at-limit': row.atLimit || atStockLimit }"
+              :disabled="disabled || row.atLimit || atStockLimit"
               @click="changeRowQty(row, row.qty + 1)"
             >+</button>
           </div>
         </div>
-        <p v-if="atStockLimit" class="stock-limit-hint">已达库存上限</p>
+        <p v-if="atStockLimit || variantRows.some((row) => row.atLimit)" class="stock-limit-hint">已达库存上限</p>
       </div>
     </div>
 
@@ -111,6 +112,7 @@
 import Modal from './Modal.vue'
 import { formatSubstitutePriceLabel, getVariantQuantity } from '../utils/orderItemPricing'
 import { formatVariantPriceLabel } from '../utils/productPriceDisplay'
+import { variantDealStockLimit } from '../utils/variantStock'
 
 const SUBSTITUTE_INFO_MESSAGE = `
 <p>若您订购的原商品缺货：</p>
@@ -167,6 +169,7 @@ export default {
       const rows = []
       for (const v of this.variants || []) {
         const priceLabel = this.variantPriceLabel(v)
+        const stock = this.variantStockFields(v)
         if (this.offersCutting) {
           rows.push({
             key: `${v.id}-cut`,
@@ -175,7 +178,8 @@ export default {
             name: `${v.name} 切分`,
             qty: this.cuttingQtyFor(v.id),
             priceLabel,
-            feeLabel: this.cuttingFeeLabel
+            feeLabel: this.cuttingFeeLabel,
+            ...stock
           })
           rows.push({
             key: `${v.id}-whole`,
@@ -183,7 +187,8 @@ export default {
             cutting: false,
             name: `${v.name} 不切分`,
             qty: this.uncutQtyFor(v.id),
-            priceLabel
+            priceLabel,
+            ...stock
           })
         } else {
           rows.push({
@@ -192,7 +197,8 @@ export default {
             cutting: null,
             name: v.name,
             qty: this.variantQty(v.id),
-            priceLabel
+            priceLabel,
+            ...stock
           })
         }
       }
@@ -213,6 +219,15 @@ export default {
         { variant_quantities: this.variantQuantities, variant_id: this.variantId },
         variantId
       )
+    },
+    variantStockFields(variant) {
+      const stockLimit = variantDealStockLimit({ variants: [variant] }, variant.id)
+      const variantTotal = this.variantQty(variant.id)
+      return {
+        stockLimit,
+        stockLabel: stockLimit == null ? '' : (stockLimit === 0 ? '缺货' : `剩余 ${stockLimit}`),
+        atLimit: stockLimit != null && variantTotal >= stockLimit
+      }
     },
     variantPriceLabel(v) {
       return formatVariantPriceLabel(this.product, v)
@@ -371,6 +386,10 @@ export default {
   opacity: 0.9;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.chip-extra.stock-out {
+  color: var(--md-error, #b3261e);
 }
 
 .variant-qty-list {

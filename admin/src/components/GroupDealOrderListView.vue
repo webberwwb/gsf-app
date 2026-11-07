@@ -70,7 +70,7 @@ export default {
   justify-content: center;
   align-items: center;
   padding: 60px 20px;
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.03) 0%, rgba(255, 165, 0, 0.05) 100%);
+  background: var(--brand-tint);
   border-radius: 12px;
   min-height: 200px;
 }
@@ -85,7 +85,7 @@ export default {
 .spinner {
   width: 48px;
   height: 48px;
-  color: var(--md-primary);
+  color: var(--brand-ink);
   animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
 }
 
@@ -103,7 +103,7 @@ export default {
 
 .loading-spinner span {
   font-size: 0.875rem;
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 600;
 }
 

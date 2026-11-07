@@ -40,12 +40,12 @@ export default {
 
 .pay-bar.cash {
   background: #b71c1c;
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 .pay-bar.collected {
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
   border: 1px solid #ef6c00;
   font-weight: 700;
   font-size: 0.95rem;

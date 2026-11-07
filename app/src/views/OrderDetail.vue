@@ -914,6 +914,7 @@ import ProductDetailModal from '../components/ProductDetailModal.vue'
 import ImageLightbox from '../components/ImageLightbox.vue'
 import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
+import { allVariantsSoldOut, variantDealStockLimit, variantStockMessage } from '../utils/variantStock'
 import OrderLineDisplay from '../components/OrderLineDisplay.vue'
 import CardSetupModal from '../components/CardSetupModal.vue'
 import DeliveryConsentModal from '../components/DeliveryConsentModal.vue'
@@ -1586,9 +1587,10 @@ export default {
       
       // Check deal_stock_limit (deal-specific inventory)
       // null or undefined means unlimited stock, only 0 means out of stock
-      if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
-        return product.deal_stock_limit === 0
+      if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null && product.deal_stock_limit === 0) {
+        return true
       }
+      if (allVariantsSoldOut(product)) return true
       
       return false // No stock limit means unlimited stock
     },
@@ -1684,9 +1686,16 @@ export default {
         return
       }
       const proposed = applyVariantQuantity(sel, variantId, nextQty)
+      const variantMax = variantDealStockLimit(product, variantId)
+      if (variantMax != null && getVariantQuantity(proposed, variantId) > variantMax) {
+        this.warning(variantStockMessage(variantMax))
+        this.selectedItems[product.id] = { ...sel }
+        return
+      }
       const maxQty = this.dealStockLimit(product)
       if (maxQty != null && getSelectionQuantity(proposed) > maxQty) {
         this.warnStockLimit(product)
+        this.selectedItems[product.id] = { ...sel }
         return
       }
       const itemIds = sel.item_ids
@@ -1709,11 +1718,19 @@ export default {
       const proposed = setCuttingPartQuantity(sel, { cutting, qty: nextQty, variantId })
       if (this.isOutOfStock(product) && getSelectionQuantity(proposed) > getSelectionQuantity(sel)) {
         this.warnStockLimit(product)
+        this.selectedItems[product.id] = { ...sel }
+        return
+      }
+      const variantMax = variantId != null ? variantDealStockLimit(product, variantId) : null
+      if (variantMax != null && getVariantQuantity(proposed, variantId) > variantMax) {
+        this.warning(variantStockMessage(variantMax))
+        this.selectedItems[product.id] = { ...sel }
         return
       }
       const maxQty = this.dealStockLimit(product)
       if (maxQty != null && getSelectionQuantity(proposed) > maxQty) {
         this.warnStockLimit(product)
+        this.selectedItems[product.id] = { ...sel }
         return
       }
       const itemIds = sel.item_ids

@@ -571,7 +571,7 @@ export default {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   max-width: 1100px;
   width: 100%;
@@ -643,8 +643,8 @@ export default {
 .calculate-btn,
 .recalculate-btn {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #ff8c00 0%, #ff7700 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -656,7 +656,7 @@ export default {
 .calculate-btn:hover:not(:disabled),
 .recalculate-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .calculate-btn:disabled,
@@ -666,8 +666,8 @@ export default {
 }
 
 .commission-summary {
-  background: rgba(255, 140, 0, 0.05);
-  border: 2px solid rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.05);
+  border: 2px solid rgba(240, 168, 0, 0.2);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 24px;
@@ -690,11 +690,11 @@ export default {
 .summary-value.total {
   font-size: 28px;
   font-weight: 700;
-  color: #ff8c00;
+  color: var(--brand-ink);
 }
 
 .sdr-commission-card {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 20px;
@@ -896,8 +896,8 @@ export default {
 }
 
 .status-badge.pending {
-  background: rgba(251, 191, 36, 0.1);
-  color: #f59e0b;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .status-badge.paid {
@@ -913,7 +913,7 @@ export default {
 .mark-paid-btn {
   padding: 8px 16px;
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -978,14 +978,14 @@ export default {
   border-radius: 6px;
   font-size: 14px;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   transition: border-color 0.2s;
 }
 
 .adjustment-input:focus {
   outline: none;
-  border-color: #fbbf24;
-  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .adjustment-textarea {
@@ -994,7 +994,7 @@ export default {
   border-radius: 6px;
   font-size: 14px;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   font-family: inherit;
   resize: vertical;
   transition: border-color 0.2s;
@@ -1002,8 +1002,8 @@ export default {
 
 .adjustment-textarea:focus {
   outline: none;
-  border-color: #fbbf24;
-  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .adjustment-hint {
@@ -1014,8 +1014,8 @@ export default {
 
 .save-adjustment-btn {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border: none;
   border-radius: 6px;
   font-size: 14px;
@@ -1026,7 +1026,7 @@ export default {
 
 .save-adjustment-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+  box-shadow: 0 4px 12px var(--brand-focus);
 }
 
 .save-adjustment-btn:disabled {
@@ -1035,8 +1035,8 @@ export default {
 }
 
 .current-adjustment {
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: var(--warning-bg);
+  border: 1px solid var(--brand-focus);
   border-radius: 8px;
   padding: 12px;
 }
@@ -1144,7 +1144,7 @@ export default {
 
 .close-footer-btn {
   padding: 10px 20px;
-  background: white;
+  background: var(--surface-card);
   color: #374151;
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -1362,13 +1362,13 @@ export default {
 
 .group-badge.ineligible {
   background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
+  color: var(--warning-text);
 }
 
 .ineligibility-reason {
   padding: 2px 8px;
   background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
+  color: var(--warning-text);
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
@@ -1381,7 +1381,7 @@ export default {
 }
 
 .order-card {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   padding: 12px;
@@ -1436,7 +1436,7 @@ export default {
 }
 
 .order-meta-item.deduction-note .meta-value {
-  color: #b45309;
+  color: var(--warning-text);
 }
 
 .meta-label {

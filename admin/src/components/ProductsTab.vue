@@ -181,6 +181,9 @@
           <div v-if="isOutOfStock(product)" class="sold-out-badge">
             已售罄
           </div>
+          <div v-if="product.sales_stats && product.sales_stats.total_sold > 0" class="sales-badge">
+            已售 {{ product.sales_stats.total_sold }}
+          </div>
           <div class="image-mask"></div>
           <div v-if="product.description" class="image-description-overlay">
             {{ truncateDescription(product.description) }}
@@ -209,9 +212,21 @@
               <span class="price-type-badge">/ {{ product.pricing_data?.unit === 'kg' ? 'lb' : 'lb' }}</span>
             </template>
             <template v-else-if="product.pricing_type === 'bundled_weight'">
-              <span class="sale-price">{{ formatBundledPrice(product) }}</span>
+              <span class="sale-price">{{ bundledPriceParts(product).range }}</span>
               <span v-if="compareAt(product)" class="original-price">{{ compareAt(product) }}</span>
-              <span class="price-type-badge">/ 份</span>
+              <button
+                v-if="bundledPriceParts(product).detail"
+                type="button"
+                class="price-info-btn"
+                :class="{ open: openPriceInfoId === product.id }"
+                aria-label="价格说明"
+                @click.stop="togglePriceInfo(product.id)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span v-if="openPriceInfoId === product.id" class="price-info-pop">{{ bundledPriceParts(product).detail }}</span>
+              </button>
             </template>
             <template v-else>
               <span class="sale-price">${{ product.price || product.pricing_data?.price || '0.00' }}</span>
@@ -229,9 +244,6 @@
               :title="product.counts_toward_free_shipping !== false ? '计入免运费门槛' : '不计入免运费门槛'"
             >
               {{ product.counts_toward_free_shipping !== false ? '✓ 计入免运' : '✗ 不计免运' }}
-            </span>
-            <span v-if="product.sales_stats && product.sales_stats.total_sold > 0" class="sales-badge">
-              已售: {{ product.sales_stats.total_sold }}
             </span>
           </div>
           <div class="product-actions">
@@ -256,7 +268,7 @@
 import apiClient from '../api/client'
 import ProductForm from '../components/ProductForm.vue'
 import { useModal } from '../composables/useModal'
-import { formatProductPriceRange, formatProductCompareAt, formatProductListPrice, getProductPaidAmount } from '../utils/productPriceDisplay'
+import { formatProductCompareAt, formatProductListPrice, formatMoneyRangeDisplay, formatUnitPriceDisplay, getProductPaidAmount, roundMoney } from '../utils/productPriceDisplay'
 
 export default {
   name: 'ProductsTab',
@@ -284,7 +296,8 @@ export default {
       hasUnsavedChanges: false,
       savingSortOrder: false,
       savedSortOrders: {},
-      sortOrderDrafts: {}
+      sortOrderDrafts: {},
+      openPriceInfoId: null
     }
   },
   computed: {
@@ -321,8 +334,18 @@ export default {
   mounted() {
     this.fetchProducts()
     this.fetchCategories()
+    this.closePriceInfo = () => {
+      this.openPriceInfoId = null
+    }
+    document.addEventListener('click', this.closePriceInfo)
+  },
+  beforeUnmount() {
+    document.removeEventListener('click', this.closePriceInfo)
   },
   methods: {
+    togglePriceInfo(id) {
+      this.openPriceInfoId = this.openPriceInfoId === id ? null : id
+    },
     productHasCatalogSale(product) {
       const pd = product?.pricing_data || {}
       if (product.pricing_type === 'per_item') {
@@ -480,14 +503,21 @@ export default {
       }
       return `$${product.price || product.pricing_data?.price || '0.00'}`
     },
-    formatBundledPrice(product) {
-      if (product.pricing_type === 'bundled_weight') {
-        if (!(product.pricing_data?.price_per_unit || 0)) {
-          return product.price || '0.00'
-        }
-        return formatProductPriceRange(product)
+    bundledPriceParts(product) {
+      const pd = product.pricing_data || {}
+      const pricePerUnit = getProductPaidAmount(product) || 0
+      const minWeight = pd.min_weight || 7
+      const maxWeight = pd.max_weight || 15
+      const unit = pd.unit || 'lb'
+      if (!roundMoney(pricePerUnit)) {
+        return { range: '价格待定', detail: '' }
       }
-      return product.price || '0.00'
+      const minPrice = roundMoney(pricePerUnit * minWeight)
+      const maxPrice = roundMoney(pricePerUnit * maxWeight)
+      return {
+        range: formatMoneyRangeDisplay(minPrice, maxPrice),
+        detail: `${minWeight}-${maxWeight}${unit}/份 · ${formatUnitPriceDisplay(pricePerUnit, unit)}`
+      }
     },
     truncateDescription(description) {
       if (!description) return ''
@@ -575,10 +605,6 @@ export default {
 </script>
 
 <style scoped>
-.products-tab {
-  max-width: 1200px;
-}
-
 .page-header-actions {
   margin-bottom: var(--md-spacing-lg);
   display: flex;
@@ -603,8 +629,8 @@ export default {
 }
 
 .search-box:focus-within {
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .search-icon {
@@ -721,13 +747,13 @@ export default {
 }
 
 .sort-select:hover {
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
 }
 
 .sort-select:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .add-btn {
@@ -736,7 +762,7 @@ export default {
   gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -752,9 +778,14 @@ export default {
 }
 
 .add-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
+}
+
+.add-btn:active {
+  background: var(--brand-pressed);
+  transform: none;
 }
 
 .save-btn {
@@ -763,7 +794,7 @@ export default {
   gap: var(--md-spacing-sm);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: #4CAF50;
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -794,7 +825,7 @@ export default {
   width: 18px;
   height: 18px;
   border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: white;
+  border-top-color: var(--text-on-brand);
   border-radius: 50%;
   animation: save-btn-spin 0.7s linear infinite;
   flex-shrink: 0;
@@ -809,8 +840,8 @@ export default {
 .view-mode-toggle {
   display: flex;
   gap: 4px;
-  background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
   border-radius: 24px;
   padding: 4px;
 }
@@ -826,7 +857,7 @@ export default {
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.2s;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--text-secondary);
 }
 
 .view-mode-btn svg {
@@ -835,14 +866,14 @@ export default {
 }
 
 .view-mode-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: rgba(0, 0, 0, 0.87);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
 }
 
 .view-mode-btn.active {
   background: var(--md-primary);
-  color: white;
-  box-shadow: 0px 2px 4px rgba(255, 140, 0, 0.3);
+  color: var(--text-on-brand);
+  box-shadow: none;
 }
 
 .sort-table-section {
@@ -867,7 +898,7 @@ export default {
   overflow-x: auto;
   border-radius: var(--md-radius-md);
   border: 1px solid var(--md-outline-variant);
-  background: #FFFFFF;
+  background: var(--surface-card);
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -896,7 +927,7 @@ export default {
 }
 
 .data-table tbody tr:hover {
-  background: rgba(255, 140, 0, 0.04);
+  background: rgba(240, 168, 0, 0.04);
 }
 
 .data-table tbody tr.row-changed {
@@ -951,8 +982,8 @@ export default {
 
 .sort-order-input:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .table-product-image {
@@ -995,8 +1026,8 @@ export default {
   padding: 1px 6px;
   font-size: 11px;
   font-weight: 600;
-  color: #b45309;
-  background: #fef3c7;
+  color: var(--warning-text);
+  background: var(--warning-bg);
   border-radius: 999px;
   vertical-align: middle;
 }
@@ -1061,12 +1092,12 @@ export default {
 }
 
 .product-card {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   overflow: hidden;
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  border: none;
+  border: 1px solid var(--border-default);
 }
 
 .product-card:hover {
@@ -1080,7 +1111,7 @@ export default {
 
 .product-card.drag-over {
   border: 2px dashed var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
 }
 
 .product-image {
@@ -1125,7 +1156,7 @@ export default {
   left: 0;
   right: 0;
   padding: var(--md-spacing-md);
-  color: white;
+  color: var(--text-on-brand);
   font-size: var(--md-label-size);
   line-height: 1.4;
   word-wrap: break-word;
@@ -1157,7 +1188,7 @@ export default {
   top: 8px;
   left: 8px;
   background: rgba(0, 0, 0, 0.6);
-  color: white;
+  color: var(--text-on-brand);
   padding: 6px;
   border-radius: var(--md-radius-sm);
   z-index: 10;
@@ -1178,7 +1209,7 @@ export default {
   top: 8px;
   right: 8px;
   background: linear-gradient(135deg, #D32F2F 0%, #B71C1C 100%);
-  color: white;
+  color: var(--text-on-brand);
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 12px;
@@ -1254,6 +1285,10 @@ export default {
 }
 
 .price-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
   margin-bottom: var(--md-spacing-sm);
 }
 
@@ -1273,13 +1308,22 @@ export default {
 }
 
 .sales-badge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  padding: 0.2rem 0.55rem;
   border-radius: var(--md-radius-xl);
-  font-size: var(--md-label-size);
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
   background: #E3F2FD;
   color: #1976D2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.sold-out-badge ~ .sales-badge {
+  top: 44px;
 }
 
 .shipping-badge {
@@ -1297,8 +1341,8 @@ export default {
 }
 
 .shipping-badge.excluded {
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .status-badge.active {
@@ -1317,8 +1361,8 @@ export default {
   border-radius: var(--md-radius-xl);
   font-size: var(--md-label-size);
   font-weight: 500;
-  background: #F3E5F5;
-  color: #7B1FA2;
+  background: var(--brand-tint);
+  color: var(--brand-ink);
 }
 
 .empty-state {
@@ -1331,7 +1375,7 @@ export default {
   margin-top: var(--md-spacing-md);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--md-radius-md);
   font-size: var(--md-body-size);
@@ -1342,16 +1386,62 @@ export default {
 }
 
 .add-first-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
 
 .sale-price {
   font-size: 1.25rem;
-  color: #FF4444;
+  color: var(--md-primary);
   font-weight: 600;
-  margin-right: var(--md-spacing-sm);
+  white-space: nowrap;
+}
+
+.price-info-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.price-info-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.price-info-btn.open,
+.price-info-btn:hover {
+  color: var(--md-primary);
+}
+
+.price-info-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  width: max-content;
+  max-width: 240px;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-card);
+  box-shadow: var(--md-elevation-2);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .original-price {
@@ -1360,25 +1450,9 @@ export default {
   text-decoration: line-through;
 }
 
-.bundled-price-admin {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.unit-price-badge {
-  font-size: 12px;
-  color: var(--md-on-surface-variant);
-  background: var(--md-surface-variant);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
 .price-type-badge {
   font-size: var(--md-label-size);
   color: var(--md-on-surface-variant);
-  margin-left: var(--md-spacing-xs);
   padding: 0.125rem 0.5rem;
   background: var(--md-surface-variant);
   border-radius: var(--md-radius-sm);
@@ -1418,7 +1492,7 @@ export default {
 
 .delete-btn:hover {
   background: #C62828;
-  color: white;
+  color: var(--text-on-brand);
 }
 </style>
 

@@ -140,13 +140,13 @@ export default {
 .address-phone {
   display: inline-flex;
   align-items: center;
-  color: #1565C0;
+  color: var(--text-primary);
   text-decoration: none;
   font-weight: 600;
   font-size: inherit;
   line-height: inherit;
   padding: 0 8px;
-  background: #E3F2FD;
+  background: var(--brand-tint);
   border-radius: 8px;
   white-space: nowrap;
   overflow-wrap: normal;

@@ -464,7 +464,7 @@ export default {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   max-width: 1000px;
   width: 100%;
@@ -533,8 +533,8 @@ export default {
   align-items: flex-end;
   margin-bottom: 24px;
   padding: 20px;
-  background: rgba(255, 140, 0, 0.05);
-  border: 1px solid rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.05);
+  border: 1px solid rgba(240, 168, 0, 0.2);
   border-radius: 8px;
 }
 
@@ -557,21 +557,21 @@ export default {
   border-radius: 6px;
   font-size: 14px;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   cursor: pointer;
   transition: border-color 0.2s;
 }
 
 .form-select:focus {
   outline: none;
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .calculate-btn {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #ff8c00 0%, #ff7700 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -583,7 +583,7 @@ export default {
 
 .calculate-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .calculate-btn:disabled {
@@ -640,7 +640,7 @@ export default {
 }
 
 .excluded-deal-card {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(239, 68, 68, 0.15);
   border-radius: 8px;
   overflow: hidden;
@@ -770,7 +770,7 @@ export default {
 
 .deduction-tag {
   font-size: 12px;
-  color: #b45309;
+  color: var(--warning-text);
   padding: 2px 8px;
   background: rgba(245, 158, 11, 0.1);
   border-radius: 4px;
@@ -872,13 +872,13 @@ export default {
 .total-amount {
   font-size: 18px;
   font-weight: 700;
-  color: #ff8c00;
+  color: var(--brand-ink);
 }
 
 /* Bonus Calculation Section */
 .bonus-calculation-section {
-  background: rgba(255, 140, 0, 0.05);
-  border: 2px solid rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.05);
+  border: 2px solid rgba(240, 168, 0, 0.2);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 32px;
@@ -898,8 +898,8 @@ export default {
 }
 
 .bonus-summary {
-  background: white;
-  border: 1px solid rgba(255, 140, 0, 0.2);
+  background: var(--surface-card);
+  border: 1px solid rgba(240, 168, 0, 0.2);
   border-radius: 8px;
   padding: 16px;
 }
@@ -919,7 +919,7 @@ export default {
 .summary-value {
   font-size: 24px;
   font-weight: 700;
-  color: #ff8c00;
+  color: var(--brand-ink);
 }
 
 .percentage-input-group {
@@ -950,14 +950,14 @@ export default {
   font-size: 16px;
   font-weight: 600;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   transition: border-color 0.2s;
 }
 
 .percentage-input:focus {
   outline: none;
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .percentage-symbol {
@@ -976,8 +976,8 @@ export default {
 }
 
 .bonus-result {
-  background: white;
-  border: 2px solid rgba(255, 140, 0, 0.3);
+  background: var(--surface-card);
+  border: 2px solid rgba(240, 168, 0, 0.3);
   border-radius: 8px;
   padding: 20px;
 }
@@ -998,7 +998,7 @@ export default {
 .result-value {
   font-size: 32px;
   font-weight: 700;
-  color: #ff8c00;
+  color: var(--brand-ink);
 }
 
 .calculation-formula {
@@ -1007,14 +1007,14 @@ export default {
   color: #6b7280;
   font-family: 'Courier New', monospace;
   padding: 12px;
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
   border-radius: 6px;
 }
 
 .save-bonus-btn {
   padding: 12px 24px;
-  background: linear-gradient(135deg, #ff8c00 0%, #ff7700 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border: none;
   border-radius: 8px;
   font-size: 16px;
@@ -1025,7 +1025,7 @@ export default {
 
 .save-bonus-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .save-bonus-btn:disabled {
@@ -1054,7 +1054,7 @@ export default {
 }
 
 .bonus-card {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 16px;
@@ -1085,9 +1085,9 @@ export default {
 .bonus-quarter {
   font-size: 16px;
   font-weight: 600;
-  color: #ff8c00;
+  color: var(--brand-ink);
   padding: 4px 12px;
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   border-radius: 6px;
 }
 
@@ -1099,8 +1099,8 @@ export default {
 }
 
 .payment-badge.pending {
-  background: rgba(251, 191, 36, 0.1);
-  color: #f59e0b;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .payment-badge.paid {
@@ -1128,8 +1128,8 @@ export default {
 
 .detail-row.highlight {
   padding: 12px;
-  background: rgba(255, 140, 0, 0.05);
-  border: 1px solid rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.05);
+  border: 1px solid rgba(240, 168, 0, 0.2);
   border-radius: 6px;
   margin-top: 8px;
 }
@@ -1149,7 +1149,7 @@ export default {
 .detail-value-large {
   font-size: 20px;
   font-weight: 700;
-  color: #ff8c00;
+  color: var(--brand-ink);
 }
 
 .bonus-actions {
@@ -1161,7 +1161,7 @@ export default {
 .mark-paid-btn {
   padding: 8px 16px;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -1185,7 +1185,7 @@ export default {
 .delete-bonus-btn {
   padding: 8px 16px;
   background: #6b7280;
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -1217,7 +1217,7 @@ export default {
 
 .close-footer-btn {
   padding: 10px 20px;
-  background: white;
+  background: var(--surface-card);
   color: #374151;
   border: 1px solid #d1d5db;
   border-radius: 8px;

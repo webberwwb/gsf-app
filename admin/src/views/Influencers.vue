@@ -901,7 +901,6 @@ export default {
 
 <style scoped>
 .promo-page {
-  max-width: 1200px;
   box-sizing: border-box;
 }
 
@@ -940,25 +939,30 @@ export default {
 }
 
 .tab:hover:not(.active) {
-  color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.14);
+  color: var(--text-primary);
+  background: var(--surface-subtle);
 }
 
 .tab.active {
-  color: var(--md-primary);
+  color: var(--text-on-brand);
   border-bottom-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.09);
+  background: var(--md-primary);
 }
 
 .tab-count {
   min-width: 1.25rem;
   padding: 0 0.35rem;
   border-radius: 999px;
-  background: rgba(255, 140, 0, 0.2);
-  color: var(--md-primary);
+  background: var(--brand-tint-strong);
+  color: var(--brand-ink);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.4;
+}
+
+.tab.active .tab-count {
+  background: var(--surface-card);
+  color: var(--brand-ink);
 }
 
 .panel-card {
@@ -1045,8 +1049,8 @@ export default {
 
 .form-input:focus {
   outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 3px var(--overlay-primary, rgba(255, 140, 0, 0.15));
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .form-input--sm {
@@ -1108,7 +1112,7 @@ export default {
 .checkbox-input {
   width: 1.125rem;
   height: 1.125rem;
-  accent-color: var(--md-primary);
+  accent-color: var(--brand-ink);
 }
 
 .form-actions {
@@ -1131,7 +1135,7 @@ export default {
 
 .btn-primary {
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 .btn-primary:disabled,
@@ -1151,7 +1155,7 @@ export default {
 }
 
 .btn-danger {
-  background: #fff;
+  background: var(--surface-card);
   color: #c62828;
   border: 1px solid #ef9a9a;
 }
@@ -1252,7 +1256,7 @@ export default {
 
 .person-card.active {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.06);
+  background: var(--brand-tint);
 }
 
 .person-card.inactive {
@@ -1278,7 +1282,7 @@ export default {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: rgba(255, 140, 0, 0.12);
+  background: rgba(240, 168, 0, 0.12);
   color: var(--md-primary);
   display: flex;
   align-items: center;
@@ -1322,7 +1326,7 @@ export default {
 .chip {
   padding: 0.125rem 0.5rem;
   border-radius: var(--md-radius-sm);
-  background: rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.2);
   color: var(--md-primary);
   font-size: var(--md-label-size);
   font-weight: 500;

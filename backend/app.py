@@ -137,6 +137,11 @@ def create_app(config_class=Config):
         # Admin routes not available yet
         pass
     try:
+        from routes.b_merchants import b_merchants_bp
+        app.register_blueprint(b_merchants_bp, url_prefix='/api/admin')
+    except ImportError:
+        pass
+    try:
         from routes.cron import cron_bp
         app.register_blueprint(cron_bp, url_prefix='/api')
     except ImportError:

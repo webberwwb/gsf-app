@@ -23,6 +23,7 @@ from utils.product_price_choices import (
     apply_order_price_choices,
     open_order_price_impact,
     price_choice_rejection,
+    sync_bundled_weight_bounds_to_open_orders,
 )
 
 
@@ -571,3 +572,87 @@ def test_closed_deal_discount_does_not_reprice(app, db_session):
     order = _order(db_session, user, deal, product)
     apply_deal_sale_to_open_orders(deal, [product.id])
     assert float(order.items[0].total_price) == 10
+
+
+def _bundled(db_session, rate=5, min_weight=1, max_weight=3):
+    product = Product(
+        name='Lamb rib',
+        pricing_type='bundled_weight',
+        pricing_data={
+            'price_per_unit': rate,
+            'unit': 'lb',
+            'min_weight': min_weight,
+            'max_weight': max_weight,
+        },
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+    return product
+
+
+def test_min_weight_change_does_not_ask_and_reprices_open_estimates(app, db_session):
+    user = _user(db_session, '9991110040')
+    paid_user = _user(db_session, '9991110041')
+    closed_user = _user(db_session, '9991110042')
+    weighed_user = _user(db_session, '9991110043')
+    deal = _deal(db_session)
+    closed = _deal(db_session, status='closed')
+    product = _bundled(db_session, rate=8, min_weight=1, max_weight=3)
+
+    waiting = _order(db_session, user, deal, product)
+    weighed = _order(db_session, weighed_user, deal, product, weight=1.5)
+    paid = _order(db_session, paid_user, deal, product, payment='paid')
+    after_cutoff = _order(db_session, closed_user, closed, product)
+    assert float(waiting.items[0].total_price) == 8
+    assert float(weighed.items[0].total_price) == 12
+    assert float(after_cutoff.items[0].total_price) == 8
+
+    proposal = {
+        'pricing_type': 'bundled_weight',
+        'pricing_data': {'price_per_unit': 8, 'unit': 'lb', 'min_weight': 2, 'max_weight': 3},
+    }
+    assert open_order_price_impact(product, proposal)['orders'] == []
+
+    product.pricing_data = proposal['pricing_data']
+    sync_bundled_weight_bounds_to_open_orders(product)
+
+    assert float(waiting.items[0].total_price) == 16
+    assert waiting.items[0].pricing_snapshot['pricing_data']['min_weight'] == 2
+    assert waiting.items[0].pricing_snapshot['pricing_data']['price_per_unit'] == 8
+    assert waiting.items[0].price_choice is None
+    assert float(waiting.total) == 16
+
+    assert float(weighed.items[0].total_price) == 12
+    assert weighed.items[0].pricing_snapshot['pricing_data']['min_weight'] == 2
+
+    assert float(after_cutoff.items[0].total_price) == 16
+    assert float(paid.items[0].total_price) == 8
+    assert paid.items[0].pricing_snapshot['pricing_data']['min_weight'] == 1
+
+
+def test_rate_change_still_asks_and_old_choice_keeps_rate_but_takes_new_min(app, db_session):
+    user = _user(db_session, '9991110044')
+    deal = _deal(db_session)
+    product = _bundled(db_session, rate=5, min_weight=1, max_weight=3)
+    order = _order(db_session, user, deal, product)
+    assert float(order.items[0].total_price) == 5
+
+    proposal = {
+        'pricing_type': 'bundled_weight',
+        'pricing_data': {'price_per_unit': 6, 'unit': 'lb', 'min_weight': 2, 'max_weight': 3},
+    }
+    impact = open_order_price_impact(product, proposal)
+    assert order.id in _ids(impact)
+    assert impact['orders'][0]['old_total'] == 5
+    assert impact['orders'][0]['new_total'] == 12
+
+    product.pricing_data = proposal['pricing_data']
+    apply_order_price_choices(product, impact, [{'order_id': order.id, 'choice': 'old'}])
+    sync_bundled_weight_bounds_to_open_orders(product)
+
+    item = order.items[0]
+    assert item.price_choice == 'locked_old'
+    assert item.pricing_snapshot['pricing_data']['price_per_unit'] == 5
+    assert item.pricing_snapshot['pricing_data']['min_weight'] == 2
+    assert float(item.total_price) == 10

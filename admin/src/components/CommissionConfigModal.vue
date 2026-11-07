@@ -262,7 +262,7 @@ export default {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   max-width: 1000px;
   width: 100%;
@@ -324,8 +324,8 @@ export default {
 }
 
 .commission-info {
-  background: rgba(255, 140, 0, 0.05);
-  border: 1px solid rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.05);
+  border: 1px solid rgba(240, 168, 0, 0.2);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 24px;
@@ -340,7 +340,7 @@ export default {
 
 .info-highlight {
   font-weight: 600;
-  color: #ff8c00;
+  color: var(--brand-ink);
 }
 
 .table-container {
@@ -378,11 +378,11 @@ export default {
 }
 
 .commission-table tbody tr.has-rule {
-  background: rgba(255, 140, 0, 0.03);
+  background: rgba(240, 168, 0, 0.03);
 }
 
 .commission-table tbody tr.has-rule:hover {
-  background: rgba(255, 140, 0, 0.08);
+  background: rgba(240, 168, 0, 0.08);
 }
 
 .commission-table td {
@@ -406,8 +406,8 @@ export default {
 
 .amount-input:focus {
   outline: none;
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .commission-type-select {
@@ -416,7 +416,7 @@ export default {
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 14px;
-  background: white;
+  background: var(--surface-card);
   color: #111827;
   cursor: pointer;
   transition: border-color 0.2s;
@@ -428,8 +428,8 @@ export default {
 
 .commission-type-select:focus {
   outline: none;
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .clear-btn {
@@ -445,7 +445,7 @@ export default {
 
 .clear-btn:hover {
   background: #dc2626;
-  color: white;
+  color: var(--text-on-brand);
   border-color: transparent;
 }
 
@@ -471,7 +471,7 @@ export default {
 }
 
 .cancel-btn {
-  background: white;
+  background: var(--surface-card);
   color: #374151;
   border: 1px solid #d1d5db;
 }
@@ -481,13 +481,13 @@ export default {
 }
 
 .save-btn {
-  background: linear-gradient(135deg, #ff8c00 0%, #ff7700 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .save-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .save-btn:disabled {

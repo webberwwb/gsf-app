@@ -50,8 +50,8 @@
       <div class="empty-photo" aria-hidden="true">
         <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg">
           <rect width="320" height="200" fill="#f3f1ee" />
-          <rect x="24" y="34" width="128" height="136" rx="8" fill="#ffffff" />
-          <rect x="168" y="34" width="128" height="136" rx="8" fill="#ffffff" />
+          <rect x="24" y="34" width="128" height="136" rx="8" fill="var(--surface-card)" />
+          <rect x="168" y="34" width="128" height="136" rx="8" fill="var(--surface-card)" />
           <rect x="146" y="34" width="28" height="136" fill="#F59B34" />
           <rect x="184" y="56" width="92" height="6" rx="3" fill="#f3f1ee" />
           <rect x="184" y="74" width="78" height="6" rx="3" fill="#f3f1ee" />
@@ -247,7 +247,7 @@
         <section class="stage">
           <div v-if="!draftImages.length" class="stage-empty">
             <label>
-              <input type="file" accept="image/*" multiple @change="onFiles" />
+              <input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" multiple @change="onFiles" />
               <strong>{{ uploading ? '正在上传' : '上传配图' }}</strong>
               <span>最多 6 张，点一张设为封面</span>
             </label>
@@ -266,7 +266,7 @@
               <span class="remove-photo" role="button" aria-label="移除这张照片" @click.stop="removeImage(image)">×</span>
             </button>
             <label v-if="draftImages.length < 6" class="add-tile">
-              <input type="file" accept="image/*" multiple @change="onFiles" />
+              <input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" multiple @change="onFiles" />
               <strong>{{ uploading ? '…' : '+' }}</strong>
             </label>
           </div>
@@ -926,7 +926,7 @@ export default {
   position: sticky;
   top: 0;
   z-index: 4;
-  background: #f6f7fa;
+  background: var(--surface-page);
   padding: 0.7rem 0.85rem 0.55rem;
   box-shadow: 0 6px 10px rgba(0, 0, 0, 0.04);
 }
@@ -940,7 +940,7 @@ export default {
 .sort-row button, .icon-btn, .post-btn, .product-filter, .product-clear {
   border: none;
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface-card);
   color: var(--md-on-surface);
   min-height: 40px;
 }
@@ -948,9 +948,13 @@ export default {
   padding: 0.4rem 0.85rem;
   font-size: 0.82rem;
 }
-.sort-row button.on, .post-btn, .share-btn.ready {
+.sort-row button.on {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
+}
+.post-btn, .share-btn.ready {
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 .icon-btn, .post-btn {
   min-width: 40px;
@@ -961,8 +965,8 @@ export default {
   justify-content: center;
   gap: 0.15rem;
 }
-.icon-btn { color: var(--md-primary); }
-.post-btn { color: white; }
+.icon-btn { color: var(--brand-ink); }
+.post-btn { color: var(--text-on-brand); }
 .post-label { font-size: 0.82rem; font-weight: 500; }
 .product-bar { gap: 0.45rem; margin-top: 0.55rem; }
 .product-filter {
@@ -1015,7 +1019,7 @@ export default {
   align-items: start;
 }
 .post, .card {
-  background: white;
+  background: var(--surface-card);
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 2px 10px rgba(58, 42, 26, 0.08);
@@ -1028,7 +1032,7 @@ export default {
   margin: 8px 8px 0;
   border-radius: 10px;
   overflow: hidden;
-  background: #FFF6EA;
+  background: var(--brand-tint);
   cursor: pointer;
 }
 .photo-top {
@@ -1051,7 +1055,7 @@ export default {
   min-width: 0;
   padding: 0.5rem 1.1rem 0.35rem 0.55rem;
   background: radial-gradient(ellipse at top left, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.14) 46%, rgba(0, 0, 0, 0) 72%);
-  color: white;
+  color: var(--text-on-brand);
   font-size: 0.78rem;
   font-weight: 500;
   line-height: 1;
@@ -1084,7 +1088,7 @@ export default {
   height: 22px;
   border-radius: 50%;
   background: linear-gradient(135deg, #F9D561 0%, #F59B34 100%);
-  color: white;
+  color: var(--text-on-brand);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1113,8 +1117,8 @@ export default {
   border: none;
   border-radius: 999px;
   padding: 0.18rem 0.55rem;
-  background: #FFF3E0;
-  color: #D27529;
+  background: var(--warning-bg);
+  color: var(--warning-text);
   font-size: 0.72rem;
   font-weight: 400;
   min-height: 0;
@@ -1171,7 +1175,7 @@ button.chip { pointer-events: auto; cursor: pointer; }
   font-weight: 500;
 }
 .manage .material-symbols-outlined, .detail-bar .material-symbols-outlined { font-size: 18px; }
-.reward { background: #FFF3E0; color: #D27529; }
+.reward { background: var(--warning-bg); color: var(--warning-text); }
 .danger { background: #FDECEC; color: #C62828; }
 button:disabled { opacity: 0.55; }
 .grid {
@@ -1198,7 +1202,7 @@ button:disabled { opacity: 0.55; }
   border-radius: 999px;
   padding: 0.12rem 0.4rem;
   background: rgba(46, 125, 50, 0.92);
-  color: white;
+  color: var(--text-on-brand);
   font-size: 0.68rem;
 }
 .state, .empty, .inline-error, .muted, .picker-empty {
@@ -1217,7 +1221,7 @@ button:disabled { opacity: 0.55; }
 .empty p, .state p { margin: 0 0 1rem; }
 .retry { margin-top: 0.2rem; padding: 0 1rem; }
 .skel, .skel-line {
-  background: linear-gradient(90deg, #f3f1ee 25%, #faf8f6 50%, #f3f1ee 75%);
+  background: linear-gradient(90deg, #f3f1ee 25%, var(--surface-subtle) 50%, #f3f1ee 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s ease-in-out infinite;
 }
@@ -1230,7 +1234,7 @@ button:disabled { opacity: 0.55; }
   height: 22px;
   border-radius: 50%;
   border: 2px solid #f3f1ee;
-  border-top-color: var(--md-primary);
+  border-top-color: var(--brand-ink);
   animation: spin 0.7s linear infinite;
   display: inline-block;
 }
@@ -1239,7 +1243,7 @@ button:disabled { opacity: 0.55; }
   position: fixed;
   inset: 0;
   z-index: 140;
-  background: #f6f7fa;
+  background: var(--surface-page);
   display: flex;
   flex-direction: column;
 }
@@ -1256,7 +1260,7 @@ button:disabled { opacity: 0.55; }
 }
 .page-header h1 {
   margin: 0;
-  color: white;
+  color: var(--text-on-brand);
   font-family: "Noto Sans SC", "PingFang SC", sans-serif;
   font-size: 1.05rem;
   font-weight: 600;
@@ -1274,7 +1278,7 @@ button:disabled { opacity: 0.55; }
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
-  color: white;
+  color: var(--text-on-brand);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1308,7 +1312,7 @@ button:disabled { opacity: 0.55; }
   margin: 0 0 0.25rem;
   font-size: 0.78rem;
   font-weight: 500;
-  color: #D27529;
+  color: var(--warning-text);
 }
 .block p { margin: 0; white-space: pre-wrap; line-height: 1.55; font-size: 0.95rem; }
 .comments { padding-bottom: 0.4rem; }
@@ -1337,7 +1341,7 @@ button:disabled { opacity: 0.55; }
 .detail-bar {
   gap: 0.6rem;
   padding: 0.7rem 0.9rem calc(0.7rem + env(safe-area-inset-bottom));
-  background: white;
+  background: var(--surface-card);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
 }
 .stage { padding: 0.85rem 0.85rem 0.2rem; }
@@ -1349,8 +1353,8 @@ button:disabled { opacity: 0.55; }
   gap: 0.25rem;
   min-height: 140px;
   border-radius: 16px;
-  background: white;
-  color: #D27529;
+  background: var(--surface-card);
+  color: var(--warning-text);
   border: 1px dashed #F3C48A;
 }
 .stage-empty input, .add-tile input { display: none; }
@@ -1372,7 +1376,7 @@ button:disabled { opacity: 0.55; }
   border-radius: 14px;
   overflow: hidden;
   border: 2px solid transparent;
-  background: #FFF6EA;
+  background: var(--brand-tint);
 }
 .photo.cover { border-color: #F59B34; }
 .photo img { width: 100%; height: 100%; object-fit: cover; }
@@ -1380,7 +1384,7 @@ button:disabled { opacity: 0.55; }
   position: absolute;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.62);
-  color: white;
+  color: var(--text-on-brand);
   font-size: 0.72rem;
 }
 .cover-pill { left: 6px; bottom: 6px; padding: 0.1rem 0.4rem; }
@@ -1395,12 +1399,12 @@ button:disabled { opacity: 0.55; }
 }
 .sheet-form { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.4rem 0.85rem 1.4rem; }
 .field, .choice { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.7rem 0; }
-.field span, .choice span { font-size: 0.78rem; color: #D27529; font-weight: 500; }
+.field span, .choice span { font-size: 0.78rem; color: var(--warning-text); font-weight: 500; }
 .field input, .field textarea, .reward-form input {
   width: 100%;
   border: none;
   border-radius: 12px;
-  background: white;
+  background: var(--surface-card);
   padding: 0.75rem 0.85rem;
   font: inherit;
   font-size: 1rem;
@@ -1426,13 +1430,13 @@ button:disabled { opacity: 0.55; }
 .segments button {
   border: none;
   border-radius: 999px;
-  background: white;
+  background: var(--surface-card);
   min-height: 40px;
   padding: 0.4rem 0.75rem;
   font: inherit;
   font-size: 0.82rem;
 }
-.segments button.on { background: var(--md-primary); color: white; }
+.segments button.on { background: var(--md-primary); color: var(--text-on-brand); }
 .sheet-mask {
   position: fixed;
   inset: 0;
@@ -1445,7 +1449,7 @@ button:disabled { opacity: 0.55; }
 .picker-sheet {
   width: min(640px, 100%);
   max-height: min(78dvh, 720px);
-  background: white;
+  background: var(--surface-card);
   border-radius: 20px 20px 0 0;
   display: flex;
   flex-direction: column;
@@ -1485,13 +1489,13 @@ button:disabled { opacity: 0.55; }
   flex: none;
   border: none;
   border-radius: 999px;
-  background: #f3f1ee;
+  background: var(--surface-subtle);
   min-height: 36px;
   padding: 0.35rem 0.75rem;
   font: inherit;
   font-size: 0.82rem;
 }
-.sheet-cats button.on, .picker-list button.on { background: #FFF3E0; color: #D27529; }
+.sheet-cats button.on, .picker-list button.on { background: var(--md-primary); color: var(--text-on-brand); }
 .picker-search {
   display: flex;
   align-items: center;
@@ -1547,7 +1551,7 @@ button:disabled { opacity: 0.55; }
 .picker-empty { padding: 1.2rem 1rem 1.6rem; }
 .reward-note { margin: 0.2rem 0 0.6rem; color: #6b625b; font-size: 0.84rem; }
 .reward-form { display: flex; flex-direction: column; gap: 0.65rem; padding-bottom: 1rem; }
-.reward-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.78rem; color: #D27529; }
+.reward-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.78rem; color: var(--warning-text); }
 .form-error { margin: 0; color: #C62828; font-size: 0.85rem; }
 .toast {
   position: fixed;
@@ -1560,7 +1564,7 @@ button:disabled { opacity: 0.55; }
   padding: 0.7rem 1rem;
   border-radius: 999px;
   background: rgba(28, 27, 31, 0.92);
-  color: white;
+  color: var(--text-on-brand);
   font-size: 0.88rem;
   text-align: center;
 }

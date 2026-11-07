@@ -176,7 +176,7 @@ export default {
   width: 48px;
   height: 48px;
   flex-shrink: 0;
-  color: var(--md-primary);
+  color: var(--brand-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -232,11 +232,11 @@ export default {
 
 .install-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .install-btn:hover {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-2);
 }
 
@@ -266,7 +266,7 @@ export default {
   width: 24px;
   height: 24px;
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   border-radius: 50%;
   font-size: 0.75rem;
   font-weight: 600;
@@ -274,7 +274,7 @@ export default {
 }
 
 .highlight {
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 600;
 }
 
@@ -284,7 +284,7 @@ export default {
   display: inline-block;
   vertical-align: middle;
   margin: 0 2px;
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 
 @media (max-width: 767px) {

@@ -135,12 +135,12 @@ export default {
 .update-icon svg {
   width: 24px;
   height: 24px;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .update-text {
   flex: 1;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .update-text h3 {
@@ -157,7 +157,7 @@ export default {
 
 .update-btn {
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: white;
+  background: var(--surface-card);
   color: #667eea;
   border: none;
   border-radius: var(--md-radius-md);
@@ -201,7 +201,7 @@ export default {
 .dismiss-btn svg {
   width: 16px;
   height: 16px;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 /* Slide up animation */

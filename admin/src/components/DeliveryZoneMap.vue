@@ -115,7 +115,7 @@ export default {
             icon: {
               path: window.google.maps.SymbolPath.CIRCLE,
               scale: 7,
-              fillColor: item.color || '#FB8C00',
+              fillColor: item.color || '#F0A800',
               fillOpacity: 0.92,
               strokeColor: '#fff',
               strokeWeight: 1.5

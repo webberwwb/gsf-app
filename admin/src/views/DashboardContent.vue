@@ -116,10 +116,6 @@ export default {
 </script>
 
 <style scoped>
-.dashboard-content {
-  max-width: 1200px;
-}
-
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -136,10 +132,10 @@ export default {
 }
 
 .stat-card {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   display: flex;
   align-items: center;
   gap: var(--md-spacing-md);
@@ -150,7 +146,7 @@ export default {
 }
 
 .stat-card:hover {
-  background: #FFFFFF;
+  background: var(--surface-card);
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.16), 0px 2px 4px rgba(0, 0, 0, 0.23);
   transform: translateY(-2px);
 }
@@ -196,10 +192,10 @@ export default {
 }
 
 .recent-section {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
-  box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--md-elevation-1);
   border: none;
   animation: fadeIn 0.6s ease-out;
 }
@@ -228,14 +224,14 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md);
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: var(--md-radius-md);
   border: 1px solid rgba(0, 0, 0, 0.08);
   transition: var(--transition-fast);
 }
 
 .order-item:hover {
-  background: #FFFFFF;
+  background: var(--surface-card);
   transform: translateX(4px);
   box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.12), 0px 1px 2px rgba(0, 0, 0, 0.16);
 }
@@ -258,13 +254,13 @@ export default {
 
 .order-status {
   font-size: var(--md-label-size);
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: 500;
 }
 
 .order-amount {
   font-weight: 600;
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-size: 1.1rem;
 }
 

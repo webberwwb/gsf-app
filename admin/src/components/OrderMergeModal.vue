@@ -426,7 +426,7 @@ export default {
 }
 
 .modal-content {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 24px;
   max-width: 900px;
   width: 100%;
@@ -443,8 +443,8 @@ export default {
   align-items: center;
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
-  background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%);
-  border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
   position: relative;
 }
 
@@ -456,7 +456,7 @@ export default {
   left: 0;
   right: 0;
   height: env(safe-area-inset-top);
-  background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%);
+  background: var(--surface-card);
   border-radius: 24px 24px 0 0;
 }
 
@@ -474,7 +474,7 @@ export default {
   justify-content: center;
   background: rgba(255, 255, 255, 0.9);
   border-radius: 10px;
-  color: #FF8C00;
+  color: var(--brand-ink);
 }
 
 .header-icon svg {
@@ -517,7 +517,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   padding: var(--md-spacing-lg);
-  background: #FAFAFA;
+  background: var(--surface-subtle);
 }
 
 .loading, .error-message {
@@ -535,7 +535,7 @@ export default {
 .orders-summary,
 .conflict-resolution,
 .merged-preview {
-  background: #FFFFFF;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: var(--md-spacing-md);
   margin-bottom: var(--md-spacing-md);
@@ -549,7 +549,7 @@ export default {
   font-size: 1rem;
   color: rgba(0, 0, 0, 0.87);
   font-weight: 600;
-  border-bottom: 2px solid #FF8C00;
+  border-bottom: 2px solid var(--md-primary);
   padding-bottom: var(--md-spacing-sm);
 }
 
@@ -563,14 +563,14 @@ export default {
   display: flex;
   gap: var(--md-spacing-md);
   padding: var(--md-spacing-md);
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-radius: 8px;
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .order-badge {
-  background: #FF8C00;
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 0.75rem;
@@ -605,10 +605,10 @@ export default {
 }
 
 .meta-item {
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   padding: 2px 8px;
   border-radius: 8px;
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .conflict-section {
@@ -651,7 +651,7 @@ export default {
   align-items: center;
   gap: var(--md-spacing-sm);
   padding: var(--md-spacing-sm) var(--md-spacing-md);
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-radius: 8px;
   border: 2px solid transparent;
   cursor: pointer;
@@ -663,8 +663,8 @@ export default {
 }
 
 .radio-option.selected {
-  background: #FFF3E0;
-  border-color: #FF8C00;
+  background: var(--brand-tint);
+  border-color: var(--md-primary);
 }
 
 .radio-option input[type="radio"] {
@@ -688,7 +688,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-sm);
-  background: #F5F5F5;
+  background: var(--surface-subtle);
   border-radius: 8px;
 }
 
@@ -709,7 +709,7 @@ export default {
 
 .item-price {
   font-weight: 600;
-  color: #FF8C00;
+  color: var(--md-primary);
   font-size: 1rem;
 }
 
@@ -718,16 +718,16 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--md-spacing-md);
-  background: #FFF3E0;
+  background: var(--brand-tint);
   border-radius: 8px;
-  border: 2px solid #FF8C00;
+  border: 2px solid var(--md-primary);
   font-weight: 600;
   color: rgba(0, 0, 0, 0.87);
 }
 
 .total-price {
   font-size: 1.25rem;
-  color: #FF8C00;
+  color: var(--brand-ink);
 }
 
 .modal-footer {
@@ -735,7 +735,7 @@ export default {
   gap: var(--md-spacing-md);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
-  background: #FFFFFF;
+  background: var(--surface-card);
 }
 
 .cancel-btn,
@@ -761,13 +761,13 @@ export default {
 }
 
 .merge-btn {
-  background: #FF8C00;
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .merge-btn:hover:not(:disabled) {
-  background: #FFA500;
+  background: var(--brand-hover);
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.3);
 }
 

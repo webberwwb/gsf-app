@@ -118,8 +118,8 @@ export default {
   gap: 0.75rem;
   padding: 0.7rem 0.9rem;
   padding-bottom: calc(0.7rem + env(safe-area-inset-bottom));
-  background: #FFF3E0;
-  border-top: 1px solid rgba(255, 140, 0, 0.35);
+  background: var(--brand-tint);
+  border-top: 1px solid rgba(240, 168, 0, 0.35);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
 }
 .clock-bar.is-open {
@@ -151,7 +151,7 @@ export default {
   border: none;
   border-radius: var(--md-radius-md);
   background: var(--md-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
   font-size: 15px;
   cursor: pointer;
@@ -184,8 +184,8 @@ export default {
   padding: 0 0.9rem;
   border: none;
   border-radius: 999px;
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--warning-bg);
+  color: var(--warning-text);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
   font-size: 13px;
   font-weight: 700;

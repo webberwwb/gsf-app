@@ -419,7 +419,6 @@ export default {
 
 <style scoped>
 .sales-management-page {
-  max-width: 1200px;
   padding: var(--md-spacing-lg);
 }
 
@@ -441,8 +440,8 @@ export default {
 
 /* SDR Section */
 .sdr-section {
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.05) 0%, rgba(255, 140, 0, 0.02) 100%);
-  border: 2px solid rgba(255, 140, 0, 0.2);
+  background: var(--brand-tint);
+  border: 2px solid rgba(240, 168, 0, 0.2);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
   margin-bottom: var(--md-spacing-xl);
@@ -498,7 +497,7 @@ export default {
 .sdr-value {
   font-size: var(--md-body-size);
   font-weight: 600;
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 
 .sdr-actions {
@@ -522,13 +521,13 @@ export default {
 }
 
 .commission-config-btn {
-  background: var(--gradient-primary);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .commission-config-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .quarterly-bonus-btn {
@@ -539,7 +538,7 @@ export default {
 
 .quarterly-bonus-btn:hover {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
@@ -553,20 +552,20 @@ export default {
 
 .edit-sdr-btn:hover {
   background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-  color: white;
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
 }
 
 .create-sdr-btn {
-  background: var(--gradient-primary);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .create-sdr-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .sdr-empty {
@@ -605,7 +604,7 @@ export default {
 }
 
 .record-card {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid var(--md-outline-variant);
   border-radius: var(--md-radius-lg);
   padding: var(--md-spacing-lg);
@@ -647,8 +646,8 @@ export default {
 }
 
 .payment-badge.pending {
-  background: rgba(251, 191, 36, 0.1);
-  color: #f59e0b;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .payment-badge.paid {
@@ -709,7 +708,7 @@ export default {
 .total-value-large {
   font-size: var(--md-title-size);
   font-weight: 700;
-  color: var(--md-primary);
+  color: var(--brand-ink);
 }
 
 .record-actions {
@@ -729,32 +728,32 @@ export default {
 }
 
 .view-commission-btn {
-  background: rgba(255, 140, 0, 0.1);
-  color: #ff8c00;
-  border: 1px solid rgba(255, 140, 0, 0.3);
+  background: rgba(240, 168, 0, 0.1);
+  color: var(--brand-ink);
+  border: 1px solid rgba(240, 168, 0, 0.3);
 }
 
 .view-commission-btn:hover {
-  background: linear-gradient(135deg, #ff8c00 0%, #ff7700 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   border-color: transparent;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .view-deal-btn {
-  background: rgba(156, 39, 176, 0.1);
-  color: #9c27b0;
-  border: 1px solid rgba(156, 39, 176, 0.3);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
   text-decoration: none;
 }
 
 .view-deal-btn:hover {
-  background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
-  color: white;
-  border-color: transparent;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(156, 39, 176, 0.3);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+  transform: none;
+  box-shadow: none;
 }
 
 /* Modal Styles */
@@ -773,7 +772,7 @@ export default {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   max-width: 500px;
   width: 100%;
@@ -837,14 +836,14 @@ export default {
   border-radius: 8px;
   font-size: 14px;
   color: #111827;
-  background: white;
+  background: var(--surface-card);
   transition: border-color 0.2s;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #ff8c00;
-  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .form-hint {
@@ -875,7 +874,7 @@ export default {
 }
 
 .cancel-btn {
-  background: white;
+  background: var(--surface-card);
   color: #374151;
   border: 1px solid #d1d5db;
 }
@@ -885,13 +884,13 @@ export default {
 }
 
 .confirm-btn {
-  background: linear-gradient(135deg, #ff8c00 0%, #ff7700 100%);
-  color: white;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .confirm-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+  box-shadow: var(--md-elevation-2);
 }
 
 .confirm-btn:disabled {

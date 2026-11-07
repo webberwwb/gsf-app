@@ -191,7 +191,7 @@ export default {
 }
 
 .modal-container {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   max-width: 500px;
   width: 100%;
@@ -274,13 +274,13 @@ export default {
 }
 
 .icon-warning {
-  background: #fef3c7;
+  background: var(--brand-tint);
   color: #92400e;
 }
 
 .icon-confirm {
-  background: #FFE5CC;
-  color: #FF8C00;
+  background: var(--brand-tint);
+  color: var(--brand-ink);
 }
 
 .icon-info {
@@ -316,7 +316,7 @@ export default {
 }
 
 .modal-btn-cancel {
-  background: white;
+  background: var(--surface-card);
   color: #374151;
   border: 1px solid #d1d5db;
 }
@@ -326,7 +326,7 @@ export default {
 }
 
 .modal-btn-confirm {
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .btn-success {
@@ -346,7 +346,7 @@ export default {
 }
 
 .btn-warning {
-  background: #f59e0b;
+  background: var(--md-primary);
 }
 
 .btn-warning:hover {

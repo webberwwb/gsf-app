@@ -574,6 +574,7 @@ import RecipeProductEntry from '../components/RecipeProductEntry.vue'
 import RecipeBrowserModal from '../components/RecipeBrowserModal.vue'
 import Modal from '../components/Modal.vue'
 import ProductDetailsSection from '../components/ProductDetailsSection.vue'
+import { allVariantsSoldOut, variantDealStockLimit, variantStockMessage } from '../utils/variantStock'
 import CategoryTabs from '../components/CategoryTabs.vue'
 import {
   estimateLinePrice,
@@ -1036,11 +1037,19 @@ export default {
     isOutOfStock(product) {
       if (!product) return false
       
-      if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null) {
-        return product.deal_stock_limit === 0
+      if (product.deal_stock_limit !== undefined && product.deal_stock_limit !== null && product.deal_stock_limit === 0) {
+        return true
       }
-      
-      return false
+      return allVariantsSoldOut(product)
+    },
+    variantLimit(product, variantId) {
+      return variantDealStockLimit(product, variantId)
+    },
+    blockVariantIncrease(product, variantId, nextVariantQty) {
+      const max = this.variantLimit(product, variantId)
+      if (max == null || nextVariantQty <= max) return false
+      this.warning(variantStockMessage(max))
+      return true
     },
     decreaseQuantity(product) {
       const current = this.getQuantity(product)
@@ -1064,9 +1073,14 @@ export default {
         return
       }
       const proposed = applyVariantQuantity(sel, variantId, nextQty)
+      if (this.blockVariantIncrease(product, variantId, getVariantQuantity(proposed, variantId))) {
+        this.selectedItems[product.id] = { ...sel }
+        return
+      }
       const maxQty = this.dealStockLimit(product)
       if (maxQty != null && getSelectionQuantity(proposed) > maxQty) {
         this.warnStockLimit(product)
+        this.selectedItems[product.id] = { ...sel }
         return
       }
       this.selectedItems[product.id] = { ...sel, ...proposed }
@@ -1083,9 +1097,14 @@ export default {
         return
       }
       const proposed = setCuttingPartQuantity(sel, { cutting, qty: nextQty, variantId })
+      if (variantId != null && this.blockVariantIncrease(product, variantId, getVariantQuantity(proposed, variantId))) {
+        this.selectedItems[product.id] = { ...sel }
+        return
+      }
       const maxQty = this.dealStockLimit(product)
       if (maxQty != null && getSelectionQuantity(proposed) > maxQty) {
         this.warnStockLimit(product)
+        this.selectedItems[product.id] = { ...sel }
         return
       }
       this.selectedItems[product.id] = proposed

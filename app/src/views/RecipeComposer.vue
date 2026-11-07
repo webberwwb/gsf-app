@@ -15,7 +15,7 @@
     <section class="stage">
       <div v-if="!images.length" class="stage-empty">
         <label>
-          <input type="file" accept="image/*" multiple @change="onFiles" />
+          <input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" multiple @change="onFiles" />
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
@@ -37,7 +37,7 @@
           <span class="remove" role="button" aria-label="移除这张照片" @click.stop="removeImage(image)">×</span>
         </button>
         <label v-if="images.length < 6" class="add-tile">
-          <input type="file" accept="image/*" multiple @change="onFiles" />
+          <input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" multiple @change="onFiles" />
           <strong>{{ uploading ? '…' : '+' }}</strong>
           <span>继续添加</span>
         </label>

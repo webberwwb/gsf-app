@@ -14,7 +14,7 @@ from models.credit_transaction import CreditTransaction
 from models.product import Product
 from models.recipe import Recipe
 from models.user import AuthToken, User, UserRole
-from utils.recipe_images import resize_to_jpeg
+from utils.recipe_images import resize_to_jpeg, supported_recipe_photo
 
 IMAGE = 'https://backend.grainstoryfarm.ca/api/images/recipes/test-photo.jpg'
 
@@ -83,6 +83,40 @@ def _create(client, headers, product, title='红烧番茄'):
 
 def test_resize_keeps_aspect_and_does_not_crop():
     jpeg, size = resize_to_jpeg(_png(2000, 1000))
+    assert size == (960, 480)
+    assert jpeg[:2] == b'\xff\xd8'
+
+
+def _jpeg_with_orientation(width, height, orientation):
+    image = Image.new('RGB', (width, height), (8, 16, 24))
+    exif = image.getexif()
+    exif[274] = orientation
+    buf = io.BytesIO()
+    image.save(buf, format='JPEG', exif=exif)
+    return buf.getvalue()
+
+
+def test_resize_applies_iphone_exif_orientation():
+    # Orientation 6 is how the iPhone stores a portrait shot: rotate 90° CW.
+    jpeg, size = resize_to_jpeg(_jpeg_with_orientation(100, 200, 6))
+    assert size == (200, 100)
+    assert jpeg[:2] == b'\xff\xd8'
+
+
+def _heic(width, height):
+    pytest.importorskip('pillow_heif')
+    image = Image.new('RGB', (width, height), (10, 20, 30))
+    buf = io.BytesIO()
+    image.save(buf, format='HEIF')
+    return buf.getvalue()
+
+
+def test_resize_decodes_iphone_heic():
+    raw = _heic(1600, 800)
+    assert supported_recipe_photo('IMG_0001.HEIC', '', raw)
+    assert supported_recipe_photo('image', 'image/heic', raw)
+    assert not supported_recipe_photo('notes.txt', 'text/plain', b'not a photo')
+    jpeg, size = resize_to_jpeg(raw)
     assert size == (960, 480)
     assert jpeg[:2] == b'\xff\xd8'
 
@@ -217,6 +251,30 @@ def test_upload_returns_public_recipe_url(app, db_session, monkeypatch):
     assert response.status_code == 200, response.get_json()
     assert response.get_json()['url'].endswith('/api/images/recipes/abc.jpg')
     assert 'X-Goog-Signature' not in response.get_json()['url']
+
+    heic = client.post(
+        '/api/recipes/images',
+        data={'image': (io.BytesIO(_heic(80, 40)), 'IMG_0001.HEIC')},
+        content_type='multipart/form-data',
+        headers=_headers(author),
+    )
+    assert heic.status_code == 200, heic.get_json()
+
+    nameless = client.post(
+        '/api/recipes/images',
+        data={'image': (io.BytesIO(_heic(40, 40)), 'image', 'image/heic')},
+        content_type='multipart/form-data',
+        headers=_headers(author),
+    )
+    assert nameless.status_code == 200, nameless.get_json()
+
+    rejected = client.post(
+        '/api/recipes/images',
+        data={'image': (io.BytesIO(b'not a photo'), 'notes.txt')},
+        content_type='multipart/form-data',
+        headers=_headers(author),
+    )
+    assert rejected.status_code == 400
 
 
 def test_filter_recipes_by_product_category(app, db_session):

@@ -143,7 +143,7 @@
               </div>
               <div class="product-detail-fields">
                 <div class="form-group-inline">
-                  <label>库存限制</label>
+                  <label>{{ variantsFor(selectedProduct).length ? '合计库存上限' : '库存限制' }}</label>
                   <input
                     :value="selectedProduct.deal_stock_limit === null || selectedProduct.deal_stock_limit === undefined ? '' : selectedProduct.deal_stock_limit"
                     @input="handleStockLimitInput(index, $event)"
@@ -152,6 +152,7 @@
                     placeholder="留空表示无限制"
                     class="form-input-small"
                   />
+                  <small v-if="variantsFor(selectedProduct).length" class="form-hint">留空表示不限制各规格加在一起的数量</small>
                 </div>
                 <div class="form-group-inline">
                   <label class="deal-discount-label">
@@ -165,6 +166,25 @@
                     保存后，本团未截单且未付款的订单立即按促销价计算。其他团购仍按原价。
                   </small>
                   <small v-else class="form-hint">仅对本团生效，其他团购仍按原价</small>
+                </div>
+                <div v-if="variantsFor(selectedProduct).length" class="variant-stock-list">
+                  <label>各规格库存</label>
+                  <div
+                    v-for="variant in variantsFor(selectedProduct)"
+                    :key="variant.id"
+                    class="variant-stock-row"
+                  >
+                    <span class="variant-stock-name">{{ variant.name }}</span>
+                    <input
+                      :value="variantStockValue(selectedProduct, variant.id)"
+                      @input="handleVariantStockInput(index, variant.id, $event)"
+                      type="number"
+                      min="0"
+                      placeholder="不限"
+                      class="form-input-small"
+                    />
+                  </div>
+                  <small class="form-hint">留空表示该规格不限，0 表示该规格售罄</small>
                 </div>
               </div>
             </div>
@@ -288,13 +308,7 @@ export default {
         
         // Load selected products
         if (this.deal.products && this.deal.products.length > 0) {
-          this.selectedProducts = this.deal.products.map(product => ({
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null,
-            is_discount: !!product.is_discount
-          }))
+          this.selectedProducts = this.deal.products.map(product => this.dealProductSelection(product))
         }
       }
     },
@@ -305,13 +319,7 @@ export default {
       this.formData.online_payment_enabled = !!this.copyFrom.online_payment_enabled
 
       if (this.copyFrom.products && this.copyFrom.products.length > 0) {
-        this.selectedProducts = this.copyFrom.products.map(product => ({
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null,
-          is_discount: !!product.is_discount
-        }))
+        this.selectedProducts = this.copyFrom.products.map(product => this.dealProductSelection(product))
       }
     },
     formatDateTimeLocal(dateString) {
@@ -344,7 +352,9 @@ export default {
           id: product.id,
           name: product.name,
           price: product.price,
+          variants: product.variants || [],
           deal_stock_limit: null,
+          variant_stock_limits: {},
           is_discount: false
         })
       }
@@ -373,6 +383,43 @@ export default {
         return off != null && off !== '' && Number(off) > 0
       }
       return false
+    },
+    dealProductSelection(product) {
+      const limits = {}
+      const raw = product.variant_stock_limits || {}
+      Object.keys(raw).forEach((key) => {
+        if (typeof raw[key] === 'number') limits[key] = raw[key]
+      })
+      return {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        variants: product.variants || [],
+        deal_stock_limit: typeof product.deal_stock_limit === 'number' ? product.deal_stock_limit : null,
+        variant_stock_limits: limits,
+        is_discount: !!product.is_discount
+      }
+    },
+    variantsFor(selected) {
+      const catalog = this.availableProducts.find(product => product.id === selected.id)
+      const source = catalog?.variants?.length ? catalog.variants : (selected.variants || [])
+      return source.filter(variant => variant.is_active !== false)
+    },
+    variantStockValue(selected, variantId) {
+      const limits = selected.variant_stock_limits || {}
+      const value = limits[variantId] ?? limits[String(variantId)]
+      return value === null || value === undefined ? '' : value
+    },
+    handleVariantStockInput(index, variantId, event) {
+      const value = event.target.value
+      const limits = { ...(this.selectedProducts[index].variant_stock_limits || {}) }
+      delete limits[variantId]
+      delete limits[String(variantId)]
+      if (value !== '' && value !== null && value !== undefined) {
+        const numValue = parseInt(value, 10)
+        limits[variantId] = !isNaN(numValue) && numValue >= 0 ? numValue : 0
+      }
+      this.selectedProducts[index].variant_stock_limits = limits
     },
     handleStockLimitInput(index, event) {
       const value = event.target.value
@@ -412,9 +459,15 @@ export default {
             const finalStockLimit = (stockLimit === '' || stockLimit === null || stockLimit === undefined || isNaN(stockLimit)) 
               ? null 
               : stockLimit
+            const variantStockLimits = {}
+            Object.entries(p.variant_stock_limits || {}).forEach(([id, value]) => {
+              if (value === '' || value === null || value === undefined || Number.isNaN(Number(value))) return
+              variantStockLimits[String(id)] = Number(value)
+            })
             return {
               product_id: p.id,
               deal_stock_limit: finalStockLimit,
+              variant_stock_limits: Object.keys(variantStockLimits).length ? variantStockLimits : null,
               is_discount: !!p.is_discount
             }
           })
@@ -482,7 +535,7 @@ export default {
   gap: var(--md-spacing-md);
   padding: var(--md-spacing-md) var(--md-spacing-lg);
   padding-top: calc(var(--md-spacing-md) + var(--app-safe-top, env(safe-area-inset-top, 0px)));
-  background: rgb(255, 140, 0);
+  background: var(--surface-card);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0;
   position: relative;
@@ -496,7 +549,7 @@ export default {
   left: 0;
   right: 0;
   height: env(safe-area-inset-top);
-  background: rgb(255, 140, 0);
+  background: var(--surface-card);
 }
 
 .modal-header-text {
@@ -506,7 +559,7 @@ export default {
 
 .modal-header h2 {
   font-size: var(--md-title-size);
-  color: #fff;
+  color: var(--text-primary);
   font-weight: 600;
   margin: 0;
   line-height: 1.3;
@@ -515,7 +568,7 @@ export default {
 .modal-subtitle {
   margin: 0.2rem 0 0;
   font-size: var(--md-label-size);
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-secondary);
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -527,7 +580,7 @@ export default {
   border: none;
   cursor: pointer;
   padding: var(--md-spacing-xs);
-  color: #fff;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -543,8 +596,8 @@ export default {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
 }
 
 .group-deal-form {
@@ -559,24 +612,24 @@ export default {
 }
 
 .form-group.field-missing label {
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .form-group.field-missing .form-input,
 .form-group.field-missing .form-textarea {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.06);
-  box-shadow: 0 0 0 1px rgba(255, 140, 0, 0.2);
+  background: rgba(240, 168, 0, 0.06);
+  box-shadow: 0 0 0 1px rgba(240, 168, 0, 0.2);
 }
 
 .form-group.field-missing .form-input:focus,
 .form-group.field-missing .form-textarea:focus {
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.15);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .form-group.field-missing .form-hint {
-  color: #E65100;
+  color: var(--warning-text);
 }
 
 .form-row {
@@ -624,9 +677,9 @@ input[type="datetime-local"].form-input {
 .form-textarea:focus,
 select.form-input:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .form-textarea {
@@ -672,12 +725,12 @@ select.form-input:focus {
 
 .product-select-item:hover {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.05);
+  background: rgba(240, 168, 0, 0.05);
 }
 
 .product-select-item.selected {
   border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
 }
 
 .product-select-info {
@@ -697,7 +750,7 @@ select.form-input:focus {
 }
 
 .product-select-check {
-  color: var(--md-primary);
+  color: var(--brand-ink);
   font-weight: bold;
   font-size: 1.2rem;
 }
@@ -745,13 +798,32 @@ select.form-input:focus {
 
 .remove-product-btn:hover {
   background: #C62828;
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .product-detail-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--md-spacing-md);
+}
+
+.variant-stock-list {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-spacing-xs);
+}
+
+.variant-stock-row {
+  display: flex;
+  align-items: center;
+  gap: var(--md-spacing-sm);
+}
+
+.variant-stock-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--md-label-size);
 }
 
 .form-group-inline {
@@ -789,7 +861,7 @@ select.form-input:focus {
 
 .form-input-small:focus {
   outline: none;
-  border-color: var(--md-primary);
+  border-color: var(--brand-ink);
   border-width: 2px;
 }
 
@@ -831,17 +903,17 @@ select.form-input:focus {
 
 .cancel-btn:hover {
   background: var(--md-outline);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 .submit-btn {
   background: var(--md-primary);
-  color: white;
+  color: var(--text-on-brand);
   box-shadow: var(--md-elevation-2);
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #FF7F00;
+  background: var(--brand-hover);
   box-shadow: var(--md-elevation-3);
   transform: translateY(-2px);
 }
@@ -879,7 +951,7 @@ select.form-input:focus {
   .modal-header {
     position: sticky;
     top: 0;
-    background: rgb(255, 140, 0);
+    background: var(--surface-card);
     z-index: 10;
     padding: var(--md-spacing-md);
     border-radius: 0;

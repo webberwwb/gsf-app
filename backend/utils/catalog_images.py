@@ -8,18 +8,19 @@ THUMB_QUALITY = 75
 CACHE_CONTROL = 'public, max-age=31536000, immutable'
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
     Image = None
+    ImageOps = None
 
 
 def encode_thumbnail(raw_bytes, max_edge=THUMB_EDGE, quality=THUMB_QUALITY):
     """JPEG whose longest edge is at most max_edge. Never crops."""
     if not PIL_AVAILABLE:
         raise RuntimeError('Pillow is required')
-    image = Image.open(io.BytesIO(raw_bytes))
+    image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw_bytes)))
     if image.mode in ('RGBA', 'LA', 'P'):
         rgb = Image.new('RGB', image.size, (255, 255, 255))
         if image.mode == 'P':

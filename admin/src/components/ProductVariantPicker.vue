@@ -86,7 +86,7 @@ export default {
   padding: 0.2rem 0.6rem;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface-card);
   color: var(--md-on-surface-variant);
   font-size: 0.6875rem;
   font-weight: 500;
@@ -95,14 +95,14 @@ export default {
 }
 
 .option-chip:hover:not(.selected) {
-  border-color: rgba(255, 140, 0, 0.45);
+  border-color: rgba(240, 168, 0, 0.45);
   color: var(--md-on-surface);
 }
 
 .option-chip.selected {
-  border-color: var(--md-primary);
-  background: rgba(255, 140, 0, 0.1);
-  color: var(--md-primary);
+  border-color: transparent;
+  background: var(--md-primary);
+  color: var(--text-on-brand);
   font-weight: 600;
 }
 

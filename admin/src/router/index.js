@@ -87,6 +87,18 @@ const router = createRouter({
           meta: { roles: ['admin'] }
         },
         {
+          path: 'b-supply',
+          name: 'BSupplyRecords',
+          component: () => import('../views/BMerchants.vue'),
+          meta: { roles: ['admin'] }
+        },
+        {
+          path: 'b-merchants',
+          name: 'BMerchants',
+          component: () => import('../views/BMerchants.vue'),
+          meta: { roles: ['admin'] }
+        },
+        {
           path: 'shipping-fee',
           name: 'ShippingFeeManagement',
           component: () => import('../views/ShippingFeeManagement.vue'),

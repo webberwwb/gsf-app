@@ -234,7 +234,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 140, 0, 0.1);
+  background: rgba(240, 168, 0, 0.1);
   border-radius: var(--md-radius-lg);
   color: var(--md-primary);
   flex-shrink: 0;

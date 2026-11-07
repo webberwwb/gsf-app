@@ -66,10 +66,10 @@ export default {
   gap: 0.85rem;
   padding: 1.75rem 1.75rem 1.5rem;
   border-radius: 20px;
-  background: #fff;
+  background: var(--surface-card);
   box-shadow:
-    0 1px 2px rgba(255, 140, 0, 0.08),
-    0 18px 40px rgba(255, 140, 0, 0.14);
+    0 1px 2px rgba(240, 168, 0, 0.08),
+    0 18px 40px rgba(240, 168, 0, 0.14);
   animation: rise 0.35s ease-out;
 }
 
@@ -83,7 +83,7 @@ export default {
   position: absolute;
   inset: 8px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 140, 0, 0.28) 0%, rgba(255, 140, 0, 0) 70%);
+  background: radial-gradient(circle, rgba(240, 168, 0, 0.28) 0%, rgba(240, 168, 0, 0) 70%);
   animation: breathe 1.4s ease-in-out infinite;
 }
 
@@ -96,15 +96,15 @@ export default {
 }
 
 .ring.outer {
-  border-top-color: var(--md-primary, #FF8C00);
-  border-right-color: var(--md-primary, #FF8C00);
+  border-top-color: var(--md-primary, #F0A800);
+  border-right-color: var(--md-primary, #F0A800);
   animation: spin 0.85s linear infinite;
 }
 
 .ring.inner {
   inset: 12px;
-  border-bottom-color: #FFB347;
-  border-left-color: rgba(255, 140, 0, 0.35);
+  border-bottom-color: var(--brand-light, #F5BE43);
+  border-left-color: rgba(240, 168, 0, 0.35);
   animation: spin-rev 1.25s linear infinite;
 }
 
@@ -116,8 +116,8 @@ export default {
   height: 10px;
   margin: -5px 0 0 -5px;
   border-radius: 50%;
-  background: var(--md-primary, #FF8C00);
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.16);
+  background: var(--md-primary, #F0A800);
+  box-shadow: 0 0 0 3px var(--brand-focus);
 }
 
 .label {
