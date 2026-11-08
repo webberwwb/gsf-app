@@ -120,7 +120,7 @@
             <select v-model="paymentMethod" class="text-input">
               <option value="cash">现金</option>
               <option value="etransfer">电子转账</option>
-              <option v-if="canPayByCard" value="card">信用卡</option>
+              <option value="card">信用卡</option>
             </select>
           </div>
           <div class="field">
@@ -205,9 +205,6 @@ export default {
       const q = this.productQuery.trim().toLowerCase()
       if (!q) return this.products
       return this.products.filter((product) => (product.name || '').toLowerCase().includes(q))
-    },
-    canPayByCard() {
-      return this.deliveryMethod === 'delivery' && Boolean(this.selectedUser?.has_card_on_file)
     }
   },
   watch: {
@@ -216,10 +213,6 @@ export default {
     },
     deliveryMethod(method) {
       if (method !== 'delivery') this.addressId = null
-      if (this.paymentMethod === 'card' && !this.canPayByCard) this.paymentMethod = 'cash'
-    },
-    canPayByCard(ok) {
-      if (!ok && this.paymentMethod === 'card') this.paymentMethod = 'cash'
     }
   },
   methods: {

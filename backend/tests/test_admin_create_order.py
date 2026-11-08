@@ -225,3 +225,57 @@ def test_admin_delivery_order_requires_customer_address(app, db_session):
     assert order['delivery_method'] == 'delivery'
     assert order['address_id'] == address.id
     assert order['payment_method'] == 'etransfer'
+
+
+def test_admin_can_create_pickup_card_order_without_saved_card(app, db_session):
+    customer = _user('+15550001007', '自取顾客')
+    admin = _admin()
+    deal = _closed_deal()
+    product = _product()
+    _link(deal, product, stock=3)
+    client = app.test_client()
+
+    created = client.post('/api/admin/orders', headers=_headers(admin), json={
+        'user_id': customer.id,
+        'group_deal_id': deal.id,
+        'delivery_method': 'pickup',
+        'payment_method': 'card',
+        'items': [{'product_id': product.id, 'quantity': 1}],
+    })
+    assert created.status_code == 201, created.get_json()
+    order = created.get_json()['order']
+    assert order['delivery_method'] == 'pickup'
+    assert order['payment_method'] == 'card'
+    assert order['payment_status'] == 'unpaid'
+
+
+def test_admin_can_charge_pickup_cash_order(app, db_session, monkeypatch):
+    customer = _user('+15550001008', '自取现金')
+    admin = _admin()
+    deal = _closed_deal()
+    product = _product()
+    _link(deal, product, stock=3)
+    client = app.test_client()
+    created = client.post('/api/admin/orders', headers=_headers(admin), json={
+        'user_id': customer.id,
+        'group_deal_id': deal.id,
+        'delivery_method': 'pickup',
+        'payment_method': 'cash',
+        'items': [{'product_id': product.id, 'quantity': 1}],
+    })
+    assert created.status_code == 201, created.get_json()
+    order_id = created.get_json()['order']['id']
+
+    monkeypatch.setattr('routes.payments.stripe_configured', lambda: True)
+    monkeypatch.setattr(
+        'routes.payments.charge_order_off_session',
+        lambda order: (True, type('PI', (), {'id': 'pi_admin_pickup'})(), None),
+    )
+
+    charged = client.post(f'/api/admin/orders/{order_id}/stripe-charge', headers=_headers(admin))
+    assert charged.status_code == 200, charged.get_json()
+    body = charged.get_json()['order']
+    assert body['payment_status'] == 'paid'
+    assert body['delivery_method'] == 'pickup'
+    assert body['payment_method'] == 'cash'
+    assert body['payment_transaction_id'] == 'pi_admin_pickup'

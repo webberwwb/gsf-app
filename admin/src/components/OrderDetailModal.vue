@@ -110,7 +110,7 @@
                   <option value="">未选择</option>
                   <option value="cash">现金</option>
                   <option value="etransfer">电子转账</option>
-                  <option value="card" :disabled="order && order.delivery_method === 'pickup'">信用卡</option>
+                  <option value="card">信用卡</option>
                 </select>
               </div>
             </div>
@@ -955,7 +955,8 @@ export default {
              this.newAddress.postal_code?.trim()
     },
     showStripePanel() {
-      if (!this.order) return false
+      if (!this.order || this.order.status === 'cancelled') return false
+      if (this.order.payment_status !== 'paid') return true
       return this.order.payment_method === 'card'
         || this.localPaymentMethod === 'card'
         || Boolean(this.order.stripe_payment_method_id)

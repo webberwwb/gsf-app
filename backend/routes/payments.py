@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request, current_app
 from models import db
 from models.order import Order
 from models.user import User, AuthToken
-from constants.status_enums import PaymentStatus, PaymentMethod, DeliveryMethod
+from constants.status_enums import PaymentStatus
 from utils.order_payment import mark_order_paid
 from utils.order_totals import calculate_amount_due
 from utils.stripe_client import (
@@ -313,8 +313,6 @@ def admin_stripe_charge(order_id):
         return jsonify({'error': 'Order not found'}), 404
     if order.payment_status == PaymentStatus.PAID.value:
         return jsonify({'error': '订单已付款', 'order': _order_payload(order)}), 400
-    if order.delivery_method != DeliveryMethod.DELIVERY.value:
-        return jsonify({'error': '仅配送订单可在线扣款'}), 400
     ok, pi, err = charge_order_off_session(order)
     pi_id = getattr(pi, 'id', None) if pi is not None else None
     if ok:

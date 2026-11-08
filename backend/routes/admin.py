@@ -115,7 +115,6 @@ from utils.stock_management import (
     restore_stock,
     update_stock_after_order_modification,
 )
-from utils.order_payment import payment_method_error
 import csv
 import io
 from models.credit_transaction import CreditTransaction
@@ -2048,7 +2047,11 @@ def _initial_status_for_admin_order(group_deal):
 
 @admin_bp.route('/orders', methods=['POST'])
 def create_admin_order():
-    """Create an order for an existing customer. Ignores group deal status and cutoff."""
+    """Create an order for an existing customer.
+
+    Ignores group deal status, cutoff, and customer payment-method rules.
+    Admin can record cash, e-transfer, or card on pickup or delivery.
+    """
     admin_user_id, error_response, status_code = require_admin_auth()
     if error_response:
         return error_response, status_code
@@ -2087,16 +2090,6 @@ def create_admin_order():
         else:
             address_id = None
             pickup_location = pickup_location or 'markham'
-
-        pay_err = payment_method_error(
-            delivery_method,
-            payment_method,
-            user_row,
-            online_payment_enabled=bool(group_deal.online_payment_enabled),
-            delivery_consented=True,
-        )
-        if pay_err:
-            return jsonify({'error': pay_err}), 400
 
         try:
             priced_items, _subtotal = priced_items_from_request(
