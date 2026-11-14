@@ -1,50 +1,53 @@
 <template>
   <article class="delivery-sheet">
-    <img class="sheet-logo" :src="logo" alt="Grain Story Poultry Farm" />
-    <h1>INVOICE 发票</h1>
-    <p><span class="label">Supplier / 供货方:</span> {{ supplierName }}</p>
-    <p><span class="label">Customer / 收货方:</span> {{ customerName || '—' }}</p>
-    <p><span class="label">Invoice Date / 发票日期:</span> {{ formatInvoiceDate(invoiceDate) }}</p>
-    <p><span class="label">Due Date / 付款日期:</span> {{ formatInvoiceDate(dueDate) }}</p>
-    <p><span class="label">Payment Terms / 付款方式:</span> {{ paymentTerms }}</p>
+    <header class="sheet-top">
+      <img class="sheet-logo" :src="logo" alt="Grain Story Poultry Farm" />
+      <h1>DELIVERY NOTE 送货单</h1>
+      <p><span class="label">Supplier / 供货方:</span> {{ supplierName }}</p>
+      <p><span class="label">Customer / 收货方:</span> {{ customerName || '—' }}</p>
+      <p><span class="label">Delivery Date / 送货日期:</span> {{ formatInvoiceDate(invoiceDate) }}</p>
+    </header>
 
-    <table>
-      <thead>
-        <tr>
-          <th class="col-num">#</th>
-          <th>Product / 产品</th>
-          <th>Quantity / 数量</th>
-          <th v-if="showPrices">Unit Price / 单价</th>
-          <th v-if="showPrices">Amount / 金额</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="(line, index) in lines" :key="index">
-          <td>{{ index + 1 }}</td>
-          <td>{{ line.product_name || '—' }}</td>
-          <td>{{ formatQty(line.quantity, line.unit) }}</td>
-          <td v-if="showPrices">{{ formatMoney(line.unit_price) }}/{{ line.unit || 'pc' }}</td>
-          <td v-if="showPrices">{{ formatMoney(lineAmount(line)) }}</td>
-        </tr>
-        <tr v-if="!lines.length">
-          <td :colspan="showPrices ? 5 : 3" class="empty">—</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div v-if="showPrices" class="totals">
-      <p><span>Subtotal / 小计:</span> {{ formatMoney(subtotal) }}</p>
-      <p><span>HST (if applicable) / 税（如适用）:</span> {{ formatMoney(hst, true) }}</p>
-      <p><span>Discount/折扣:</span> {{ discount ? formatMoney(discount) : '' }}</p>
-      <p class="grand"><span>Grand Total / 总计:</span> {{ formatMoney(grandTotal) }}</p>
+    <div class="sheet-body">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-num">#</th>
+            <th>Product / 产品</th>
+            <th>Quantity / 数量</th>
+            <th v-if="showPrices">Unit Price / 单价</th>
+            <th v-if="showPrices">Amount / 金额</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(line, index) in lines" :key="index">
+            <td>{{ index + 1 }}</td>
+            <td>{{ line.product_name || '—' }}</td>
+            <td>{{ formatQty(line.quantity, line.unit) }}</td>
+            <td v-if="showPrices">{{ formatMoney(line.unit_price) }}/{{ line.unit || 'pc' }}</td>
+            <td v-if="showPrices">{{ formatMoney(lineAmount(line)) }}</td>
+          </tr>
+          <tr v-if="!lines.length">
+            <td :colspan="showPrices ? 5 : 3" class="empty">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="showPrices" class="totals">
+        <p><span>Subtotal / 小计:</span> {{ formatMoney(subtotal) }}</p>
+        <p><span>HST (if applicable) / 税（如适用）:</span> {{ formatMoney(hst, true) }}</p>
+        <p><span>Discount/折扣:</span> {{ discount ? formatMoney(discount) : '' }}</p>
+        <p class="grand"><span>Grand Total / 总计:</span> {{ formatMoney(grandTotal) }}</p>
+      </div>
     </div>
 
-    <div class="signature">
-      <p class="sign-title">Received By (Signature) / 收货方签收</p>
-      <p>Signature 签名: _____________________________</p>
-      <p>Name 姓名: _________________________________</p>
-      <p>Date 日期: _________________________________</p>
-    </div>
+    <footer class="sheet-end">
+      <div class="signature">
+        <p class="sign-title">Received By (Signature) / 收货方签收</p>
+        <p>Signature 签名: _____________________________</p>
+        <p>Name 姓名: _________________________________</p>
+        <p>Date 日期: _________________________________</p>
+      </div>
+    </footer>
   </article>
 </template>
 
@@ -93,8 +96,6 @@ export default {
   props: {
     customerName: { type: String, default: '' },
     invoiceDate: { type: String, default: '' },
-    dueDate: { type: String, default: '' },
-    paymentTerms: { type: String, default: '' },
     showPrices: { type: Boolean, default: true },
     lines: { type: Array, default: () => [] },
     hst: { type: [Number, String], default: 0 },
@@ -126,19 +127,24 @@ export default {
 .delivery-sheet {
   background: var(--surface-card);
   color: #111;
-  padding: 28px 32px 36px;
+  padding: 36px 40px 40px;
   border: 1px solid #e0e0e0;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   font-family: "Times New Roman", Times, "Songti SC", serif;
-  font-size: 15px;
-  line-height: 1.45;
-  max-width: 800px;
+  font-size: 16px;
+  line-height: 1.5;
+  width: 100%;
+  max-width: 816px;
+  min-height: 1056px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 @media (max-width: 767px) {
   .delivery-sheet {
     max-width: 100%;
+    min-height: 0;
     padding: 16px 12px 24px;
     font-size: 13px;
   }
@@ -150,8 +156,8 @@ export default {
   }
 
   .sheet-logo {
-    width: 72px;
-    height: 72px;
+    width: 96px;
+    height: 96px;
   }
 
   h1 {
@@ -161,37 +167,48 @@ export default {
 
 .sheet-logo {
   display: block;
-  width: 108px;
-  height: 108px;
+  width: 180px;
+  height: 180px;
   object-fit: contain;
-  margin: 0 auto 4px;
+  margin: 0 auto 12px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
 
 h1 {
   text-align: center;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  margin: 0 0 16px;
+  margin: 0 0 22px;
 }
 
-p {
-  margin: 0 0 4px;
+.sheet-top p {
+  margin: 0 0 8px;
 }
 
 .label {
   font-weight: 700;
 }
 
+.sheet-body {
+  flex: 0 0 auto;
+  margin-top: 22px;
+}
+
+.sheet-end {
+  margin-top: auto;
+}
+
 table {
   width: 100%;
+  height: auto;
   border-collapse: collapse;
-  margin-top: 16px;
 }
 
 th, td {
   border: 1px solid #222;
-  padding: 6px 8px;
+  padding: 10px 12px;
   text-align: left;
   vertical-align: top;
 }
@@ -202,7 +219,7 @@ th {
 }
 
 .col-num {
-  width: 36px;
+  width: 42px;
 }
 
 .empty {
@@ -211,7 +228,7 @@ th {
 }
 
 .totals {
-  margin-top: 14px;
+  margin-top: 64px;
   margin-left: auto;
   width: min(100%, 420px);
 }
@@ -220,25 +237,25 @@ th {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 4px;
+  margin: 0 0 8px;
 }
 
 .totals .grand {
   font-weight: 700;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .signature {
-  margin-top: 28px;
+  margin-top: 40px;
 }
 
 .sign-title {
   font-weight: 700;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
 .signature p {
-  margin-bottom: 8px;
+  margin: 0 0 12px;
 }
 </style>
 
@@ -260,34 +277,80 @@ th {
   .main-content,
   .content-area,
   .composer,
-  .composer-preview,
-  .delivery-sheet {
+  .composer-preview {
     display: block !important;
     margin: 0 !important;
-    overflow: visible !important;
-    height: auto !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    width: 8.5in !important;
+    max-width: 8.5in !important;
+    height: 11in !important;
     min-height: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
     box-sizing: border-box !important;
   }
 
-  .admin-layout,
-  .main-content,
-  .content-area,
-  .composer,
-  .composer-preview {
-    padding: 0 !important;
-  }
-
   .delivery-sheet {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 8.5in !important;
+    max-width: 8.5in !important;
+    height: 11in !important;
+    min-height: 0 !important;
+    max-height: 11in !important;
+    margin: 0 !important;
     border: none !important;
     box-shadow: none !important;
-    padding: 10mm 12mm !important;
+    padding: 0.4in 0.45in !important;
+    font-size: 12pt !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    transform: scale(0.9) !important;
+    transform-origin: center center !important;
+  }
+
+  .delivery-sheet .sheet-logo {
+    width: 1.7in !important;
+    height: 1.7in !important;
+  }
+
+  .delivery-sheet h1 {
+    font-size: 22pt !important;
+    margin-bottom: 16px !important;
+  }
+
+  .delivery-sheet .sheet-body {
+    flex: 0 0 auto !important;
+  }
+
+  .delivery-sheet table {
+    height: auto !important;
+  }
+
+  .delivery-sheet .totals {
+    margin-top: 0.7in !important;
+  }
+
+  .delivery-sheet .sheet-end {
+    margin-top: auto !important;
+    flex-shrink: 0 !important;
+    page-break-inside: avoid !important;
+  }
+
+  .delivery-sheet .signature {
+    margin-top: 0 !important;
+    flex-shrink: 0 !important;
+    page-break-inside: avoid !important;
+  }
+
+  .delivery-sheet .signature p {
+    margin-bottom: 8px !important;
   }
 
   /* Chrome draws the date, page title, and URL in the page margin. */
   @page {
+    size: letter;
     margin: 0;
   }
 }

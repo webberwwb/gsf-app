@@ -426,10 +426,11 @@
           </div>
         </div>
         
-        <div v-if="!ordersStore.state.loading && orders.length === 0" class="empty-state">
+        <div v-if="ordersStore.state.error" class="error">{{ ordersStore.state.error }}</div>
+        <div v-else-if="loadedOrders.length === 0" class="empty-state">
           <p>暂无订单</p>
         </div>
-        <div v-else-if="!ordersStore.state.loading">
+        <div v-else>
           <!-- Order Tabs and Filters -->
           <div class="order-tabs-container">
             <div class="order-tabs">
@@ -496,8 +497,20 @@
             </div>
           </div>
 
+          <div v-if="filteredOrders.length === 0" class="empty-state">
+            <p>没有符合当前筛选的订单</p>
+            <button
+              v-if="!showCompletedOrders && completedOrderCount > 0"
+              type="button"
+              class="show-completed-btn"
+              @click="showCompletedOrders = true"
+            >
+              显示已完成订单 ({{ completedOrderCount }})
+            </button>
+          </div>
+
           <!-- Orders List -->
-          <div v-if="viewMode === 'card'" class="orders-list">
+          <div v-else-if="viewMode === 'card'" class="orders-list">
             <OrderCard
               v-for="order in filteredOrders"
               :key="order.id"
@@ -798,15 +811,17 @@ export default {
         viewMode: this.viewMode
       }
     },
+    loadedOrders() {
+      return this.ordersStore.state.orders || []
+    },
+    completedOrderCount() {
+      return this.loadedOrders.filter(order => order.status === 'completed').length
+    },
     orders() {
-      let orders = this.ordersStore.state.orders
-      
-      // Filter out completed orders by default unless checkbox is checked
       if (!this.showCompletedOrders) {
-        orders = orders.filter(order => order.status !== 'completed')
+        return this.loadedOrders.filter(order => order.status !== 'completed')
       }
-      
-      return orders
+      return this.loadedOrders
     },
     filteredOrders() {
       let orders = []
@@ -1376,6 +1391,7 @@ export default {
         if (this.groupDeal) {
           this.groupDeal._previousStatus = this.groupDeal.status
           this._pageHeader?.setTitle(this.groupDeal.title)
+          this.revealCompletedOrdersForFinishedDeal()
         }
         
         // Show the page immediately with group deal info
@@ -1400,6 +1416,7 @@ export default {
         if (this.groupDeal) {
           this.groupDeal._previousStatus = this.groupDeal.status
           this._pageHeader?.setTitle(this.groupDeal.title)
+          this.revealCompletedOrdersForFinishedDeal()
         }
         await this.fetchOrders(dealId)
       } catch (error) {
@@ -1407,9 +1424,17 @@ export default {
         console.error('Failed to refresh group deal detail:', error)
       }
     },
+    revealCompletedOrdersForFinishedDeal() {
+      // Finished deals have no in-progress orders. A saved "hide completed"
+      // preference would blank the list and, previously, hide this checkbox too.
+      if (this.groupDeal?.status === 'completed') {
+        this.showCompletedOrders = true
+      }
+    },
     async fetchOrders(dealId) {
       try {
         this.ordersStore.setLoading(true)
+        this.ordersStore.setError(null)
         
         // Fetch orders for this group deal with items included (excluding cancelled orders)
         const ordersResponse = await apiClient.get('/admin/orders', {
@@ -2458,6 +2483,17 @@ export default {
   text-align: center;
   padding: var(--md-spacing-xl);
   color: var(--md-on-surface-variant);
+}
+
+.show-completed-btn {
+  margin-top: var(--md-spacing-md);
+  padding: var(--md-spacing-sm) var(--md-spacing-lg);
+  background: var(--md-primary);
+  color: var(--text-on-brand);
+  border: none;
+  border-radius: var(--md-radius-md);
+  font-size: var(--md-body-size);
+  cursor: pointer;
 }
 
 .deal-info-card {

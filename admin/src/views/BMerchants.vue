@@ -111,7 +111,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
             </svg>
-            新建送货单
+            供货记录
           </span>
         </button>
       </div>
@@ -232,7 +232,7 @@
             </svg>
             返回列表
           </button>
-          <h2>{{ editingId ? `送货单 #${editingId}` : '新建送货单' }}</h2>
+          <h2>{{ editingId ? `供货记录 #${editingId}` : '新建供货记录' }}</h2>
           <button type="button" class="add-btn" :disabled="saving" @click="saveDelivery()">
             <span class="btn-label">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -270,7 +270,7 @@
           <input v-model="form.show_prices" type="checkbox" />
           显示单价
         </label>
-        <p class="hint">关闭后打印的送货单不显示单价和金额。记录里仍保存进货价，汇总金额不受影响。</p>
+        <p class="hint">关闭后打印的送货单不显示单价和金额。Invoice 始终显示单价。记录里仍保存进货价，汇总金额不受影响。</p>
         <div class="split">
           <label>税 HST
             <input v-model="form.hst" type="number" min="0" step="0.01" />
@@ -381,7 +381,10 @@
 
       <div class="composer-preview">
         <div class="preview-bar">
-          <span>预览</span>
+          <div class="preview-switch">
+            <button type="button" :class="{ active: previewDoc === 'delivery' }" @click="previewDoc = 'delivery'">送货单</button>
+            <button type="button" :class="{ active: previewDoc === 'invoice' }" @click="previewDoc = 'invoice'">Invoice</button>
+          </div>
           <button type="button" class="edit-btn" @click="printSheet">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -390,11 +393,20 @@
           </button>
         </div>
         <DeliverySheet
+          v-if="previewDoc === 'delivery'"
           :customer-name="selectedMerchantName"
           :invoice-date="form.invoice_date"
-          :due-date="form.due_date"
-          :payment-terms="form.payment_terms"
           :show-prices="form.show_prices"
+          :lines="form.lines"
+          :hst="form.hst"
+          :discount="form.discount"
+        />
+        <InvoiceSheet
+          v-else
+          :customer-name="selectedMerchantName"
+          :customer-address="selectedMerchantAddress"
+          :invoice-date="form.invoice_date"
+          :due-date="form.due_date"
           :lines="form.lines"
           :hst="form.hst"
           :discount="form.discount"
@@ -464,6 +476,7 @@ import apiClient from '../api/client'
 import { useModal } from '../composables/useModal'
 import { usePageHeader } from '../stores/pageHeader'
 import DeliverySheet from '../components/DeliverySheet.vue'
+import InvoiceSheet from '../components/InvoiceSheet.vue'
 
 const DEFAULT_PAYMENT_TERMS = 'Certified Cheque to 15891779 Canada Inc., Payment due within 1 week / 一周内支付'
 const DEFAULT_MERCHANT_NAME = '1001280318 Ontario Inc. (Fusion Foodmart)'
@@ -518,7 +531,7 @@ function blankMerchant() {
 
 export default {
   name: 'BMerchants',
-  components: { DeliverySheet },
+  components: { DeliverySheet, InvoiceSheet },
   setup() {
     const { confirm, error: showError } = useModal()
     const pageHeader = usePageHeader()
@@ -539,6 +552,7 @@ export default {
       deliveryError: null,
       filters: { merchant_id: '', payment_status: '' },
       composerOpen: false,
+      previewDoc: 'delivery',
       editingId: null,
       saving: false,
       uploading: null,
@@ -572,9 +586,14 @@ export default {
           .some(value => (value || '').toLowerCase().includes(query))
       })
     },
+    selectedMerchant() {
+      return this.merchants.find(item => String(item.id) === String(this.form.merchant_id)) || null
+    },
     selectedMerchantName() {
-      const merchant = this.merchants.find(item => String(item.id) === String(this.form.merchant_id))
-      return merchant ? merchant.name : ''
+      return this.selectedMerchant ? this.selectedMerchant.name : ''
+    },
+    selectedMerchantAddress() {
+      return this.selectedMerchant ? (this.selectedMerchant.address || '') : ''
     }
   },
   watch: {
@@ -739,7 +758,7 @@ export default {
     },
     syncPageHeader() {
       if (this.composerOpen && this.$route.name === 'BSupplyRecords') {
-        this.pageHeader.setTitle(this.editingId ? `送货单 #${this.editingId}` : '新建送货单')
+        this.pageHeader.setTitle(this.editingId ? `供货记录 #${this.editingId}` : '新建供货记录')
         this.pageHeader.setBackHandler(() => this.closeComposer())
         return
       }
@@ -1322,6 +1341,28 @@ export default {
 
 .preview-bar {
   margin-bottom: 10px;
+}
+
+.preview-switch {
+  display: inline-flex;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-card);
+}
+
+.preview-switch button {
+  border: none;
+  background: transparent;
+  min-height: 36px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.preview-switch button.active {
+  background: var(--md-primary);
+  color: var(--text-on-brand);
 }
 
 .modal-overlay {
